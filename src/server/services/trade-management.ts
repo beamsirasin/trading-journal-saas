@@ -30,6 +30,7 @@ import {
   type CaptureOrigin,
   type EnteredAtSource,
   type ExitPlanProvenance,
+  type PlannedStopMethod,
   type TargetState,
 } from '@/lib/trades/add-trade-contract';
 import {
@@ -504,6 +505,8 @@ export interface CreateTradeInput {
   readonly enteredAt?: Date | undefined;
   /** Add Trade contract v1 — see `src/lib/trades/add-trade-contract.ts`. Absent = a legacy write. */
   readonly recordingContract?: typeof RECORDING_CONTRACT_ADD_TRADE_V1 | undefined;
+  /** A plan answer only: no figure, outcome or adherence is derived from it. */
+  readonly plannedStopMethod?: PlannedStopMethod | undefined;
   readonly targetState?: TargetState | undefined;
   readonly targetPrice?: string | null;
   readonly contextEntryPrice?: string | null;
@@ -1164,6 +1167,7 @@ export async function createTradeInTx(
         ? {
             recordingContract: RECORDING_CONTRACT_ADD_TRADE_V1,
             enteredAtSource: input.enteredAt === undefined ? null : (input.enteredAtSource ?? null),
+            plannedStopMethod: input.plannedStopMethod ?? null,
             targetState: input.targetState ?? null,
             targetPrice: input.targetPrice ?? null,
             contextEntryPrice: input.contextEntryPrice ?? null,

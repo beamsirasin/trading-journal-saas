@@ -504,13 +504,26 @@ describe('Record Open — Step 1 keeps At Entry’s "now"', () => {
   });
 });
 
-describe('Record Open — Plan & Risk: Actual Risk', () => {
+/** Actual Risk moved to Entry Context & Evidence (contract decision 53). */
+function actualRiskRow(): HTMLElement {
+  if (currentStep() !== 'context') goTo('context');
+  return document.getElementById('entry-actual-risk-row')!;
+}
+
+function openActualRisk() {
+  fireEvent.click(actualRiskRow());
+  return within(screen.getByRole('dialog'));
+}
+
+describe('Record Open — Entry Context: Actual Risk', () => {
   it('asks the question beside a real Risk at Entry, and asserts nothing until answered', () => {
     renderForm();
-    const editor = openPlanRow('risk');
-    // Nothing to match yet, so nothing is asked.
-    expect(screen.queryByText('It matched')).toBeNull();
-    fireEvent.change(editor.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    fillMinimum();
+    // Plan & Risk describes the plan only: no Actual Risk question there.
+    expect(planRow('risk')).not.toHaveTextContent(/actual risk/i);
+    expect(openPlanRow('risk').queryByText('It matched')).toBeNull();
+    closeEditor();
+    const editor = openActualRisk();
     // The question, unanswered, with both answers offered and neither taken.
     expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
       'data-actual-risk',
@@ -541,14 +554,14 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('sends Matched once the trader says it matched, with no second amount', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(openPlanRow('risk').getByRole('button', { name: 'It matched' }));
+    fireEvent.click(openActualRisk().getByRole('button', { name: 'It matched' }));
     expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
       'data-actual-risk',
       'matched',
     );
     closeEditor();
     // Stated, so the row may say it.
-    expect(planRow('risk')).toHaveTextContent('Matched risk at entry');
+    expect(actualRiskRow()).toHaveTextContent('Matched risk at entry');
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     expect(payload().actualRiskAnswer).toBe('matched');
@@ -558,7 +571,7 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('returns a stated Matched to Unanswered through its own named action', async () => {
     renderForm();
     fillMinimum();
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(editor.getByRole('button', { name: 'It matched' }));
     fireEvent.click(editor.getByRole('button', { name: 'Remove actual risk answer' }));
     expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
@@ -566,7 +579,7 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
       'unanswered',
     );
     closeEditor();
-    expect(planRow('risk')).toHaveTextContent('Actual risk not recorded');
+    expect(actualRiskRow()).toHaveTextContent('Not answered');
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     expect(payload()).not.toHaveProperty('actualRiskAnswer');
@@ -576,7 +589,7 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('sends Different with its amount, and Different with no amount, unchanged', async () => {
     renderForm();
     fillMinimum();
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
     fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
     closeEditor();
@@ -599,9 +612,10 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('never reads the untouched default back as a match on the closed row', () => {
     renderForm();
     fillMinimum();
-    const row = planRow('risk');
-    expect(row).toHaveTextContent('100 USD');
-    expect(row).toHaveTextContent('Actual risk not recorded');
+    // Plan & Risk reads the plan; Step 4's row reads what was really risked.
+    expect(planRow('risk')).toHaveTextContent('100 USD');
+    const row = actualRiskRow();
+    expect(row).toHaveTextContent('Not answered');
     expect(row).not.toHaveTextContent(/matched/i);
     expect(row).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
   });
@@ -609,18 +623,18 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('reads an explicit Different answer back on the row, with its amount', () => {
     renderForm();
     fillMinimum();
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
     fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
     closeEditor();
-    expect(planRow('risk')).toHaveTextContent('Actual risk 150 USD');
-    expect(planRow('risk')).toHaveAttribute('data-actual-risk-summary', 'different');
+    expect(actualRiskRow()).toHaveTextContent('Actual risk 150 USD');
+    expect(actualRiskRow()).toHaveAttribute('data-actual-risk-summary', 'different');
   });
 
   it('keeps a Different amount through Matched and back', () => {
     renderForm();
     fillMinimum();
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
     fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
     fireEvent.click(editor.getByRole('button', { name: 'It matched after all' }));
@@ -631,12 +645,12 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('records Different with the amount unknown without demanding a second figure', async () => {
     renderForm();
     fillMinimum();
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
     fireEvent.click(editor.getByRole('button', { name: "I don't know the amount" }));
     expect(editor.getByText('Different, amount not known')).toBeVisible();
     closeEditor();
-    expect(planRow('risk')).toHaveTextContent('Different, amount not known');
+    expect(actualRiskRow()).toHaveTextContent('Different, amount not known');
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     expect(payload().actualRiskAnswer).toBe('different');

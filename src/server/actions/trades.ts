@@ -329,6 +329,7 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       actualPositionSize: parsed.data.actualPositionSize ?? null,
       enteredAt: parsed.data.enteredAt,
       recordingContract: parsed.data.recordingContract,
+      plannedStopMethod: parsed.data.plannedStopMethod,
       targetState: parsed.data.targetState,
       targetPrice: parsed.data.targetPrice ?? null,
       contextEntryPrice: parsed.data.contextEntryPrice ?? null,

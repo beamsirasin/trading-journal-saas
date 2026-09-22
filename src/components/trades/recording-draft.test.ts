@@ -22,6 +22,7 @@ import {
   setActualRiskAmount,
   setActualRiskMode,
   setConfidence,
+  setStopMethod,
   setTargetValue,
   toggleEmotion,
   type AtEntryDraft,
@@ -397,6 +398,48 @@ describe('persisted shape', () => {
     expect(
       different.status === 'recovered' ? different.envelope.atEntry?.actualRisk : null,
     ).toEqual({ mode: 'different', amount: '150' });
+  });
+
+  /*
+    BOTH ANSWERS SURVIVE A RELOAD, and keep their explicitness: a Stop Method
+    the trader chose and an Actual Risk they stated must still be different
+    from the states nobody answered (contract decisions 52–53).
+  */
+  it('keeps Stop Method and Actual Risk, answered or not, across a reload', () => {
+    const answered = envelopeWith({
+      ...setStopMethod(workedAtEntry(), 'mental'),
+      actualRisk: { mode: 'matched', amount: '' },
+    });
+    const parsed = parseRecordingDraft(serializeRecordingDraft(answered), NOW);
+    expect(parsed.status).toBe('recovered');
+    if (parsed.status !== 'recovered') throw new Error('unreachable');
+    expect(parsed.envelope.atEntry?.stopMethod).toBe('mental');
+    expect(parsed.envelope.atEntry?.actualRisk.mode).toBe('matched');
+
+    const untouched = envelopeWith(workedAtEntry());
+    const plain = parseRecordingDraft(serializeRecordingDraft(untouched), NOW);
+    if (plain.status !== 'recovered') throw new Error('unreachable');
+    expect(plain.envelope.atEntry?.stopMethod).toBe('unanswered');
+    expect(plain.envelope.atEntry?.actualRisk.mode).toBe('unanswered');
+  });
+
+  /*
+    A DRAFT WRITTEN BEFORE DECISION 53 simply has no Stop Method key. Absent
+    IS Unanswered, so the draft loads whole rather than being lost, and no
+    answer is invented for it.
+  */
+  it('loads a draft saved before Stop Method existed, as Unanswered', () => {
+    const current = JSON.parse(
+      serializeRecordingDraft(envelopeWith(setStopMethod(workedAtEntry(), 'broker'))),
+    );
+    delete current.atEntry.stopMethod;
+    const parsed = parseRecordingDraft(JSON.stringify(current), NOW);
+    expect(parsed.status).toBe('recovered');
+    if (parsed.status !== 'recovered') throw new Error('unreachable');
+    expect(parsed.envelope.atEntry?.stopMethod).toBe('unanswered');
+    // And everything that draft did hold is still there.
+    expect(parsed.envelope.atEntry?.symbol).toBe('XAUUSD');
+    expect(parsed.envelope.atEntry?.risk).toBe('100');
   });
 
   it('refuses an unknown schema version instead of reinterpreting its answers', () => {

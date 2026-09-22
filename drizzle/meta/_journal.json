@@ -204,6 +204,13 @@
       "when": 1790083616768,
       "tag": "0028_after_trade_context",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790114665833,
+      "tag": "0029_planned_stop_method",
+      "breakpoints": true
     }
   ]
 }

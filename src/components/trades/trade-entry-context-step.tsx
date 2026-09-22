@@ -1,14 +1,15 @@
 'use client';
 
-import { HeartPulse } from 'lucide-react';
+import { HeartPulse, Scale } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 
 import { CONFIDENCE_LEVELS } from '@/lib/trades/constants';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 
 import type { ContextDraft, EmotionsDraft } from './at-entry-draft';
+import { useActualRiskSummaryLine, type ActualRiskSummary } from './trade-actual-risk-summary';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   ChoiceGroup,
@@ -35,11 +36,16 @@ export type EntryContextValues = Pick<
  * ENTRY CONTEXT & EVIDENCE — canonical lifecycle Step 4, one component for both
  * recording moments (Add Trade contract §6, §9, §13; UX Rules §20.1, §20.12).
  *
- * WHAT THE TRADER KNEW, THOUGHT AND FELT AROUND ENTRY — and nothing later.
- * Confidence and Entry Emotion, why this trade, timeframe and session, the
- * entry notes, and before-entry evidence. Post-Trade Emotion, Actual Risk,
- * the result and anything Review asks belong to other stages and never
- * appear here.
+ * WHAT THE TRADER KNEW, THOUGHT, FELT AND ACTUALLY DID AROUND ENTRY — and
+ * nothing later. Actual Risk (what the position really carried), Confidence
+ * and Entry Emotion, why this trade, timeframe and session, the entry notes,
+ * and before-entry evidence. Post-Trade Emotion, the result and anything
+ * Review asks belong to other stages and never appear here.
+ *
+ * ACTUAL RISK IS AN EXECUTION FACT, NOT A PLAN (contract decision 53). Plan &
+ * Risk says what was intended and how the stop was to be held; this step says
+ * what the entry actually carried. It starts Unanswered in both recording
+ * moments and is never inferred from Risk at Entry (decision 52).
  *
  * DIRECT WHERE A TAP WOULD BE WASTED. Confidence is one tap on the step
  * itself, and the text answers are typed where they are asked. Only the
@@ -60,6 +66,10 @@ export type EntryContextValues = Pick<
 export function TradeEntryContextStep({
   mode,
   idPrefix,
+  actualRisk,
+  actualRiskEditor,
+  actualRiskError,
+  currency,
   confidence,
   emotions,
   catalog,
@@ -75,6 +85,14 @@ export function TradeEntryContextStep({
   mode: EntryContextMode;
   /** Prefix for DOM ids, so each host keeps the ids it already had. */
   idPrefix: string;
+  /** What the host's draft records about actual risk, for its row. */
+  actualRisk: ActualRiskSummary;
+  /** The host's own Actual Risk control, shown in the row's editor. */
+  actualRiskEditor: ReactNode;
+  /** The host's blocking error on it, so the closed row can show it too. */
+  actualRiskError?: string | undefined;
+  /** For reading an Actual Risk amount back on the row. */
+  currency: string;
   /** `null` is Unanswered; there is no default. */
   confidence: number | null;
   emotions: EmotionsDraft;
@@ -97,6 +115,9 @@ export function TradeEntryContextStep({
   const e = useTranslations('trades.create.recording.entryContextStep');
   const atEntry = mode === 'at_entry';
   const [emotionEditor, setEmotionEditor] = useState(false);
+  const [riskEditor, setRiskEditor] = useState(false);
+  const actualRiskRow = useRef<HTMLButtonElement>(null);
+  const actualRiskLine = useActualRiskSummaryLine();
   const [lastOneHint, setLastOneHint] = useState(false);
   const emotionRow = useRef<HTMLButtonElement>(null);
 
@@ -114,7 +135,24 @@ export function TradeEntryContextStep({
         {atEntry ? e('descriptionAtEntry') : e('descriptionAfterTrade')}
       </p>
 
-      {/* 1–2 — ENTRY MINDSET: how sure, and how it felt. */}
+      {/* 1 — WHAT THE ENTRY ACTUALLY RISKED (contract §4, decisions 52–53). */}
+      <GroupCard title={e('actualRiskTitle')}>
+        <TradeLauncherRow
+          id={`${idPrefix}-actual-risk-row`}
+          rowRef={actualRiskRow}
+          label={a('actualRisk.legend')}
+          value={actualRisk.kind === 'not_recorded' ? null : actualRiskLine(actualRisk, currency)}
+          placeholder={c('notAnswered')}
+          error={actualRiskError}
+          editLabel={a('trade.editAria', { field: a('actualRisk.legend') })}
+          icon={Scale}
+          answered={actualRisk.kind !== 'not_recorded'}
+          onOpen={() => setRiskEditor(true)}
+          buttonData={{ 'data-actual-risk-summary': actualRisk.kind }}
+        />
+      </GroupCard>
+
+      {/* 2–3 — ENTRY MINDSET: how sure, and how it felt. */}
       <GroupCard title={a('steps.cards.mindset')}>
         <ChoiceGroup
           idPrefix={`${idPrefix}-confidence`}
@@ -211,6 +249,32 @@ export function TradeEntryContextStep({
           error={errors.tradingviewUrl}
         />
       </GroupCard>
+
+      {/*
+        ACTUAL RISK, IN THE EDITOR ITS ROW OPENS. The host renders its own
+        mode's control; this step owns only where it is asked and how it reads
+        back.
+      */}
+      <TradeAdaptiveOverlay
+        open={riskEditor}
+        onOpenChange={(open) => {
+          if (!open) setRiskEditor(false);
+        }}
+        title={a('actualRisk.legend')}
+        description={e('actualRiskHint')}
+        closeLabel={a('trade.close')}
+        size="focused"
+        returnFocusRef={actualRiskRow}
+        footer={
+          <div className="flex min-w-0 justify-end">
+            <Button type="button" onClick={() => setRiskEditor(false)}>
+              {a('trade.done')}
+            </Button>
+          </div>
+        }
+      >
+        {actualRiskEditor}
+      </TradeAdaptiveOverlay>
 
       {/*
         ENTRY EMOTION, IN ONE FOCUSED EDITOR. Every tap lands in the draft as it

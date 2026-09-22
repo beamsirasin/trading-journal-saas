@@ -55,6 +55,7 @@ import {
   setEntryTime,
   setFinalPnl,
   setOutcome,
+  setStopMethod,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -193,8 +194,10 @@ function fieldTargetId(field: AfterTradeField): string {
     case 'enteredAt':
       return tradeDetailsRowId('after', field);
     case 'risk':
-    case 'actualRisk':
       return PLAN_ROW_ID.risk;
+    // Actual Risk moved to Entry Context & Evidence (contract decision 53).
+    case 'actualRisk':
+      return 'after-actual-risk-row';
     case 'targetProfit':
     case 'targetPrice':
       return PLAN_ROW_ID.target;
@@ -232,6 +235,7 @@ const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
   exitPlanRow: PLAN_ROW_ID.exitPlan,
   priceRow: PLAN_ROW_ID.price,
   risk: 'after-risk',
+  stopMethod: 'after-stop-method',
   targetState: 'after-target',
   targetProfit: 'after-targetProfit',
   targetPrice: 'after-targetPrice',
@@ -1235,6 +1239,53 @@ export function TradeAfterTradeForm({
               apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
             }
             onLibraryChanged={setAdoptedExitPlans}
+            stopMethod={draft.stopMethod}
+            onStopMethodChange={(next) => apply((current) => setStopMethod(current, next))}
+          />
+        </>,
+      )}
+
+      {/* 4 — THE TRADER'S READ: optional analysis, grouped by when it happened */}
+      {section(
+        'context',
+        'gap-4',
+        <>
+          {/*
+                CANONICAL SETUP & CHECKLIST, shown at the head of this task's
+                fourth step. Record Closed mode: conditions may be Don't
+                remember, and no Strategy default ever reaches the Exit Plan.
+              */}
+          <TradeSetupChecklistStep
+            mode="after_trade"
+            idPrefix="after"
+            strategies={options.strategies}
+            classification={{
+              strategyAnswer: activeRead.strategyAnswer,
+              strategy: activeRead.strategy,
+              setupAnswer: activeRead.setupAnswer,
+              setup: activeRead.setup,
+              stale: staleRead,
+            }}
+            conditionAnswers={activeRead.conditionAnswers}
+            onSelectStrategy={(id) => apply((current) => selectStrategy(current, id))}
+            onNoStrategy={() => apply(answerNoStrategy)}
+            onRemoveStrategy={() => apply(removeStrategyAnswer)}
+            onSelectSetup={(id) => apply((current) => selectSetup(current, id))}
+            onNoSetup={() => apply(answerNoSetup)}
+            onRemoveSetup={() => apply(removeSetupAnswer)}
+            onCondition={(key, status) => apply((current) => answerCondition(current, key, status))}
+          />
+
+          {/*
+                CANONICAL ENTRY CONTEXT & EVIDENCE, next in this task's fourth
+                step: what the trader knew, thought and felt at entry, as
+                remembered. Timeframe, session, notes and the chart link moved
+                here from the Save step — they are entry-time context.
+              */}
+          <TradeEntryContextStep
+            mode="after_trade"
+            idPrefix="after"
+            currency={currency}
             /*
               EVERY ANSWER HERE IS THE TRADER'S OWN. This draft starts at
               `unanswered` and only a selection moves it, so `matched` reaching
@@ -1250,7 +1301,7 @@ export function TradeAfterTradeForm({
                     : { kind: 'not_recorded' }
             }
             actualRiskError={errorText('actualRisk')}
-            riskFollowUp={
+            actualRiskEditor={
               <div className="flex min-w-0 flex-col gap-3">
                 <ChoiceGroup
                   idPrefix="after-actual-risk"
@@ -1297,50 +1348,6 @@ export function TradeAfterTradeForm({
                 ) : null}
               </div>
             }
-          />
-        </>,
-      )}
-
-      {/* 4 — THE TRADER'S READ: optional analysis, grouped by when it happened */}
-      {section(
-        'context',
-        'gap-4',
-        <>
-          {/*
-                CANONICAL SETUP & CHECKLIST, shown at the head of this task's
-                fourth step. Record Closed mode: conditions may be Don't
-                remember, and no Strategy default ever reaches the Exit Plan.
-              */}
-          <TradeSetupChecklistStep
-            mode="after_trade"
-            idPrefix="after"
-            strategies={options.strategies}
-            classification={{
-              strategyAnswer: activeRead.strategyAnswer,
-              strategy: activeRead.strategy,
-              setupAnswer: activeRead.setupAnswer,
-              setup: activeRead.setup,
-              stale: staleRead,
-            }}
-            conditionAnswers={activeRead.conditionAnswers}
-            onSelectStrategy={(id) => apply((current) => selectStrategy(current, id))}
-            onNoStrategy={() => apply(answerNoStrategy)}
-            onRemoveStrategy={() => apply(removeStrategyAnswer)}
-            onSelectSetup={(id) => apply((current) => selectSetup(current, id))}
-            onNoSetup={() => apply(answerNoSetup)}
-            onRemoveSetup={() => apply(removeSetupAnswer)}
-            onCondition={(key, status) => apply((current) => answerCondition(current, key, status))}
-          />
-
-          {/*
-                CANONICAL ENTRY CONTEXT & EVIDENCE, next in this task's fourth
-                step: what the trader knew, thought and felt at entry, as
-                remembered. Timeframe, session, notes and the chart link moved
-                here from the Save step — they are entry-time context.
-              */}
-          <TradeEntryContextStep
-            mode="after_trade"
-            idPrefix="after"
             confidence={draft.confidence}
             emotions={draft.emotions}
             catalog={options.emotionCatalog}

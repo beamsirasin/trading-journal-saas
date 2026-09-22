@@ -5,8 +5,8 @@
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
 > final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
 > decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49, the
-> recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52
-> (2026-09-23) are recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
+> recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52 and
+> stage-placement amendment 53 (2026-09-23) are recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
 > place.
@@ -45,7 +45,7 @@ forms. The lifecycle groups the semantics this contract already defines into six
 stages; it adds no new state, value, result or requirement, and it changes none:
 
 1. **Trade Details** — Account, Symbol, Direction, Entry time (§6, §13).
-2. **Plan & Risk** — Risk at Entry, the intended 1R, and Actual Risk, the risk execution actually
+2. **Plan & Risk** — Risk at Entry, the intended 1R, Stop Method (decision 53), and Actual Risk, the risk execution actually
    carried at entry compared with it (§4); Target and Exit Plan (§5); and price levels as context
    only (§3).
 3. **Setup & Checklist** — Strategy, Setup and setup conditions (§7–§8).
@@ -177,7 +177,19 @@ Actual risk differed
 
 เพื่อบันทึก Actual Risk เฉพาะเมื่อจำเป็น
 
+## Stop Method (แผนการหยุดขาดทุน)
+
+**เพิ่ม 2026-09-23 (decision 53):** Stop Method เป็น **plan fact** บันทึกใน Plan & Risk ข้าง Risk at Entry
+
+สถานะ: **Unanswered** (ค่าเริ่มต้น) · **Broker stop** (มีคำสั่งที่โบรกเกอร์) · **Mental stop** (วางแผนตัดมือ ไม่มีคำสั่งที่โบรกเกอร์) · **No defined stop** (ไม่ได้กำหนดวิธีหยุดขาดทุน)
+
+Unanswered ≠ No defined stop และห้าม infer จาก SL price — SL price เป็น Price Context บอกว่า stop จะอยู่ตรงไหน ไม่ได้บอกว่ามีคำสั่งหรือไม่ (§2, §3, §8)
+
+v1 slice นี้ไม่คำนวณ System Result, risk amount หรือ adherence ใด ๆ จาก Stop Method
+
 ## Actual Risk at Entry
+
+**แก้ไข 2026-09-23 (decision 53):** Actual Risk ถูกถามใน **Entry Context & Evidence (stage 4)** ไม่ใช่ Plan & Risk — เป็น execution fact ของตอนเข้า ไม่ใช่ส่วนหนึ่งของแผน ความหมายและสถานะทุกอย่างคงเดิม
 
 **แก้ไข 2026-09-23 (decision 52):** Actual Risk at Entry เริ่มต้นเป็น **Unanswered**
 
@@ -1590,3 +1602,25 @@ Actual Risk at Entry amendment, 2026-09-23 (item 52):
     an untouched draft are indistinguishable in it. Such a draft is read as Unanswered:
     re-answering costs one tap, while the other reading would manufacture a positive observation
     (§2, §8). Amends §4; refines §23 and §27. (§4, §23, §27)
+
+Stage placement and Stop Method, 2026-09-23 (item 53):
+
+53. **Plan & Risk is the plan; Actual Risk is entry execution** — Plan & Risk (stage 2) holds only
+    what was intended before entry: Risk at Entry, **Stop Method**, the Target, the Exit Plan and
+    price context. **Actual Risk moves to Entry Context & Evidence (stage 4)**, where the rest of
+    what actually happened at entry is recorded. Its meaning, its states and its explicit-answer
+    rule (decision 52) are unchanged by the move, in both recording moments; it does **not** move
+    to stage 5, which is the result.
+
+    **Stop Method** is a new optional plan answer: **Unanswered** (the default), **Broker stop** (a
+    stop order resting with the broker), **Mental stop** (a planned manual stop with no broker-side
+    order) and **No defined stop** (an explicit answer that there was no defined stop approach).
+    Unanswered is never "no defined stop" (§2, §8), and it is **never inferred from a recorded SL
+    price**: `context_stop_price` says where a stop would sit, not whether one was placed, and stays
+    Price Context (§3). Nothing in this slice derives a System Result, a risk amount or any
+    adherence figure from it, and no Mental Stop rule text is captured yet.
+
+    **Nothing historical changes.** No row is backfilled, and a persisted Actual Risk answer keeps
+    its meaning and its provenance (§28). A draft written before this decision simply holds no Stop
+    Method: absent is Unanswered, so it loads whole and nothing is invented for it. Amends §2 and
+    §4; refines §23. (§2, §4, §23)

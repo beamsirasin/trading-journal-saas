@@ -415,6 +415,17 @@ function closeEditor() {
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 }
 
+/** Actual Risk moved to Entry Context & Evidence (contract decision 53). */
+function actualRiskRow(): HTMLElement {
+  if (currentStep() !== 'context') goTo('context');
+  return document.getElementById('after-actual-risk-row')!;
+}
+
+function openActualRisk(): HTMLElement {
+  fireEvent.click(actualRiskRow());
+  return screen.getByRole('dialog');
+}
+
 /** Answer one Plan & Risk field the way a trader does: open, type, close. */
 function typeInPlan(concept: 'risk' | 'target' | 'price', label: string | RegExp, value: string) {
   const editor = openPlanRow(concept);
@@ -599,9 +610,9 @@ describe('After Trade — the moment and its steps', () => {
     goTo('plan');
     // The rows say nothing was answered before anything is opened.
     expect(planRow('risk')).toHaveTextContent('Not answered');
-    expect(planRow('risk')).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
+    expect(actualRiskRow()).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
     expect(planRow('target')).toHaveTextContent('Not answered');
-    const riskEditor = within(openPlanRow('risk'));
+    const riskEditor = within(openActualRisk());
     for (const name of ['Matched risk at entry', 'It was different']) {
       expect(riskEditor.getByRole('radio', { name })).not.toBeChecked();
     }
@@ -2089,9 +2100,9 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
     // Actual Risk is Risk Discipline evidence and never moves the denominator.
     goTo('plan');
-    const risk = within(openPlanRow('risk'));
+    const risk = within(openActualRisk());
     fireEvent.click(risk.getByRole('radio', { name: 'It was different' }));
-    type('Actual risk amount', '25', openPlanRow('risk'));
+    type('Actual risk amount', '25', openActualRisk());
     closeEditor();
     goTo('result');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
@@ -2102,16 +2113,14 @@ describe('Actual Risk', () => {
   it('refuses Matched without a Risk at Entry to match', async () => {
     renderForm();
     fillIdentity();
-    fireEvent.click(
-      within(openPlanRow('risk')).getByRole('radio', { name: 'Matched risk at entry' }),
-    );
+    fireEvent.click(within(openActualRisk()).getByRole('radio', { name: 'Matched risk at entry' }));
     // Explicitly chosen, so the row may state it — this one IS the trader's answer.
     closeEditor();
-    expect(planRow('risk')).toHaveAttribute('data-actual-risk-summary', 'matched');
+    expect(actualRiskRow()).toHaveAttribute('data-actual-risk-summary', 'matched');
     save();
     expect(await screen.findByText(/Matched needs a risk at entry/)).toBeInTheDocument();
     // A blocked Save lands on the row, which carries the reason.
-    expect(planRow('risk')).toHaveAttribute('data-invalid', 'true');
+    expect(actualRiskRow()).toHaveAttribute('data-invalid', 'true');
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
@@ -2119,16 +2128,14 @@ describe('Actual Risk', () => {
     renderForm();
     fillIdentity();
     typeInPlan('risk', 'Risk at entry', '50');
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(within(editor).getByRole('radio', { name: 'It was different' }));
     type('Actual risk amount', '50', editor);
     closeEditor();
     save();
     expect(await screen.findByText(/This is the same as your risk at entry/)).toBeInTheDocument();
     expect(currentStep()).toBe('plan');
-    expect(
-      within(openPlanRow('risk')).getByRole('radio', { name: 'It was different' }),
-    ).toBeChecked();
+    expect(within(openActualRisk()).getByRole('radio', { name: 'It was different' })).toBeChecked();
     closeEditor();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
@@ -2141,7 +2148,7 @@ describe('Actual Risk', () => {
     renderForm();
     fillIdentity();
     typeInPlan('risk', 'Risk at entry', '50');
-    const editor = openPlanRow('risk');
+    const editor = openActualRisk();
     fireEvent.click(
       within(within(editor).getByRole('group', { name: 'Actual risk' })).getByRole('radio', {
         name: label,

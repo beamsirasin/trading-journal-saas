@@ -36,6 +36,8 @@
  */
 import { z } from 'zod';
 
+import { PLANNED_STOP_METHODS } from '@/lib/trades/add-trade-contract';
+
 import {
   createAfterTradeDraft,
   hasAfterTradeWork,
@@ -732,12 +734,15 @@ const contextSchema = z.object({
   notes: text,
 });
 
+const stopMethod = z.enum(['unanswered', ...PLANNED_STOP_METHODS]).default('unanswered');
+
 const atEntrySchema = z.object({
   tradingAccountId: text,
   symbol: text,
   direction,
   entryTime: z.object({ source: z.enum(['default_now', 'trader', 'cleared']), value: text }),
   risk: text,
+  stopMethod,
   actualRisk: z.object({
     mode: z.enum(['unanswered', 'matched', 'different', 'different_unknown']),
     amount: text,
@@ -801,6 +806,7 @@ const afterTradeSchema = z.object({
   postTradeEmotions: emotionsSchema,
   context: contextSchema,
   // Stage 6 (2026-09-22). Absent from a draft written before it: Unanswered.
+  stopMethod,
   afterTradeNote: text.default(''),
   afterTradeTradingviewUrl: text.default(''),
 }) satisfies z.ZodType<AfterTradeDraft>;

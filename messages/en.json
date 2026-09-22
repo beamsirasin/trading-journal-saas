@@ -2591,7 +2591,9 @@
           "notesTitle": "Entry notes",
           "notesHint": "Anything else you noticed around entry.",
           "evidenceTitle": "Before-entry evidence",
-          "evidenceHint": "A chart from before or at entry. It is context and never changes the result."
+          "evidenceHint": "A chart from before or at entry. It is context and never changes the result.",
+          "actualRiskTitle": "What the entry actually risked",
+          "actualRiskHint": "The risk the position really carried at entry. Your 1R stays your risk at entry."
         },
         "planRows": {
           "actualRisk": {
@@ -2602,6 +2604,17 @@
           },
           "target": {
             "fixed": "Fixed · {amount}"
+          },
+          "riskAndStop": "Risk & stop",
+          "stopMethod": {
+            "legend": "Stop method",
+            "removeAria": "Remove stop method answer",
+            "broker": "Broker stop",
+            "brokerDescription": "A stop order resting with your broker",
+            "mental": "Mental stop",
+            "mentalDescription": "A planned manual stop, with no broker order",
+            "no_stop": "No defined stop",
+            "no_stopDescription": "You had no defined stop approach"
           }
         }
       },

@@ -399,6 +399,13 @@ export const trades = pgTable(
     targetState: text('target_state'),
     /** TP price — context only, never a calculation input. */
     targetPrice: numeric('target_price', { precision: 20, scale: 10 }),
+    /**
+     * How the trader planned to protect the Trade (contract decision 53).
+     * NULL = Unanswered, which is never "no defined stop". Never inferred from
+     * `context_stop_price`: an SL price says where a stop would sit, not
+     * whether one was placed.
+     */
+    plannedStopMethod: text('planned_stop_method'),
     contextEntryPrice: numeric('context_entry_price', { precision: 20, scale: 10 }),
     contextStopPrice: numeric('context_stop_price', { precision: 20, scale: 10 }),
     contextPositionSize: numeric('context_position_size', { precision: 20, scale: 10 }),
@@ -787,6 +794,13 @@ export const trades = pgTable(
         ${table.recordingContract} IS NOT NULL
         AND ${table.enteredAtSource} IN ('default_now', 'trader')
         AND ${table.enteredAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      'trades_planned_stop_method_check',
+      sql`${table.plannedStopMethod} IS NULL OR (
+        ${table.recordingContract} IS NOT NULL
+        AND ${table.plannedStopMethod} IN ('broker', 'mental', 'no_stop')
       )`,
     ),
     check(

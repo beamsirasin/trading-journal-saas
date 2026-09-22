@@ -39,6 +39,7 @@ import type {
   ContextDraft,
   EmotionsDraft,
   ExitPlanDraft,
+  StopMethodDraft,
   TargetDraft,
 } from './at-entry-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
@@ -91,6 +92,8 @@ export interface AfterTradeDraft {
   /** Risk at Entry — the 1R baseline; '' is not recorded. */
   readonly risk: string;
   readonly actualRisk: AfterTradeActualRiskDraft;
+  /** The same plan answer At Entry records, reconstructed (decision 53). */
+  readonly stopMethod: StopMethodDraft;
   readonly target: TargetDraft;
   /** Same shape as At Entry's; `inherit` never arises, because nothing is inherited. */
   readonly exitPlan: ExitPlanDraft;
@@ -129,6 +132,7 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
     exitedAt: '',
     risk: '',
     actualRisk: { answer: 'unanswered', amount: '' },
+    stopMethod: 'unanswered',
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: { choice: { kind: 'unanswered' }, customText: '', customBaseId: null },
     finalPnl: '',
@@ -168,6 +172,14 @@ export function setActualRiskAnswer(
 /** Typing an amount answers Different; a blank amount is Different, amount unknown. */
 export function setActualRiskAmount(draft: AfterTradeDraft, amount: string): AfterTradeDraft {
   return { ...draft, actualRisk: { answer: 'different', amount } };
+}
+
+/** The plan answer, reconstructed: Unanswered until the trader says (decision 53). */
+export function setStopMethod(
+  draft: AfterTradeDraft,
+  stopMethod: StopMethodDraft,
+): AfterTradeDraft {
+  return { ...draft, stopMethod };
 }
 
 export function setTargetState(
@@ -1086,6 +1098,7 @@ export function buildAfterTradePayload(
       ? {}
       : { actualRiskAnswer: draft.actualRisk.answer }),
     ...(actualRiskAmount === null ? {} : { actualInitialRiskMinor: actualRiskAmount }),
+    ...(draft.stopMethod === 'unanswered' ? {} : { plannedStopMethod: draft.stopMethod }),
     ...(draft.target.state === 'unanswered' ? {} : { targetState: draft.target.state }),
     ...(draft.target.state === 'fixed'
       ? {

@@ -39,10 +39,36 @@ function Host({ mode }: { mode: EntryContextMode }) {
   const after = (change: (draft: afterTrade.AfterTradeDraft) => afterTrade.AfterTradeDraft) =>
     setDrafts((current) => ({ ...current, after: change(current.after) }));
 
+  const entryRisk = drafts.entry.actualRisk;
+  const afterRisk = drafts.after.actualRisk;
+
   return mode === 'at_entry' ? (
     <TradeEntryContextStep
       mode="at_entry"
       idPrefix="entry"
+      currency="USD"
+      actualRisk={
+        entryRisk.mode === 'different'
+          ? { kind: 'different', amount: entryRisk.amount }
+          : entryRisk.mode === 'different_unknown'
+            ? { kind: 'different_unknown' }
+            : entryRisk.mode === 'matched'
+              ? { kind: 'matched' }
+              : { kind: 'not_recorded' }
+      }
+      actualRiskEditor={
+        <div>
+          <button
+            type="button"
+            onClick={() => entry((d) => atEntry.setActualRiskMode(d, 'matched'))}
+          >
+            It matched
+          </button>
+          <button type="button" onClick={() => entry((d) => atEntry.setActualRiskAmount(d, '150'))}>
+            It was different
+          </button>
+        </div>
+      }
       confidence={drafts.entry.confidence}
       emotions={drafts.entry.emotions}
       catalog={catalog}
@@ -60,6 +86,29 @@ function Host({ mode }: { mode: EntryContextMode }) {
     <TradeEntryContextStep
       mode="after_trade"
       idPrefix="after"
+      currency="USD"
+      actualRisk={
+        afterRisk.answer === 'matched'
+          ? { kind: 'matched' }
+          : afterRisk.answer === 'different'
+            ? { kind: 'different', amount: afterRisk.amount }
+            : afterRisk.answer === 'unknown'
+              ? { kind: 'unknown' }
+              : { kind: 'not_recorded' }
+      }
+      actualRiskEditor={
+        <div>
+          {(['matched', 'different', 'unknown'] as const).map((answer) => (
+            <button
+              key={answer}
+              type="button"
+              onClick={() => after((d) => afterTrade.setActualRiskAnswer(d, answer))}
+            >
+              {answer}
+            </button>
+          ))}
+        </div>
+      }
       confidence={drafts.after.confidence}
       emotions={drafts.after.emotions}
       catalog={catalog}
@@ -113,10 +162,14 @@ describe('Entry Context — what the step holds', () => {
     const evidence = document.querySelector<HTMLElement>('[data-entry-evidence]')!;
     expect(within(evidence).getByRole('heading', { name: 'Before-entry evidence' })).toBeVisible();
     expect(within(evidence).getByLabelText('Chart link')).toHaveValue('');
+    // Actual Risk is asked HERE since contract decision 53: an execution fact
+    // recorded with the entry, never with the plan.
+    expect(
+      document.getElementById(`${mode === 'at_entry' ? 'entry' : 'after'}-actual-risk-row`),
+    ).toHaveTextContent('Actual risk');
     // Nothing from later stages, and no upload that could orphan a file.
     for (const absent of [
       /feel about the trade now/i,
-      /actual risk/i,
       /net p&l/i,
       /^win$/i,
       /system/i,
@@ -220,5 +273,57 @@ describe('Entry Context — the typed context', () => {
       stopPrice: '',
       positionSize: '',
     });
+  });
+});
+
+/*
+  ACTUAL RISK LIVES HERE NOW (contract decision 53): an execution fact asked
+  with the rest of the entry's context, never with the plan. Its three states
+  stay apart, and an untouched draft asserts none of them (decision 52).
+*/
+describe('Entry Context — Actual Risk, the execution fact', () => {
+  const MODES: readonly EntryContextMode[] = ['at_entry', 'after_trade'];
+
+  function riskRow(mode: EntryContextMode): HTMLElement {
+    return document.getElementById(`${mode === 'at_entry' ? 'entry' : 'after'}-actual-risk-row`)!;
+  }
+
+  it.each(MODES)('starts Unanswered and claims no match (%s)', (mode) => {
+    renderStep(mode);
+    expect(riskRow(mode)).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
+    expect(riskRow(mode)).toHaveTextContent('Not answered');
+    expect(riskRow(mode)).not.toHaveTextContent(/matched/i);
+    // Nothing opens until it is asked for.
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it.each(MODES)('reads a stated Matched back on the row (%s)', (mode) => {
+    renderStep(mode);
+    fireEvent.click(riskRow(mode));
+    const editor = within(screen.getByRole('dialog'));
+    fireEvent.click(
+      editor.getByRole('button', { name: mode === 'at_entry' ? 'It matched' : 'matched' }),
+    );
+    expect(riskRow(mode)).toHaveAttribute('data-actual-risk-summary', 'matched');
+    expect(riskRow(mode)).toHaveTextContent('Matched risk at entry');
+  });
+
+  it.each(MODES)('reads an explicit Different back with its amount (%s)', (mode) => {
+    renderStep(mode);
+    fireEvent.click(riskRow(mode));
+    const editor = within(screen.getByRole('dialog'));
+    fireEvent.click(
+      editor.getByRole('button', { name: mode === 'at_entry' ? 'It was different' : 'different' }),
+    );
+    expect(riskRow(mode)).toHaveAttribute('data-actual-risk-summary', 'different');
+    if (mode === 'at_entry') expect(riskRow(mode)).toHaveTextContent('Actual risk 150 USD');
+  });
+
+  it('keeps After Trade\'s "Don\'t know" as its own answer, never as Matched', () => {
+    renderStep('after_trade');
+    fireEvent.click(riskRow('after_trade'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'unknown' }));
+    expect(riskRow('after_trade')).toHaveAttribute('data-actual-risk-summary', 'unknown');
+    expect(riskRow('after_trade')).toHaveTextContent('Actual risk not known');
   });
 });

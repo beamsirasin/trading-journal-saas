@@ -37,6 +37,7 @@ import {
   setActualRiskMode,
   setConfidence,
   setExitPlanEditorView,
+  setStopMethod,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -111,6 +112,49 @@ describe('At Entry draft — minimum Save and readiness', () => {
     expect(
       buildAtEntryPayload(minimum(), { ...context, mutationKey: ACCOUNT, options }),
     ).not.toHaveProperty('actualRiskAnswer');
+  });
+
+  /*
+    STOP METHOD IS A PLAN ANSWER, NEVER AN INFERENCE (contract decision 53).
+    An untouched draft says nothing about the stop, and a recorded SL price —
+    which is Price Context — never answers the question for the trader.
+  */
+  it('sends no Stop Method until one is chosen, and never infers it from an SL price', () => {
+    const untouched = buildAtEntryPayload(minimum(), {
+      ...context,
+      mutationKey: ACCOUNT,
+      options,
+    });
+    expect(untouched).not.toHaveProperty('plannedStopMethod');
+
+    const withStopPrice = {
+      ...minimum(),
+      context: { ...minimum().context, stopPrice: '2395' },
+    };
+    const priced = buildAtEntryPayload(withStopPrice, {
+      ...context,
+      mutationKey: ACCOUNT,
+      options,
+    });
+    expect(priced).not.toBeNull();
+    expect(priced?.contextStopPrice).toBe('2395');
+    expect(priced).not.toHaveProperty('plannedStopMethod');
+  });
+
+  it.each(['broker', 'mental', 'no_stop'] as const)('sends %s as its own answer', (method) => {
+    const draft = setStopMethod(minimum(), method);
+    expect(buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options })).toMatchObject(
+      { plannedStopMethod: method },
+    );
+  });
+
+  it('returns to Unanswered, and then sends nothing again', () => {
+    const answered = setStopMethod(minimum(), 'mental');
+    const withdrawn = setStopMethod(answered, 'unanswered');
+    expect(withdrawn.stopMethod).toBe('unanswered');
+    expect(
+      buildAtEntryPayload(withdrawn, { ...context, mutationKey: ACCOUNT, options }),
+    ).not.toHaveProperty('plannedStopMethod');
   });
 
   it('never reports Ready while any blocking error exists, including hidden ones', () => {

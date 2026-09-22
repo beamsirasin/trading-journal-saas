@@ -18,6 +18,19 @@ export type RecordingContract = typeof RECORDING_CONTRACT_ADD_TRADE_V1;
 export const TARGET_STATES = ['fixed', 'no_fixed'] as const;
 export type TargetState = (typeof TARGET_STATES)[number];
 
+/**
+ * HOW THE TRADER PLANNED TO PROTECT THE TRADE — a plan fact, recorded before
+ * entry beside Risk at Entry (contract §4, decision 53).
+ *
+ * NULL / absent is **Unanswered** and is never `no_stop`: nobody saying how they
+ * would stop out is not the same as saying there was no stop (§2, §8).
+ * `mental` means a planned manual stop with no broker-side order. It is never
+ * inferred from a recorded SL price, which is Price Context and says where a
+ * stop would sit, not whether one was placed.
+ */
+export const PLANNED_STOP_METHODS = ['broker', 'mental', 'no_stop'] as const;
+export type PlannedStopMethod = (typeof PLANNED_STOP_METHODS)[number];
+
 /** At Entry writes `matched` or `different`; `unknown` is the After Trade "Don't know". */
 export const ACTUAL_RISK_ANSWERS = ['matched', 'different', 'unknown'] as const;
 export type ActualRiskAnswer = (typeof ACTUAL_RISK_ANSWERS)[number];

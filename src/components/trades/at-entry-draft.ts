@@ -26,6 +26,7 @@ import Decimal from 'decimal.js';
 import type { z } from 'zod';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
+import type { PlannedStopMethod } from '@/lib/trades/add-trade-contract';
 import type { CreateTradeSchema } from '@/lib/trades/schemas';
 import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
@@ -64,6 +65,13 @@ export interface ActualRiskDraft {
   /** Kept while another answer is chosen, so switching back restores it. */
   readonly amount: string;
 }
+
+/**
+ * How the trader planned to protect the Trade, as the draft holds it:
+ * `unanswered` until they say, then one of the canonical methods. Unanswered
+ * is never `no_stop` (contract §2, §8, decision 53).
+ */
+export type StopMethodDraft = 'unanswered' | PlannedStopMethod;
 
 export interface TargetDraft {
   readonly state: 'unanswered' | 'fixed' | 'no_fixed';
@@ -129,6 +137,8 @@ export interface AtEntryDraft {
   readonly direction: Direction;
   readonly entryTime: EntryTimeDraft;
   readonly risk: string;
+  /** Plan & Risk's second plan answer: how the stop was to be held. */
+  readonly stopMethod: StopMethodDraft;
   readonly actualRisk: ActualRiskDraft;
   readonly target: TargetDraft;
   readonly exitPlan: ExitPlanDraft;
@@ -145,6 +155,7 @@ export function createAtEntryDraft(tradingAccountId: string): AtEntryDraft {
     direction: '',
     entryTime: { source: 'default_now', value: '' },
     risk: '',
+    stopMethod: 'unanswered',
     actualRisk: { mode: 'unanswered', amount: '' },
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: { choice: { kind: 'inherit' }, customText: '', customBaseId: null },
@@ -195,6 +206,10 @@ export function resetEntryTimeToNow(draft: AtEntryDraft, nowLocal: string): AtEn
 // ---------------------------------------------------------------------------
 // Actual Risk and Target
 // ---------------------------------------------------------------------------
+
+export function setStopMethod(draft: AtEntryDraft, stopMethod: StopMethodDraft): AtEntryDraft {
+  return { ...draft, stopMethod };
+}
 
 export function setActualRiskMode(draft: AtEntryDraft, mode: ActualRiskMode): AtEntryDraft {
   return { ...draft, actualRisk: { ...draft.actualRisk, mode } };
@@ -842,6 +857,7 @@ export function hasUserWork(draft: AtEntryDraft, pristine: AtEntryDraft): boolea
   const { entryTime: _t, actualRisk: _a, exitPlan: _e, ...pristineRest } = pristine;
   return (
     entryTime.source !== 'default_now' ||
+    draft.stopMethod !== 'unanswered' ||
     actualRisk.mode !== 'unanswered' ||
     actualRisk.amount !== '' ||
     exitPlan.choice.kind !== 'inherit' ||
@@ -908,6 +924,7 @@ export function buildAtEntryPayload(
           enteredAtSource: draft.entryTime.source === 'trader' ? 'trader' : 'default_now',
         }
       : {}),
+    ...(draft.stopMethod === 'unanswered' ? {} : { plannedStopMethod: draft.stopMethod }),
     ...(draft.target.state === 'unanswered' ? {} : { targetState: draft.target.state }),
     ...(targetProfit?.ok ? { plannedRewardMinor: targetProfit.value } : {}),
     ...(draft.target.state === 'fixed' && trimmedOrUndefined(draft.target.price) !== undefined

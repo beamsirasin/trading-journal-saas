@@ -37,6 +37,7 @@ import {
   setActualRiskAmount,
   setActualRiskMode,
   setConfidence,
+  setStopMethod,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -77,6 +78,7 @@ function fieldStep(field: AtEntryField): number {
     case 'direction':
     case 'enteredAt':
       return STEP_INDEX.trade;
+    case 'actualRiskAmount':
     case 'tradingviewUrl':
       return STEP_INDEX.context;
     default:
@@ -108,7 +110,8 @@ const FIELD_TARGET_ID: Readonly<Record<AtEntryField, string>> = {
   direction: tradeDetailsRowId('entry', 'direction'),
   enteredAt: tradeDetailsRowId('entry', 'enteredAt'),
   risk: PLAN_ROW_ID.risk,
-  actualRiskAmount: PLAN_ROW_ID.risk,
+  // Actual Risk moved to Entry Context & Evidence (contract decision 53).
+  actualRiskAmount: 'entry-actual-risk-row',
   targetProfit: PLAN_ROW_ID.target,
   targetPrice: PLAN_ROW_ID.target,
   contextEntryPrice: PLAN_ROW_ID.price,
@@ -128,6 +131,7 @@ const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
   exitPlanRow: PLAN_ROW_ID.exitPlan,
   priceRow: PLAN_ROW_ID.price,
   risk: 'entry-risk',
+  stopMethod: 'entry-stop-method',
   targetState: 'entry-target',
   targetProfit: 'entry-target-profit',
   targetPrice: 'entry-target-price',
@@ -880,33 +884,9 @@ export function TradeAtEntryForm({
             stopWrongSide: validation.notices.includes('stop_wrong_side'),
             targetWrongSide: validation.notices.includes('target_wrong_side'),
           }}
-          /*
-            EVERY ANSWER HERE IS THE TRADER'S OWN. The draft starts
-            `unanswered` and only a named action moves it, so a match on the
-            row is one they stated — and an untouched draft says nothing
-            (contract §2, §8).
-          */
-          actualRisk={
-            draft.actualRisk.mode === 'different'
-              ? { kind: 'different', amount: draft.actualRisk.amount }
-              : draft.actualRisk.mode === 'different_unknown'
-                ? { kind: 'different_unknown' }
-                : draft.actualRisk.mode === 'matched'
-                  ? { kind: 'matched' }
-                  : { kind: 'not_recorded' }
-          }
-          actualRiskError={errorText('actualRiskAmount')}
-          riskFollowUp={
-            <ActualRiskField
-              draft={draft}
-              currency={currency}
-              riskIsValid={validation.riskMinor !== null}
-              error={errorText('actualRiskAmount')}
-              onMode={(mode) => apply((current) => setActualRiskMode(current, mode))}
-              onAmount={(amount) => apply((current) => setActualRiskAmount(current, amount))}
-            />
-          }
           targetR={targetR}
+          stopMethod={draft.stopMethod}
+          onStopMethodChange={(next) => apply((current) => setStopMethod(current, next))}
           onRiskChange={(risk) => apply((current) => ({ ...current, risk }))}
           onTargetStateChange={(state) => apply((current) => setTargetState(current, state))}
           onTargetValueChange={(field, value) =>
@@ -962,6 +942,33 @@ export function TradeAtEntryForm({
         <TradeEntryContextStep
           mode="at_entry"
           idPrefix="entry"
+          currency={currency}
+          /*
+            EVERY ANSWER HERE IS THE TRADER'S OWN. The draft starts
+            `unanswered` and only a named action moves it, so a match on the
+            row is one they stated — and an untouched draft says nothing
+            (contract §2, §8).
+          */
+          actualRisk={
+            draft.actualRisk.mode === 'different'
+              ? { kind: 'different', amount: draft.actualRisk.amount }
+              : draft.actualRisk.mode === 'different_unknown'
+                ? { kind: 'different_unknown' }
+                : draft.actualRisk.mode === 'matched'
+                  ? { kind: 'matched' }
+                  : { kind: 'not_recorded' }
+          }
+          actualRiskError={errorText('actualRiskAmount')}
+          actualRiskEditor={
+            <ActualRiskField
+              draft={draft}
+              currency={currency}
+              riskIsValid={validation.riskMinor !== null}
+              error={errorText('actualRiskAmount')}
+              onMode={(mode) => apply((current) => setActualRiskMode(current, mode))}
+              onAmount={(amount) => apply((current) => setActualRiskAmount(current, amount))}
+            />
+          }
           confidence={draft.confidence}
           emotions={draft.emotions}
           catalog={options.emotionCatalog}

@@ -15,6 +15,7 @@ import {
   ACTUAL_RISK_ANSWERS,
   ENTERED_AT_SOURCES,
   EXIT_PLAN_PROVENANCES,
+  PLANNED_STOP_METHODS,
   RECORDING_CONTRACT_ADD_TRADE_V1,
   TARGET_STATES,
 } from '@/lib/trades/add-trade-contract';
@@ -476,6 +477,11 @@ const CreateTradeObjectSchema = z
      */
     recordingContract: z.literal(RECORDING_CONTRACT_ADD_TRADE_V1).optional(),
     /** Absent = Unanswered. */
+    /**
+     * Absent = Unanswered, which is never "no defined stop". Never derived
+     * from a recorded SL price (contract decision 53).
+     */
+    plannedStopMethod: z.enum(PLANNED_STOP_METHODS).optional(),
     targetState: z.enum(TARGET_STATES).optional(),
     targetPrice: positiveDecimalField().nullable().optional(),
     contextEntryPrice: positiveDecimalField().nullable().optional(),
@@ -491,6 +497,7 @@ const CreateTradeObjectSchema = z
   .strict();
 
 const ADD_TRADE_CONTRACT_ONLY_FIELDS = [
+  'plannedStopMethod',
   'targetState',
   'targetPrice',
   'contextEntryPrice',
@@ -1052,6 +1059,11 @@ const CompletedTradeObjectSchema = z
     /** Only with Different; blank is Different, amount unknown. */
     actualInitialRiskMinor: nullablePositiveMinorField(),
     /** Absent = Unanswered. */
+    /**
+     * Absent = Unanswered, which is never "no defined stop". Never derived
+     * from a recorded SL price (contract decision 53).
+     */
+    plannedStopMethod: z.enum(PLANNED_STOP_METHODS).optional(),
     targetState: z.enum(TARGET_STATES).optional(),
     /** Target Profit — monetary intent. */
     plannedRewardMinor: nullableUnsignedMinorField(),
