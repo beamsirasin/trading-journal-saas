@@ -1071,7 +1071,7 @@ describe('Add Trade contract After Trade (real database)', () => {
           realizedPnlMinor: 1_000n,
           exitedAt,
         }),
-      ).toEqual({ ok: false, code: 'invalid_status_transition' });
+      ).toEqual({ ok: false, code: 'contract_close_required' });
       expect(await readTrade(result.tradeId)).toMatchObject({ netPnlMinor: 1_000n });
     });
 

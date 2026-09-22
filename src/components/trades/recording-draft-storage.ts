@@ -18,6 +18,7 @@
  * "no draft", never as a crash, and a stored value that cannot be understood is
  * reported unrecoverable rather than guessed at.
  */
+import { clearOwnerCloseDrafts, ownerCloseDrafts } from './close-trade-draft-storage';
 import {
   parseRecordingDraft,
   recordingDraftSymbol,
@@ -111,8 +112,10 @@ export function ownerRecordingDrafts(
 ): readonly { readonly symbol: string | null }[] {
   const store = storage();
   if (store === null) return [];
+  // Close Trade drafts are this user's unsaved work too, so the warning names them.
+  const closeDrafts = ownerCloseDrafts(ownerKey, now);
   try {
-    return ownerKeys(store, ownerKey).flatMap((key) => {
+    const recording = ownerKeys(store, ownerKey).flatMap((key) => {
       const raw = store.getItem(key);
       if (raw === null) return [];
       const parsed = parseRecordingDraft(raw, now);
@@ -120,13 +123,18 @@ export function ownerRecordingDrafts(
       if (parsed.status === 'unrecoverable') return [{ symbol: null }];
       return [{ symbol: recordingDraftSymbol(parsed.envelope) }];
     });
+    return [...recording, ...closeDrafts];
   } catch {
-    return [];
+    return closeDrafts;
   }
 }
 
-/** Explicit sign-out: removes this user's drafts in every workspace, and nobody else's. */
+/**
+ * Explicit sign-out: removes this user's drafts in every workspace, and nobody
+ * else's — the Add Trade Recording Draft and every Close Trade draft.
+ */
 export function clearOwnerRecordingDrafts(ownerKey: string): void {
+  clearOwnerCloseDrafts(ownerKey);
   const store = storage();
   if (store === null) return;
   try {

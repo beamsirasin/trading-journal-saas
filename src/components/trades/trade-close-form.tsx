@@ -2,7 +2,7 @@
 
 import { CircleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { generateId } from '@/lib/identifiers';
 import { recordContractExitAction } from '@/server/actions/trades';
@@ -29,7 +29,17 @@ import {
   type CloseTradeContext,
   type CloseTradeDraft,
 } from './close-trade-draft';
-import { ChoiceGroup, Helper, InlineAction } from './trade-at-entry-controls';
+import {
+  closeBasisMatches,
+  loadCloseTask,
+  removeCloseTask,
+  saveCloseTask,
+  type CloseDraftBasis,
+  type CloseDraftScope,
+  type CloseDraftSubmission,
+} from './close-trade-draft-storage';
+import { ChoiceGroup, Helper, InlineAction, Notice } from './trade-at-entry-controls';
+import { TradeEntryDetails } from './trade-entry-details';
 import {
   ActualRReadoutRow,
   ExitDiscrepancyNotice,
@@ -94,10 +104,13 @@ export function TradeCloseForm({
   trade,
   scope,
   timezone,
+  draftScope = null,
 }: {
   trade: TradeDetail;
   scope: CloseScope;
   timezone: string;
+  /** Where this close's unsaved answers persist; null keeps them in memory only. */
+  draftScope?: CloseDraftScope | null;
 }) {
   const locale = useLocale();
   const s = useTranslations('trades.stage5');
@@ -111,8 +124,14 @@ export function TradeCloseForm({
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  // One Save key per request content: a retry of the same answers replays safely.
-  const lastSubmission = useRef<{ key: string; body: string } | null>(null);
+  // One Save key per request content: a retry of the same answers replays safely,
+  // and the key persists with the draft so a reload does not mint a new one.
+  const lastSubmission = useRef<CloseDraftSubmission | null>(null);
+  // The Trade state the restored answers were given against.
+  const draftBasis = useRef<CloseDraftBasis | null>(null);
+  const [hydrated, setHydrated] = useState(draftScope === null);
+  const [draftNotice, setDraftNotice] = useState<'none' | 'restored' | 'stale'>('none');
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const finalTimeRow = useRef<HTMLButtonElement | null>(null);
   const legTimeRow = useRef<HTMLButtonElement | null>(null);
 
@@ -130,6 +149,79 @@ export function TradeCloseForm({
   const validation = validateCloseDraft(draft, context);
   const lastExit = lastRecordedExitTime(context);
   const tradeHref = `/app/trades?trade=${trade.tradeId}&tab=execution`;
+  const currentBasis: CloseDraftBasis = {
+    status: trade.status,
+    exitIds: trade.exits.map((exit) => exit.exitId),
+  };
+  // Whether there is anything to discard: the answers alone decide it.
+  const pristine = JSON.stringify(draft) === JSON.stringify(createCloseTradeDraft(scope));
+
+  /*
+    RESTORE ONCE, AFTER HYDRATION. The server renders a blank form (it cannot
+    read this browser's storage); the saved answers arrive on mount. A task
+    whose basis no longer matches the Trade is restored but held: it cannot be
+    submitted until the trader confirms the answers still apply.
+  */
+  const tradeKey = draftScope?.tradeKey;
+  useEffect(() => {
+    if (draftScope === null) return;
+    const task = loadCloseTask(draftScope, scope, new Date());
+    if (task !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDraft({ scope, ...task.exitResult });
+      lastSubmission.current = task.submission;
+      draftBasis.current = task.basis;
+      setDraftNotice(closeBasisMatches(task.basis, currentBasis) ? 'restored' : 'stale');
+    }
+    setHydrated(true);
+    // Once per Trade and task; the basis is read as it stood at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradeKey, scope]);
+
+  /** Writes the task as it stands; a pristine task is removed rather than stored. */
+  function persist(next: CloseTradeDraft, submission: CloseDraftSubmission | null) {
+    if (draftScope === null) return;
+    const now = new Date();
+    const blank = JSON.stringify(next) === JSON.stringify(createCloseTradeDraft(scope));
+    if (blank && submission === null) {
+      removeCloseTask(draftScope, scope, now);
+      return;
+    }
+    const { scope: _scope, ...exitResult } = next;
+    saveCloseTask(
+      draftScope,
+      scope,
+      { basis: draftBasis.current ?? currentBasis, exitResult, submission },
+      { symbol: trade.symbol, now },
+    );
+  }
+
+  useEffect(() => {
+    if (!hydrated) return;
+    persist(draft, lastSubmission.current);
+    // Written on every answer change; `persist` reads refs and props only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, hydrated]);
+
+  function keepRestoredAnswers() {
+    // The answers now stand against the Trade as it is; the Save key is kept.
+    draftBasis.current = currentBasis;
+    setDraftNotice('none');
+    setFormMessage(null);
+    persist(draft, lastSubmission.current);
+  }
+
+  function discardAnswers() {
+    if (draftScope !== null) removeCloseTask(draftScope, scope, new Date());
+    lastSubmission.current = null;
+    draftBasis.current = null;
+    setDraft(createCloseTradeDraft(scope));
+    setAttempted(false);
+    setServerErrors({});
+    setFormMessage(null);
+    setDraftNotice('none');
+    setConfirmingDiscard(false);
+  }
 
   function apply(update: (current: CloseTradeDraft) => CloseTradeDraft) {
     setDraft(update);
@@ -169,6 +261,12 @@ export function TradeCloseForm({
     event.preventDefault();
     setAttempted(true);
     setFormMessage(null);
+    // Answers given against a different Trade state are never sent unconfirmed.
+    if (draftNotice === 'stale') {
+      setFormMessage(s('draft.staleBlocked'));
+      requestAnimationFrame(() => document.getElementById('close-draft-keep')?.focus());
+      return;
+    }
     const current = validateCloseDraft(draft, { ...context, now: new Date() });
     const blocked = firstCloseErrorField(current.errors);
     if (blocked !== null) {
@@ -183,6 +281,8 @@ export function TradeCloseForm({
         ? lastSubmission.current.key
         : generateId();
     lastSubmission.current = { key, body };
+    // Stored before sending: a reload mid-flight re-sends under the same key.
+    persist(draft, lastSubmission.current);
     const payload = buildClosePayload(draft, context, {
       tradeId: trade.tradeId,
       mutationKey: key,
@@ -190,6 +290,7 @@ export function TradeCloseForm({
     startTransition(async () => {
       const result = await recordContractExitAction(payload);
       if (result.ok) {
+        if (draftScope !== null) removeCloseTask(draftScope, scope, new Date());
         router.push(tradeHref, { scroll: false });
         router.refresh();
         return;
@@ -304,6 +405,28 @@ export function TradeCloseForm({
           </dd>
         </div>
       </dl>
+
+      <TradeEntryDetails trade={trade} />
+
+      {draftNotice === 'none' ? null : (
+        <div data-close-draft={draftNotice} className="flex min-w-0 flex-col gap-2">
+          <Notice>{draftNotice === 'stale' ? s('draft.stale') : s('draft.restored')}</Notice>
+          {draftNotice === 'stale' ? (
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1 px-1">
+              <Button
+                id="close-draft-keep"
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={keepRestoredAnswers}
+              >
+                {s('draft.keep')}
+              </Button>
+              <InlineAction onClick={discardAnswers}>{s('draft.discard')}</InlineAction>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {allRemaining ? (
         <>
@@ -473,6 +596,24 @@ export function TradeCloseForm({
             ''
           )}
         </p>
+        {pristine || draftNotice === 'stale' ? null : confirmingDiscard ? (
+          <div
+            data-close-discard-confirm=""
+            className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1 text-sm"
+          >
+            <span className="text-foreground">{s('draft.discardQuestion')}</span>
+            <InlineAction onClick={discardAnswers}>{s('draft.discardConfirm')}</InlineAction>
+            <InlineAction onClick={() => setConfirmingDiscard(false)}>
+              {s('draft.discardCancel')}
+            </InlineAction>
+          </div>
+        ) : (
+          <div>
+            <InlineAction onClick={() => setConfirmingDiscard(true)}>
+              {s('draft.discard')}
+            </InlineAction>
+          </div>
+        )}
         <div className="flex min-w-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Button asChild variant="ghost" size="lg" className="min-h-12">
             <Link href={tradeHref}>{s('page.backToTrade')}</Link>

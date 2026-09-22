@@ -1,0 +1,260 @@
+import { z } from 'zod';
+
+import { OUTCOME_VALUES } from '@/lib/trades/constants';
+
+import type { CloseScope, CloseTradeDraft } from './close-trade-draft';
+
+/**
+ * THE CLOSE TRADE DRAFT: the Close Existing Open Trade flow's own unsaved
+ * answers, in this browser's `localStorage` (contract §23; UX Rules §5).
+ *
+ * SEPARATE FROM THE ADD TRADE RECORDING DRAFT. That envelope holds one new
+ * Trade being recorded; this one holds the close of one EXISTING Trade, so it
+ * is keyed per Trade and shares no schema, key or lifecycle with it.
+ *
+ * KEY: `tradechemist:close-draft:<ownerKey>:<workspaceKey>:<tradeKey>` — three
+ * opaque hashes the server derives from the session's user, the active
+ * workspace and the Trade (`src/server/services/recording-draft-scope.ts`), so
+ * the key names no raw id and one user's close is never read under another's.
+ *
+ * ONE ENVELOPE PER TRADE, ONE TASK PER SCOPE. "Record partial exit" and "Close
+ * trade" are different tasks on the same Trade; each keeps its own answers
+ * (`tasks.part`, `tasks.all_remaining`), so opening one never restores the
+ * other's. Stage 6 After-Trade Context will live beside Exit & Result inside
+ * the All Remaining task (`tasks.all_remaining.afterTradeContext`) — the
+ * envelope is versioned, so adding it is a schema step, not a new store.
+ *
+ * WHAT IS NOT KEPT: the visual state — which fold is open, which sheet — is
+ * view state and starts fresh on every load.
+ *
+ * STALE ANSWERS ARE NEVER SUBMITTED SILENTLY. Each task records the Trade state
+ * its answers were given against (`basis`: status and the recorded exit ids).
+ * When the Trade has changed since — an exit recorded elsewhere, a close — the
+ * form restores the answers but holds the Save until the trader confirms them.
+ *
+ * THE SAVE KEY SURVIVES A RELOAD. A task keeps the key and body of its last
+ * attempted Save, so re-sending the same answers after a reload replays safely
+ * instead of recording the exit twice.
+ *
+ * FAILS SAFE, as the Recording Draft does: unavailable storage is "no draft",
+ * and a stored value that does not parse is dropped, never guessed at.
+ */
+
+const PREFIX = 'tradechemist:close-draft:';
+const KIND = 'tradechemist.close-draft';
+export const CLOSE_DRAFT_VERSION = 1;
+/** The same retention the Recording Draft uses: untouched for 30 days, gone when next read. */
+const TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface CloseDraftScope {
+  readonly ownerKey: string;
+  readonly workspaceKey: string;
+  readonly tradeKey: string;
+}
+
+/** The Trade state a task's answers were given against. */
+export interface CloseDraftBasis {
+  readonly status: string;
+  readonly exitIds: readonly string[];
+}
+
+export interface CloseDraftSubmission {
+  readonly key: string;
+  readonly body: string;
+}
+
+/** Exit & Result answers — the draft minus its scope, which the task key already says. */
+export type ExitResultAnswers = Omit<CloseTradeDraft, 'scope'>;
+
+export interface CloseDraftTask {
+  readonly basis: CloseDraftBasis;
+  readonly exitResult: ExitResultAnswers;
+  readonly submission: CloseDraftSubmission | null;
+}
+
+export interface CloseDraftEnvelope {
+  readonly kind: typeof KIND;
+  readonly version: typeof CLOSE_DRAFT_VERSION;
+  readonly savedAt: string;
+  /** For the sign-out warning, which names what would be lost. */
+  readonly symbol: string;
+  readonly tasks: Partial<Record<CloseScope, CloseDraftTask>>;
+}
+
+const text = z.string().max(2_000);
+const TaskSchema = z.object({
+  basis: z.object({ status: z.string().max(40), exitIds: z.array(z.string().max(64)).max(100) }),
+  exitResult: z.object({
+    leg: z.object({
+      pnl: text,
+      closedPercent: text,
+      exitedAt: text,
+      price: text,
+      reason: text,
+    }),
+    finalExitedAt: text,
+    finalPnl: text,
+    finalPnlAdopted: z.boolean(),
+    outcome: z.enum(OUTCOME_VALUES).nullable(),
+    completeness: z.enum(['unanswered', 'complete', 'incomplete', 'unknown']),
+  }),
+  submission: z.object({ key: z.string().uuid(), body: z.string().max(20_000) }).nullable(),
+});
+const EnvelopeSchema = z.object({
+  kind: z.literal(KIND),
+  version: z.literal(CLOSE_DRAFT_VERSION),
+  savedAt: z.string().datetime(),
+  symbol: z.string().max(64),
+  tasks: z.object({ part: TaskSchema.optional(), all_remaining: TaskSchema.optional() }),
+});
+
+export function closeDraftStorageKey(scope: CloseDraftScope): string {
+  return `${PREFIX}${scope.ownerKey}:${scope.workspaceKey}:${scope.tradeKey}`;
+}
+
+function storage(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function parse(raw: string, now: Date): CloseDraftEnvelope | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const parsed = EnvelopeSchema.safeParse(json);
+  if (!parsed.success) return null;
+  if (now.getTime() - Date.parse(parsed.data.savedAt) > TTL_MS) return null;
+  return parsed.data as CloseDraftEnvelope;
+}
+
+export function loadCloseDraft(scope: CloseDraftScope, now: Date): CloseDraftEnvelope | null {
+  const store = storage();
+  if (store === null) return null;
+  try {
+    const raw = store.getItem(closeDraftStorageKey(scope));
+    if (raw === null) return null;
+    const envelope = parse(raw, now);
+    // Unreadable, incompatible or expired: dropped, never guessed at or submitted.
+    if (envelope === null) store.removeItem(closeDraftStorageKey(scope));
+    return envelope;
+  } catch {
+    return null;
+  }
+}
+
+/** The one task this page is working on, or null. */
+export function loadCloseTask(
+  scope: CloseDraftScope,
+  task: CloseScope,
+  now: Date,
+): CloseDraftTask | null {
+  return loadCloseDraft(scope, now)?.tasks[task] ?? null;
+}
+
+/** Writes one task, keeping the other scope's task as it was. Returns whether it reached storage. */
+export function saveCloseTask(
+  scope: CloseDraftScope,
+  task: CloseScope,
+  value: CloseDraftTask,
+  context: { readonly symbol: string; readonly now: Date },
+): boolean {
+  const store = storage();
+  if (store === null) return false;
+  try {
+    const current = loadCloseDraft(scope, context.now);
+    const envelope: CloseDraftEnvelope = {
+      kind: KIND,
+      version: CLOSE_DRAFT_VERSION,
+      savedAt: context.now.toISOString(),
+      symbol: context.symbol,
+      tasks: { ...(current?.tasks ?? {}), [task]: value },
+    };
+    store.setItem(closeDraftStorageKey(scope), JSON.stringify(envelope));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Removes one task; the envelope goes with its last task. */
+export function removeCloseTask(scope: CloseDraftScope, task: CloseScope, now: Date): void {
+  const store = storage();
+  if (store === null) return;
+  try {
+    const current = loadCloseDraft(scope, now);
+    if (current === null) return;
+    const { [task]: _removed, ...rest } = current.tasks;
+    if (Object.keys(rest).length === 0) {
+      store.removeItem(closeDraftStorageKey(scope));
+      return;
+    }
+    store.setItem(closeDraftStorageKey(scope), JSON.stringify({ ...current, tasks: rest }));
+  } catch {
+    // An unwritable store holds nothing we can clear.
+  }
+}
+
+/** Every task for this Trade — used once the Trade can no longer be closed. */
+export function removeCloseDraft(scope: CloseDraftScope): void {
+  const store = storage();
+  if (store === null) return;
+  try {
+    store.removeItem(closeDraftStorageKey(scope));
+  } catch {
+    // Nothing further to do.
+  }
+}
+
+/** Whether a task's answers were given against the Trade as it is now. */
+export function closeBasisMatches(basis: CloseDraftBasis, current: CloseDraftBasis): boolean {
+  if (basis.status !== current.status) return false;
+  if (basis.exitIds.length !== current.exitIds.length) return false;
+  const known = new Set(basis.exitIds);
+  return current.exitIds.every((id) => known.has(id));
+}
+
+function ownerKeys(store: Storage, ownerKey: string): string[] {
+  const keys: string[] = [];
+  const ownerPrefix = `${PREFIX}${ownerKey}:`;
+  for (let index = 0; index < store.length; index += 1) {
+    const key = store.key(index);
+    if (key !== null && key.startsWith(ownerPrefix)) keys.push(key);
+  }
+  return keys;
+}
+
+/** What sign-out would destroy: one entry per readable close draft, named by its symbol. */
+export function ownerCloseDrafts(
+  ownerKey: string,
+  now: Date,
+): readonly { readonly symbol: string | null }[] {
+  const store = storage();
+  if (store === null) return [];
+  try {
+    return ownerKeys(store, ownerKey).flatMap((key) => {
+      const raw = store.getItem(key);
+      if (raw === null) return [];
+      const envelope = parse(raw, now);
+      return envelope === null ? [] : [{ symbol: envelope.symbol }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Explicit sign-out: this user's close drafts in every workspace, and nobody else's. */
+export function clearOwnerCloseDrafts(ownerKey: string): void {
+  const store = storage();
+  if (store === null) return;
+  try {
+    for (const key of ownerKeys(store, ownerKey)) store.removeItem(key);
+  } catch {
+    // An unwritable store holds nothing we can clear.
+  }
+}

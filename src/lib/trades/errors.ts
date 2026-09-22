@@ -62,6 +62,7 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'final_exit_before_recorded_exit',
   'exit_limit_reached',
   'legacy_trade_not_supported',
+  'contract_close_required',
   'no_actual_execution',
   'invalid_system_status_transition',
   'invalid_system_exit_reason',
@@ -137,6 +138,7 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'final_exit_before_recorded_exit',
   'exit_limit_reached',
   'legacy_trade_not_supported',
+  'contract_close_required',
   'no_actual_execution',
   'invalid_system_status_transition',
   'invalid_system_exit_reason',
@@ -207,6 +209,7 @@ export function mapServiceErrorToPublicCode(
     case 'final_exit_before_recorded_exit':
     case 'exit_limit_reached':
     case 'legacy_trade_not_supported':
+    case 'contract_close_required':
     case 'no_actual_execution':
     case 'invalid_system_status_transition':
     case 'invalid_system_exit_reason':

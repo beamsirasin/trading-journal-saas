@@ -296,7 +296,11 @@ export function ActualSection({
                 </p>
               )}
             </div>
-            {canWrite && !statedResult && exit.closedBps !== null && exit.exitedAt !== null ? (
+            {canWrite &&
+            !contract &&
+            !statedResult &&
+            exit.closedBps !== null &&
+            exit.exitedAt !== null ? (
               <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} />
             ) : null}
           </article>
@@ -315,10 +319,11 @@ export function ActualSection({
             ) : (
               <>
                 {/*
-                  CANONICAL STAGE 5 FIRST. An Open contract Trade records its
-                  exits through the Stage 5 page, which chooses the scope from
-                  the action pressed. The legacy dialogs stay beside it until
-                  the legacy close is retired (not in this slice).
+                  THE ONLY CLOSE PATHS FOR A CONTRACT TRADE. An Open contract
+                  Trade records its exits through the Stage 5 page, which
+                  chooses the scope from the action pressed. The legacy exit
+                  and close dialogs are retired for it — the server refuses
+                  them too (contract_close_required). Legacy Trades keep them.
                 */}
                 {contract ? (
                   <>
@@ -339,10 +344,13 @@ export function ActualSection({
                       </Link>
                     </Button>
                   </>
-                ) : null}
-                <AddExitDialog trade={trade} timezone={timezone} />
-                {trade.remainingBps === null ? null : (
-                  <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
+                ) : (
+                  <>
+                    <AddExitDialog trade={trade} timezone={timezone} />
+                    {trade.remainingBps === null ? null : (
+                      <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
+                    )}
+                  </>
                 )}
                 <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
               </>

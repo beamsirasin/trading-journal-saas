@@ -5,9 +5,15 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
 import { isContractRow } from '@/lib/trades/add-trade-contract';
 import { TradeIdSchema } from '@/lib/trades/schemas';
-import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
+import {
+  getActiveWorkspaceContext,
+  getCurrentUserPreferences,
+  getWorkspaceEntitlement,
+} from '@/server/auth/dal';
 import { getWorkspaceTradeDetail } from '@/server/dal/trades';
+import { closeDraftScopeKeys } from '@/server/services/recording-draft-scope';
 import type { CloseScope } from '@/components/trades/close-trade-draft';
+import { CloseDraftCleanup } from '@/components/trades/trade-close-draft-cleanup';
 import { TradeCloseForm } from '@/components/trades/trade-close-form';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
@@ -71,10 +77,11 @@ export default async function CloseTradePage({
   const parsedTradeId = tradeParam === undefined ? null : TradeIdSchema.safeParse(tradeParam);
   const tradeId = parsedTradeId !== null && parsedTradeId.success ? parsedTradeId.data : null;
 
-  const [detail, entitlement, preferences] = await Promise.all([
+  const [detail, entitlement, preferences, workspaceContext] = await Promise.all([
     tradeId === null ? Promise.resolve(null) : getWorkspaceTradeDetail(tradeId),
     getWorkspaceEntitlement(),
     getCurrentUserPreferences(),
+    getActiveWorkspaceContext(),
   ]);
   const trade = detail !== null && detail.ok ? detail.trade : null;
   const canWrite = authorizeWorkspaceMutation(entitlement, 'ordinary_write').allowed;
@@ -91,6 +98,12 @@ export default async function CloseTradePage({
           : !canWrite
             ? t('page.readOnly')
             : null;
+
+  // This user's close draft for this Trade, in this workspace — opaque hashes only.
+  const draftScope =
+    trade === null
+      ? null
+      : closeDraftScopeKeys(workspaceContext.userId, workspaceContext.workspaceId, trade.tradeId);
 
   const title = scope === 'part' ? t('page.partTitle') : t('page.closeTitle');
   const description = scope === 'part' ? t('page.partDescription') : t('page.closeDescription');
@@ -116,12 +129,25 @@ export default async function CloseTradePage({
             className="border-border flex min-w-0 flex-col items-start gap-3 rounded-lg border p-5"
           >
             <p className="text-foreground text-sm">{blocked}</p>
+            {/*
+              A Trade that is no longer Open (or is legacy) can never use a
+              close draft, so any left behind is removed here rather than kept
+              to be submitted later against a Trade it no longer describes.
+            */}
+            {draftScope !== null && trade !== null && trade.status !== 'open' ? (
+              <CloseDraftCleanup scope={draftScope} />
+            ) : null}
             <Button asChild variant="outline">
               <Link href={tradeHref}>{t('page.backToTrade')}</Link>
             </Button>
           </div>
         ) : (
-          <TradeCloseForm trade={trade} scope={scope} timezone={preferences.timezone} />
+          <TradeCloseForm
+            trade={trade}
+            scope={scope}
+            timezone={preferences.timezone}
+            draftScope={draftScope}
+          />
         )}
       </div>
     </div>

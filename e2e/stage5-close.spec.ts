@@ -198,4 +198,66 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
     await expect(page.getByText('The exit time cannot be before the entry time.')).toBeVisible();
     expect(await latestTrade(workspaceId)).toMatchObject({ status: 'open' });
   });
+
+  test('the close draft survives a reload; entry details are read-only; no legacy close remains', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    page.setDefaultTimeout(15_000);
+    await page.setViewportSize(PHONE);
+    const { workspaceId } = await newUser(page, 'stage5-draft');
+    await page.goto('/en/app/trades/new?timing=at_entry');
+    await recordOpenMinimum(page, { symbol: 'GBPUSD', direction: 'Long', risk: '80' });
+    await recordOpenSave(page);
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
+    const saved = await latestTrade(workspaceId);
+    const closeDrafts = () =>
+      page.evaluate(
+        () =>
+          Object.keys(window.localStorage).filter((key) =>
+            key.startsWith('tradechemist:close-draft:'),
+          ).length,
+      );
+
+    // The legacy close is retired for a contract Trade: only the Stage 5 entries remain.
+    await page.goto(`/en/app/trades?trade=${saved.id}&tab=execution`);
+    await expect(page.getByRole('link', { name: 'Close trade' })).toBeVisible();
+    for (const name of ['Partial Close', 'Close Remaining', 'Full Close']) {
+      await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    }
+
+    // Answers survive a real reload.
+    await page.goto(`/en/app/trades/close?trade=${saved.id}&scope=all`);
+    await page.getByLabel('Final net P&L').fill('40');
+    await chooseChoice(page, 'Win');
+    await expect.poll(closeDrafts).toBe(1);
+    await page.reload();
+    await expect(page.getByLabel('Final net P&L')).toHaveValue('40');
+    await expect(page.getByRole('radio', { name: 'Win', exact: true })).toBeChecked();
+    await expect(
+      page.getByText('Your unsaved answers for this close were restored.'),
+    ).toBeVisible();
+
+    // Entry details: read-only, in a focused sheet.
+    await page.getByRole('button', { name: 'View entry details' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Entry details' });
+    await expect(sheet.locator('[data-entry-detail="riskAtEntry"]')).toContainText('80');
+    await expect(sheet.getByRole('textbox')).toHaveCount(0);
+    await sheet.getByRole('button', { name: 'Done' }).click();
+    await expectNoOverflow(page, 'draft close');
+
+    // A successful close clears the draft.
+    await page.getByRole('button', { name: 'Close trade', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/en/app/trades\\?trade=${saved.id}`), {
+      timeout: 60_000,
+    });
+    expect(await closeDrafts()).toBe(0);
+    await expect
+      .poll(async () => (await latestTrade(workspaceId)).status, { timeout: 20_000 })
+      .toBe('closed');
+    expect(await latestTrade(workspaceId)).toMatchObject({
+      netPnlMinor: 4000n,
+      traderOutcome: 'win',
+    });
+  });
 });

@@ -426,6 +426,10 @@ describe('Trade record sections', () => {
       'href',
       `/app/trades/close?trade=${base.tradeId}&scope=all`,
     );
+    // The legacy close is retired for a contract Trade: Stage 5 is the only way.
+    for (const name of ['Partial Close', 'Close Remaining', 'Full Close', 'Correct Exit']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
   });
 
   it('keeps a legacy Open Trade on its legacy close, with no Stage 5 entry', () => {

@@ -5,7 +5,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import { composeRealizedActual, composeTraderCloseV2 } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { systemClock, type Clock } from '@/lib/time';
-import { actualRDenominatorMinor, hasStatedClosedResult } from '@/lib/trades/add-trade-contract';
+import {
+  actualRDenominatorMinor,
+  hasStatedClosedResult,
+  isContractRow,
+} from '@/lib/trades/add-trade-contract';
 import { CLOSED_BPS_TOTAL, type OutcomeValue } from '@/lib/trades/constants';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb, type Database } from '@/server/db/client';
@@ -53,7 +57,8 @@ export type TradeExitMutationResult =
         | 'invalid_status_transition'
         | 'invalid_closed_bps'
         | 'invalid_exit_shape'
-        | 'invalid_exit_time';
+        | 'invalid_exit_time'
+        | 'contract_close_required';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -174,6 +179,11 @@ export async function addTradeExitInTx(
     const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
     if (!ctx.ok) return ctx;
     trade = ctx.trade;
+    // RETIRED FOR CONTRACT TRADES. A contract Trade records its exits through
+    // the canonical Record Exit / Final Close (`recordContractExit`); this
+    // legacy path derives the result from exit legs. Refused before any replay
+    // lookup, so a stale client or a direct call cannot bypass the contract.
+    if (isContractRow(trade)) return { ok: false, code: 'contract_close_required' };
   }
 
   const replay = await tx.query.tradeExits.findFirst({
@@ -317,6 +327,8 @@ export async function correctTradeExit(
     const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
     if (!ctx.ok) return ctx;
     const { trade } = ctx;
+    // A legacy exit correction rebuilds the result from legs: never on a contract Trade.
+    if (isContractRow(trade)) return { ok: false, code: 'contract_close_required' };
     if (trade.status !== 'open' && trade.status !== 'closed') {
       return { ok: false, code: 'invalid_status_transition' };
     }

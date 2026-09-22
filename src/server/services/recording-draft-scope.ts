@@ -39,3 +39,19 @@ export function recordingDraftScopeKeys(
     workspaceKey: digest('workspace', workspaceId),
   };
 }
+
+export interface CloseDraftScopeKeys extends RecordingDraftScopeKeys {
+  readonly tradeKey: string;
+}
+
+/**
+ * THE SCOPE OF A CLOSE TRADE DRAFT: the same owner and workspace hashes, plus
+ * one for the Trade being closed, so each Trade's close keeps its own draft.
+ */
+export function closeDraftScopeKeys(
+  userId: string,
+  workspaceId: string,
+  tradeId: string,
+): CloseDraftScopeKeys {
+  return { ...recordingDraftScopeKeys(userId, workspaceId), tradeKey: digest('trade', tradeId) };
+}

@@ -2791,7 +2791,8 @@
       "invalid_file": "Choose an image file to upload.",
       "invalid_storage_key": "This image could not be identified. Please upload it again.",
       "unexpected_error": "Something went wrong. Please try again.",
-      "invalid_exit_plan": "That exit plan is no longer available. Choose another plan and try again."
+      "invalid_exit_plan": "That exit plan is no longer available. Choose another plan and try again.",
+      "contract_close_required": "This trade closes through Record partial exit or Close trade."
     },
     "workspace": {
       "filterError": {
@@ -3124,6 +3125,44 @@
         "notFound": "This trade could not be found.",
         "conflict": "This save was already used for a different exit. Go back to the trade to see what was recorded.",
         "successPartial": "Partial exit recorded. The trade is still open."
+      },
+      "draft": {
+        "restored": "Your unsaved answers for this close were restored.",
+        "stale": "This trade changed after you started: an exit was recorded or its status changed. Check your answers before you save them.",
+        "staleBlocked": "Confirm your restored answers still apply, or discard them, before saving.",
+        "keep": "Keep my answers",
+        "discard": "Discard answers",
+        "discardQuestion": "Discard your answers for this close?",
+        "discardConfirm": "Discard",
+        "discardCancel": "Keep"
+      },
+      "entry": {
+        "open": "View entry details",
+        "title": "Entry details",
+        "description": "What you recorded when you entered this trade. Read-only here; change it from the trade itself.",
+        "close": "Close",
+        "done": "Done",
+        "notAnswered": "Not answered",
+        "none": "None",
+        "strategy": "Strategy",
+        "noStrategy": "No strategy",
+        "setup": "Setup",
+        "noSetup": "No setup",
+        "conditions": "Setup conditions",
+        "conditionsMet": "{met} of {total} met",
+        "riskAtEntry": "Risk at entry",
+        "actualRisk": "Actual risk",
+        "target": "Target",
+        "targetNone": "No fixed target",
+        "targetFixed": "Fixed target",
+        "exitPlan": "Exit plan",
+        "confidence": "Confidence",
+        "emotions": "Entry emotion",
+        "timeframe": "Timeframe",
+        "session": "Session",
+        "reason": "Why this trade",
+        "notes": "Entry notes",
+        "chart": "Chart link"
       }
     }
   },

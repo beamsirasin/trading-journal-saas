@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { parseDashboardFilterState } from '@/lib/dashboard/filters';
 import {
+  trades,
   tradingAccounts,
   userPreferences,
   users,
@@ -653,16 +654,30 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
       if (!created.ok) throw new Error('unreachable');
       return created.tradeId;
     };
-    // Legacy live close: net P&L and outcome written without the contract's
+    // A contract Trade closed by the legacy live close before it was retired
+    // (it now refuses contract Trades): net P&L and a derived outcome, no
     // stated Final Net P&L, so its +3R must not become canonical R.
-    must(
-      await closeTrade(workspaceId, userId, await open(), {
+    const legacyClosed = await open();
+    expect(
+      await closeTrade(workspaceId, userId, legacyClosed, {
         actualExit: '2410',
         netPnlMinor: 30_000n,
         exitedAt: new Date('2026-08-10T10:00:00Z'),
       }),
-      'legacy close of a contract Trade',
-    );
+    ).toEqual({ ok: false, code: 'contract_close_required' });
+    await db
+      .update(trades)
+      .set({
+        status: 'closed',
+        actualResultMode: 'money',
+        actualExit: '2410',
+        netPnlMinor: 30_000n,
+        actualR: '3.0000',
+        traderOutcome: 'win',
+        exitedAt: new Date('2026-08-10T10:00:00Z'),
+        calcVersion: 1,
+      })
+      .where(eq(trades.id, legacyClosed));
     // Contract Final Close: a stated -1R with a selected Loss.
     must(
       await recordContractExit(workspaceId, userId, await open(), {

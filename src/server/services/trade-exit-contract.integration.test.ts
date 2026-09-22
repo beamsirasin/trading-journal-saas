@@ -25,7 +25,7 @@ import {
 } from '@/server/db/schema';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
-import { addTradeExit } from './trade-execution';
+import { addTradeExit, closeRemainingTrade, correctTradeExit } from './trade-execution';
 import { recordContractExit, type RecordContractExitInput } from './trade-exit-contract';
 import { closeTrade, createTrade, openTrade } from './trade-management';
 
@@ -803,6 +803,91 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
   // Legacy isolation
   // -------------------------------------------------------------------------
 
+  describe('the legacy close is retired for contract Trades', () => {
+    it('every legacy exit and close action refuses a contract Trade and writes nothing', async () => {
+      const tradeId = await openContractTrade();
+      await db.update(trades).set({ actualResultMode: 'money' }).where(eq(trades.id, tradeId));
+      const refused = { ok: false, code: 'contract_close_required' };
+      expect(
+        await closeTrade(workspaceId, actorUserId, tradeId, {
+          actualExit: '2410',
+          netPnlMinor: 3_000n,
+          exitedAt: at(1),
+        }),
+      ).toEqual(refused);
+      expect(
+        await addTradeExit(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          closedBps: 5_000,
+          realizedPnlMinor: 8_000n,
+          exitedAt: at(1),
+        }),
+      ).toEqual(refused);
+      expect(
+        await closeRemainingTrade(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          realizedPnlMinor: 8_000n,
+          exitedAt: at(1),
+        }),
+      ).toEqual(refused);
+      // A canonical leg cannot be rebuilt through the legacy correction either.
+      const partLeg = await record(tradeId, part({ closedBps: 2_000, exitedAt: at(1) }));
+      if (!partLeg.ok) throw new Error(partLeg.code);
+      expect(
+        await correctTradeExit(workspaceId, actorUserId, tradeId, partLeg.exitId, {
+          closedBps: 3_000,
+          realizedPnlMinor: 1_000n,
+          exitedAt: at(1),
+        }),
+      ).toEqual(refused);
+      expect(await readTrade(tradeId)).toMatchObject(WHOLE_TRADE_UNTOUCHED);
+      expect((await readExits(tradeId)).map((leg) => leg.closedBps)).toEqual([2_000]);
+    });
+
+    it('a replayed legacy close from a stale client is refused too', async () => {
+      const tradeId = await openContractTrade();
+      await db.update(trades).set({ actualResultMode: 'money' }).where(eq(trades.id, tradeId));
+      const input = {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 5_000,
+        realizedPnlMinor: 8_000n,
+        exitedAt: at(1),
+      };
+      expect(await addTradeExit(workspaceId, actorUserId, tradeId, input)).toMatchObject({
+        code: 'contract_close_required',
+      });
+      expect(await addTradeExit(workspaceId, actorUserId, tradeId, input)).toMatchObject({
+        code: 'contract_close_required',
+      });
+      expect(await readExits(tradeId)).toHaveLength(0);
+    });
+
+    it('a legacy Trade keeps its legacy close', async () => {
+      const created = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: accountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 10_000n,
+      });
+      if (!created.ok) throw new Error(created.code);
+      const opened = await openTrade(workspaceId, actorUserId, created.tradeId, {
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5_000n,
+        enteredAt: ENTERED_AT,
+      });
+      if (!opened.ok) throw new Error(opened.code);
+      expect(
+        await closeTrade(workspaceId, actorUserId, created.tradeId, {
+          actualExit: '1.1',
+          netPnlMinor: 5_000n,
+          exitedAt: at(1),
+        }),
+      ).toMatchObject({ ok: true, actualR: '1.0000', traderOutcome: 'win' });
+    });
+  });
+
   describe('legacy isolation', () => {
     async function openLegacyTrade(): Promise<string> {
       const created = await createTrade(workspaceId, actorUserId, {
@@ -841,15 +926,16 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
 
     it('a legacy exit leg on a contract Trade stays evidence, never the Final Net P&L', async () => {
       const tradeId = await openContractTrade();
-      // Written through the legacy exit path before this slice existed.
-      await db.update(trades).set({ actualResultMode: 'money' }).where(eq(trades.id, tradeId));
-      const legacy = await addTradeExit(workspaceId, actorUserId, tradeId, {
-        mutationKey: crypto.randomUUID(),
+      // A leg the legacy exit path wrote before it was retired for contract
+      // Trades: historical evidence, with no fingerprint and no scope.
+      await db.insert(tradeExits).values({
+        workspaceId,
+        tradeId,
+        sequence: 1,
         closedBps: 5_000,
         realizedPnlMinor: 8_000n,
         exitedAt: at(1),
       });
-      if (!legacy.ok) throw new Error(`legacy exit: ${legacy.code}`);
       const result = await record(
         tradeId,
         finalClose({ closedBps: 5_000, finalPnlMinor: -1_000n }),
@@ -898,12 +984,21 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
 
     it('a contract Trade closed by the legacy live close cannot be re-closed here', async () => {
       const tradeId = await openContractTrade();
-      const closed = await closeTrade(workspaceId, actorUserId, tradeId, {
-        actualExit: '2410',
-        netPnlMinor: 3_000n,
-        exitedAt: at(1),
-      });
-      if (!closed.ok) throw new Error(closed.code);
+      // A historical legacy close (before it was retired): net P&L stated by
+      // the legacy form, outcome derived from R, no Final Net P&L source.
+      await db
+        .update(trades)
+        .set({
+          status: 'closed',
+          actualResultMode: 'money',
+          actualExit: '2410',
+          netPnlMinor: 3_000n,
+          actualR: '0.3000',
+          traderOutcome: 'win',
+          exitedAt: at(1),
+          calcVersion: 1,
+        })
+        .where(eq(trades.id, tradeId));
       const before = await readTrade(tradeId);
       // Its derived outcome and derived R stay as recorded: nothing here makes them canonical.
       expect(before).toMatchObject({ finalPnlSource: null, traderOutcomeSelectedAt: null });

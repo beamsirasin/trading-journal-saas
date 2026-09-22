@@ -1002,6 +1002,20 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    - Stages 1–4 are the Trade's existing, preserved context. They are shown as read-only context,
      never as a form to fill again. Changing one is an ordinary edit of the saved Trade that keeps
      its capture origin and adds revision metadata (§4.7, §11.11).
+   - Read-only does not mean rendered inline. The close flow shows a compact trade summary and
+     one lightweight way to inspect the rest ("View entry details", a focused read-only sheet); it
+     need not render the four canonical stages, and it never offers to re-enter or edit their
+     answers from the close.
+   - Stage 5 and, once built, stage 6 keep a close-flow draft of their own: per user, workspace
+     and Trade, and per task (Part and All Remaining never restore each other). It survives a
+     reload, keeps no view state, is cleared by a confirmed Save or an explicit discard, keeps the
+     Save key so a retried Save replays, and holds answers given against a Trade that has since
+     changed until the trader confirms or discards them (§5.1–§5.8).
+   - Stage 6 After-Trade Context is optional enrichment after the Final Close. The Final Close
+     makes the Trade Closed first; stage 6 is never required for Closed. It captures its own
+     after-trade evidence (Post-Trade Emotion, an after-trade note and chart link) and never
+     reuses or overwrites the entry notes or the before-entry chart link. Reflection and System
+     Assessment are not part of it (§10.4).
    - Exit & Result follows §13: a live exit's scope is required, and the Trade reaches Closed only
      through the explicit All Remaining / Close Remaining confirmation.
    - A Part exit stays within Exit & Result: it records a Partial Close and asks no whole-Trade
@@ -1102,13 +1116,13 @@ Implementation evidence only, recorded so redesign and migration work can find t
 - **Close Existing Open Trade, stage 5 (implemented 2026-09-22):** `/app/trades/close` —
   "Record partial exit" (Part) and "Close trade" (All Remaining) from the Trade's Execution panel,
   scope chosen by the action, written through `recordContractExitAction`; Record Closed's Result
-  step uses the same Stage 5 controls. Still pending against §20.5:
-  - After-Trade Context (stage 6) is not built, so a Final Close returns straight to the Trade
-    rather than continuing to stage 6 and Trade Saved → Review Trade / Done (§5.9).
-  - Stages 1–4 appear as a one-line context summary, not the full read-only context.
-  - The legacy close dialogs are still offered beside Stage 5 on a contract row; a close through
-    them derives net P&L and outcome, and its R counts as legacy evidence.
-  - The Stage 5 page keeps no durable draft; its answers survive only while the page is open.
+  step uses the same Stage 5 controls. Since 2026-09-22 it is the only close path for a contract
+  Trade: the legacy exit / close / exit-correction dialogs are hidden for it and their server
+  actions refuse it (`contract_close_required`); legacy Trades keep them. Its answers persist in
+  the Close Trade draft (§20.5) and the entry context is readable through "View entry details".
+  Still pending against §20.5: After-Trade Context (stage 6) is not built, so a Final Close
+  returns straight to the Trade rather than continuing to stage 6 and Trade Saved → Review Trade
+  / Done (§5.9).
 - A Complete-history exit conflict blocks saving on a legacy row, and a live close derives net P&L
   from exit legs (§6.2, §13.8). After Trade keeps Final Net P&L authoritative with a non-blocking
   discrepancy notice.

@@ -111,6 +111,7 @@ export function InlineAction({
   controls,
   expanded,
   id,
+  buttonRef,
 }: {
   children: ReactNode;
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -118,11 +119,14 @@ export function InlineAction({
   controls?: string;
   expanded?: boolean;
   id?: string;
+  /** For a caller that returns focus here, e.g. when a sheet it opened closes. */
+  buttonRef?: React.Ref<HTMLButtonElement>;
 }) {
   return (
     <button
       type="button"
       id={id}
+      ref={buttonRef}
       onClick={onClick}
       {...(controls === undefined ? {} : { 'aria-controls': controls })}
       {...(expanded === undefined ? {} : { 'aria-expanded': expanded })}

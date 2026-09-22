@@ -2033,7 +2033,8 @@ export type CloseTradeResult =
         | WorkspaceAccessDenial
         | 'trade_not_found'
         | 'invalid_status_transition'
-        | 'invalid_exit_time';
+        | 'invalid_exit_time'
+        | 'contract_close_required';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -2059,6 +2060,10 @@ export async function closeTrade(
     const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
     if (!ctx.ok) return ctx;
     const { trade } = ctx;
+    // RETIRED FOR CONTRACT TRADES: the canonical Final Close is the only way a
+    // contract Trade closes. Checked before the retry branch, so no stale
+    // client can replay its way past it. Legacy Trades keep this path.
+    if (isContractRow(trade)) return { ok: false, code: 'contract_close_required' };
 
     if (trade.status === 'closed') {
       if (

@@ -46,6 +46,28 @@ function trade(exits: readonly Exit[] = [], overrides: Partial<TradeDetail> = {}
     closedBps: exits.reduce((sum, exit) => sum + (exit.closedBps ?? 0), 0) || null,
     remainingBps: null,
     exits,
+    // Entry context, read-only on the close flow.
+    strategyName: 'Golden Breakout',
+    noStrategy: false,
+    setupName: null,
+    noSetup: true,
+    setupConditionChecks: [],
+    setupConditionConfiguredCount: null,
+    actualRiskAnswer: 'matched',
+    actualInitialRiskMinor: null,
+    targetState: null,
+    plannedRewardMinor: null,
+    targetPrice: null,
+    exitPlanName: null,
+    exitPlanInstructions: null,
+    confidence: 75,
+    emotionsRecordedAt: null,
+    emotions: [],
+    timeframe: '15m',
+    session: null,
+    confirmationNotes: 'Clean retest of the high.',
+    notes: null,
+    tradingviewUrl: null,
     ...overrides,
   } as unknown as TradeDetail;
 }
@@ -61,12 +83,29 @@ const EARLIER_EXIT: Exit = {
   exitedAt: EARLIER_EXIT_AT,
 };
 
-function renderForm(scope: 'part' | 'all_remaining', detail: TradeDetail = trade()) {
+const DRAFT_SCOPE = { ownerKey: 'owner-a', workspaceKey: 'ws-1', tradeKey: 'trade-1' };
+const DRAFT_KEY = 'tradechemist:close-draft:owner-a:ws-1:trade-1';
+
+function renderForm(
+  scope: 'part' | 'all_remaining',
+  detail: TradeDetail = trade(),
+  draftScope: typeof DRAFT_SCOPE | null = null,
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeCloseForm trade={detail} scope={scope} timezone="Asia/Bangkok" />
+      <TradeCloseForm
+        trade={detail}
+        scope={scope}
+        timezone="Asia/Bangkok"
+        draftScope={draftScope}
+      />
     </NextIntlClientProvider>,
   );
+}
+
+function storedDraft(): { tasks: Record<string, { exitResult: Record<string, unknown> }> } | null {
+  const raw = window.localStorage.getItem(DRAFT_KEY);
+  return raw === null ? null : JSON.parse(raw);
 }
 
 function type(label: string, value: string) {
@@ -107,7 +146,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 describe('Part — "Record partial exit"', () => {
   it('asks only for this exit leg: no scope choice, no whole-trade result, no outcome', () => {
@@ -343,5 +385,115 @@ describe('All Remaining — "Close trade"', () => {
     submit('Close trade');
     await waitFor(() => expect(screen.getByLabelText('P&L for this exit')).toHaveFocus());
     expect(recordContractExitActionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('the Close Trade draft', () => {
+  it('survives a reload, per task, without keeping any view state', async () => {
+    const first = renderForm('all_remaining', trade([EARLIER_EXIT]), DRAFT_SCOPE);
+    type('Final net P&L', '-30');
+    fireEvent.click(screen.getByRole('radio', { name: 'Loss' }));
+    openHistory();
+    type('P&L for this exit', '10');
+    await waitFor(() => expect(storedDraft()?.tasks.all_remaining).toBeDefined());
+    first.unmount();
+
+    // A reload: a fresh mount reads the answers back.
+    renderForm('all_remaining', trade([EARLIER_EXIT]), DRAFT_SCOPE);
+    await waitFor(() => expect(screen.getByLabelText('Final net P&L')).toHaveValue('-30'));
+    expect(screen.getByRole('radio', { name: 'Loss' })).toBeChecked();
+    expect(screen.getByText('Your unsaved answers for this close were restored.')).toBeVisible();
+    // The fold it was left open in is view state: it starts folded again.
+    expect(document.getElementById('close-history-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    cleanup();
+
+    // The Part task on the same Trade is untouched by the Final Close's answers.
+    renderForm('part', trade([EARLIER_EXIT]), DRAFT_SCOPE);
+    await waitFor(() => expect(storedDraft()?.tasks.all_remaining).toBeDefined());
+    expect(screen.getByLabelText('P&L for this exit')).toHaveValue('');
+  });
+
+  it('clears the task once the save succeeds', async () => {
+    renderForm('part', trade(), DRAFT_SCOPE);
+    type('P&L for this exit', '50');
+    await waitFor(() => expect(storedDraft()?.tasks.part).toBeDefined());
+    submit('Record partial exit');
+    await waitFor(() => expect(pushMock).toHaveBeenCalled());
+    expect(storedDraft()).toBeNull();
+  });
+
+  it('clears the task on an explicit, confirmed discard', async () => {
+    renderForm('part', trade(), DRAFT_SCOPE);
+    type('P&L for this exit', '50');
+    await waitFor(() => expect(storedDraft()?.tasks.part).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Discard answers' }));
+    expect(screen.getByText('Discard your answers for this close?')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByLabelText('P&L for this exit')).toHaveValue('');
+    await waitFor(() => expect(storedDraft()).toBeNull());
+  });
+
+  it('holds answers given against a Trade that has since changed until they are confirmed', async () => {
+    const before = renderForm('all_remaining', trade(), DRAFT_SCOPE);
+    type('Final net P&L', '25');
+    await waitFor(() => expect(storedDraft()?.tasks.all_remaining).toBeDefined());
+    before.unmount();
+
+    // Meanwhile an exit was recorded elsewhere.
+    renderForm('all_remaining', trade([EARLIER_EXIT]), DRAFT_SCOPE);
+    await waitFor(() => expect(screen.getByLabelText('Final net P&L')).toHaveValue('25'));
+    expect(screen.getByText(/This trade changed after you started/)).toBeVisible();
+    submit('Close trade');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Keep my answers' })).toHaveFocus(),
+    );
+    expect(recordContractExitActionMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep my answers' }));
+    submit('Close trade');
+    await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(1));
+    expect(lastPayload()).toMatchObject({ scope: 'all_remaining', finalPnlMinor: '2500' });
+  });
+
+  it('re-sends a failed save after a reload under the same Save key', async () => {
+    recordContractExitActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'unexpected_error' },
+    });
+    const first = renderForm('part', trade(), DRAFT_SCOPE);
+    type('P&L for this exit', '50');
+    submit('Record partial exit');
+    await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(1));
+    const firstKey = lastPayload().mutationKey;
+    first.unmount();
+
+    renderForm('part', trade(), DRAFT_SCOPE);
+    await waitFor(() => expect(screen.getByLabelText('P&L for this exit')).toHaveValue('50'));
+    submit('Record partial exit');
+    await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(2));
+    expect(lastPayload().mutationKey).toBe(firstKey);
+  });
+});
+
+describe('entry context, read-only', () => {
+  it('opens the entry details from the close flow, with nothing to edit', () => {
+    renderForm('all_remaining');
+    fireEvent.click(screen.getByRole('button', { name: 'View entry details' }));
+    const sheet = within(screen.getByRole('dialog', { name: 'Entry details' }));
+    expect(sheet.getByText('Golden Breakout')).toBeVisible();
+    expect(sheet.getByText('No setup')).toBeVisible();
+    expect(sheet.getByText('Clean retest of the high.')).toBeVisible();
+    expect(sheet.getByText('75%')).toBeVisible();
+    // Unanswered reads as not answered, never as a negative.
+    expect(document.querySelector('[data-entry-detail="emotions"] dd')).toHaveTextContent(
+      'Not answered',
+    );
+    expect(sheet.queryAllByRole('textbox')).toHaveLength(0);
+    expect(sheet.queryAllByRole('radio')).toHaveLength(0);
+    fireEvent.click(sheet.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
