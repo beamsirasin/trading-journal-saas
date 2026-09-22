@@ -13,7 +13,7 @@ import {
 } from 'react';
 
 import { generateId } from '@/lib/identifiers';
-import { confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
+import { confidenceLevelKey } from '@/lib/trades/constants';
 import { HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
@@ -38,6 +38,8 @@ import {
   clearEntryTimestamp,
   createAfterTradeDraft,
   exitField,
+  finalPnlStillAdopted,
+  isCompleteEntryTimestamp,
   meaningfulExit,
   removeEmotionsAnswer,
   removeExit,
@@ -79,6 +81,12 @@ import {
 import { formatEntryStamp, tradeDetailsRowId, TradeDetailsStep } from './trade-details-step';
 import { TradeEmotionFields } from './trade-emotion-fields';
 import { TradeEntryContextStep } from './trade-entry-context-step';
+import {
+  ActualRReadoutRow,
+  ExitTimeField,
+  FinalPnlField,
+  TraderOutcomeField,
+} from './trade-exit-result-step';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
@@ -389,12 +397,10 @@ export function TradeAfterTradeForm({
   } | null>(null);
   const [pending, setPending] = useState(false);
   const [emotionHint, setEmotionHint] = useState<EmotionPhase | null>(null);
-  const [adoptedMessage, setAdoptedMessage] = useState<string | null>(null);
 
   const apply = (change: (current: AfterTradeDraft) => AfterTradeDraft) => {
     setDraft((current) => change(current));
     setServerMessage(null);
-    setAdoptedMessage(null);
   };
 
   const selectedAccount = options.tradingAccounts.find(
@@ -423,8 +429,9 @@ export function TradeAfterTradeForm({
     switch (field) {
       case 'enteredAt':
         return draft.enteredAt;
+      // Half a final exit time waits for Save before it speaks, like Step 1's entry time.
       case 'exitedAt':
-        return draft.exitedAt;
+        return isCompleteEntryTimestamp(draft.exitedAt) ? draft.exitedAt : '';
       case 'finalPnl':
         return draft.finalPnl;
       case 'risk':
@@ -475,6 +482,10 @@ export function TradeAfterTradeForm({
         return a('errors.entryTimeRequired');
       case 'entry_date_required':
         return a('errors.entryDateRequired');
+      case 'exit_time_required':
+        return a('errors.exitTimeRequired');
+      case 'exit_date_required':
+        return a('errors.exitDateRequired');
       case 'future_time':
         return a('errors.futureTime');
       case 'exit_before_entry':
@@ -788,7 +799,6 @@ export function TradeAfterTradeForm({
 
   // The latest recorded exit time, offered — never applied — as the final exit time.
   const latestExitLocal = (() => {
-    if (draft.exitedAt !== '') return null;
     let latest: { local: string; time: number } | null = null;
     for (const exit of recordedExits) {
       if (exit.exitedAt === '') continue;
@@ -1096,42 +1106,53 @@ export function TradeAfterTradeForm({
         'gap-4',
         <>
           <GroupCard filled data-result-panel="">
-            <TimeField
+            {/*
+                  CANONICAL STAGE 5 — the same final exit time, Final Net P&L,
+                  Actual R and outcome controls Close Trade uses. Record Closed
+                  keeps its own order and never asks for a Part / All Remaining
+                  scope here: it reconstructs a trade that is already closed.
+                */}
+            <ExitTimeField
               id="after-exitedAt"
               label={a('times.exit')}
               value={draft.exitedAt}
+              timezone={timezone}
+              locale={locale}
               error={errorText('exitedAt')}
+              lastRecordedExit={
+                latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
+              }
               onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
             />
-            {latestExitLocal === null ? null : (
-              <div className="-mt-2">
-                <InlineAction
-                  onClick={() =>
-                    apply((current) => ({ ...current, exitedAt: latestExitLocal.local }))
-                  }
-                >
-                  {a('times.useLatestExit', {
-                    time:
-                      formatTradeInstant(
-                        new Date(latestExitLocal.time).toISOString(),
-                        timezone,
-                        locale,
-                      ) ?? latestExitLocal.local,
-                  })}
-                </InlineAction>
-              </div>
-            )}
-            <TextField
+            <FinalPnlField
               id="after-finalPnl"
-              label={a('result.finalPnl')}
               value={draft.finalPnl}
-              onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
-              suffix={currency}
-              inputMode="decimal"
-              size="lead"
-              figure
-              hint={a('result.finalPnlHint', { currency })}
+              currency={currency}
               error={errorText('finalPnl')}
+              source={
+                draft.finalPnl.trim() === ''
+                  ? null
+                  : finalPnlStillAdopted(draft, validation)
+                    ? 'adopted'
+                    : 'typed'
+              }
+              adoptable={validation.canAdoptExitSubtotal}
+              subtotal={
+                validation.exitSubtotalMinor === null
+                  ? null
+                  : formatMoney(validation.exitSubtotalMinor)
+              }
+              subtotalBlocked={null}
+              onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
+              onAdopt={() => {
+                if (validation.exitSubtotalMinor === null) return;
+                setDraft((current) =>
+                  adoptExitSubtotal(current, validation, (minor) =>
+                    tradeMoneyInputValue(minor, currency),
+                  ),
+                );
+                setServerMessage(null);
+              }}
             />
             {/*
                   ACTUAL R IS DERIVED, AND READS LIKE IT. It is not another
@@ -1139,61 +1160,16 @@ export function TradeAfterTradeForm({
                   the group's largest number when it has one and says plainly
                   what is still missing when it does not. Never a fabricated 0R.
                 */}
-            <div
-              data-actual-r={validation.actualR.status}
-              className="border-border flex min-w-0 flex-wrap items-end justify-between gap-x-4 gap-y-1 border-t pt-4"
-            >
-              <div className="min-w-0">
-                <p className="text-muted-foreground text-sm font-medium">{a('result.actualR')}</p>
-                <p className="text-subtle-foreground text-xs">{a('result.actualRBasis')}</p>
-              </div>
-              {validation.actualR.status === 'known' ? (
-                <p className="text-foreground text-3xl leading-none font-semibold tabular-nums">
-                  {formatR(validation.actualR.value)}
-                </p>
-              ) : (
-                <p className="text-muted-foreground min-w-0 text-sm">
-                  {a(`result.unavailable.${validation.actualR.reason}`)}
-                </p>
-              )}
-            </div>
+            <ActualRReadoutRow readout={validation.actualR} />
           </GroupCard>
 
-          <GroupCard
-            title={a('result.outcome')}
-            aside={
-              draft.outcome === null ? (
-                <StateText>{c('notAnswered')}</StateText>
-              ) : (
-                <InlineAction
-                  ariaLabel={a('result.removeOutcomeAria')}
-                  onClick={() => apply((current) => setOutcome(current, null))}
-                >
-                  {c('removeAnswer')}
-                </InlineAction>
-              )
-            }
-          >
-            <ChoiceGroup
+          <GroupCard data-result-outcome="">
+            <TraderOutcomeField
               idPrefix="after-outcome"
-              legend={a('result.outcome')}
-              hideLegend
               value={draft.outcome}
-              columns={3}
-              fit="row"
-              onChange={(outcome: OutcomeValue) => apply((current) => setOutcome(current, outcome))}
-              options={[
-                { value: 'win', label: a('result.win') },
-                { value: 'break_even', label: a('result.breakEven') },
-                { value: 'loss', label: a('result.loss') },
-              ]}
+              contradicts={outcomeNotice !== undefined}
+              onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
             />
-            <Helper>{a('result.outcomeHint')}</Helper>
-            {outcomeNotice === undefined ? null : (
-              <Notice>
-                {draft.outcome === 'win' ? a('result.winNegative') : a('result.lossPositive')}
-              </Notice>
-            )}
           </GroupCard>
 
           {/* Exit history: optional supporting evidence, never the result */}
@@ -1220,7 +1196,6 @@ export function TradeAfterTradeForm({
               currency={currency}
               errorText={errorText}
               subtotal={validation.exitSubtotalMinor}
-              canAdopt={validation.canAdoptExitSubtotal}
               discrepancy={
                 discrepancy?.kind === 'exit_discrepancy'
                   ? {
@@ -1229,23 +1204,11 @@ export function TradeAfterTradeForm({
                     }
                   : null
               }
-              adoptedMessage={adoptedMessage}
               formatMoney={formatMoney}
               onAdd={() => apply((current) => addExit(current, generateId()))}
               onRemove={(id) => apply((current) => removeExit(current, id))}
               onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
               onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
-              onAdopt={() => {
-                if (validation.exitSubtotalMinor === null) return;
-                const amount = formatMoney(validation.exitSubtotalMinor);
-                setDraft((current) =>
-                  adoptExitSubtotal(current, validation, (minor) =>
-                    tradeMoneyInputValue(minor, currency),
-                  ),
-                );
-                setServerMessage(null);
-                setAdoptedMessage(a('exits.adopted', { amount }));
-              }}
             />
           </FoldedGroup>
         </>,
@@ -1528,72 +1491,28 @@ export function TradeAfterTradeForm({
   );
 }
 
-/** An optional historical time: blank is not recorded, and clearing it is always one action away. */
-function TimeField({
-  id,
-  label,
-  value,
-  error,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  error?: string | undefined;
-  onChange: (value: string) => void;
-}) {
-  const a = useTranslations('trades.create.recording.contractAfter');
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <TextField
-        id={id}
-        type="datetime-local"
-        label={label}
-        value={value}
-        onChange={onChange}
-        figure
-        error={error}
-        labelAside={value === '' ? <StateText>{a('times.notRecorded')}</StateText> : null}
-      />
-      {value === '' ? null : (
-        <div>
-          <InlineAction ariaLabel={`${a('times.clear')}: ${label}`} onClick={() => onChange('')}>
-            {a('times.clear')}
-          </InlineAction>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ExitHistoryFields({
   draft,
   currency,
   errorText,
   subtotal,
-  canAdopt,
   discrepancy,
-  adoptedMessage,
   formatMoney,
   onAdd,
   onRemove,
   onChange,
   onCompleteness,
-  onAdopt,
 }: {
   draft: AfterTradeDraft;
   currency: string;
   errorText: (field: AfterTradeField) => string | undefined;
   subtotal: string | null;
-  canAdopt: boolean;
   discrepancy: { readonly subtotal: string; readonly final: string } | null;
-  adoptedMessage: string | null;
   formatMoney: (minor: string) => string;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onChange: (id: string, patch: Partial<Omit<AfterTradeExitDraft, 'id'>>) => void;
   onCompleteness: (value: AfterTradeDraft['completeness']) => void;
-  onAdopt: () => void;
 }) {
   const a = useTranslations('trades.create.recording.contractAfter');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -1752,16 +1671,8 @@ function ExitHistoryFields({
             {a('exits.subtotal', { amount: formatMoney(subtotal) })}
           </p>
           <p className="text-muted-foreground text-xs">{a('exits.subtotalSupporting')}</p>
-          {canAdopt ? (
-            <div>
-              <InlineAction onClick={onAdopt}>{a('exits.adopt')}</InlineAction>
-            </div>
-          ) : null}
         </div>
       )}
-      <p aria-live="polite" className="text-muted-foreground text-sm empty:hidden">
-        {adoptedMessage ?? ''}
-      </p>
       {discrepancy === null ? null : (
         <Notice
           icon={

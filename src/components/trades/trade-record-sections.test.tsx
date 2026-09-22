@@ -384,6 +384,68 @@ describe('Trade record sections', () => {
     expect(screen.getAllByText('+0.50R').length).toBeGreaterThan(0);
   });
 
+  it('derives Partially Closed from a contract Part leg, with no whole-trade R, and offers Stage 5', () => {
+    renderDetail(
+      {
+        ...base,
+        status: 'open',
+        recordingContract: 'add_trade_v1',
+        actualResultMode: 'money',
+        plannedRiskMinor: '10000',
+        enteredAt: '2026-08-08T00:00:00.000Z',
+        // A Part whose % was left unanswered: still a Part, so still Partially Closed.
+        closedBps: null,
+        remainingBps: null,
+        realizedRToDate: '0.5000',
+        exits: [
+          {
+            exitId: '018f0000-0000-7000-8000-0000000000e1',
+            sequence: 1,
+            closedBps: null,
+            exitScope: 'part',
+            exitPrice: null,
+            realizedPnlMinor: '5000',
+            exitReason: null,
+            exitedAt: null,
+          },
+        ],
+      },
+      'actual',
+      true,
+    );
+    expect(screen.getByText('Partial')).toBeVisible();
+    expect(
+      screen.getByText('Actual Result will be available after the Trade is closed.'),
+    ).toBeVisible();
+    expect(screen.queryByText('+0.50R')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Record partial exit' })).toHaveAttribute(
+      'href',
+      `/app/trades/close?trade=${base.tradeId}&scope=part`,
+    );
+    expect(screen.getByRole('link', { name: 'Close trade' })).toHaveAttribute(
+      'href',
+      `/app/trades/close?trade=${base.tradeId}&scope=all`,
+    );
+  });
+
+  it('keeps a legacy Open Trade on its legacy close, with no Stage 5 entry', () => {
+    renderDetail(
+      {
+        ...base,
+        status: 'open',
+        actualResultMode: 'price',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        enteredAt: '2026-08-08T00:00:00.000Z',
+      },
+      'actual',
+      true,
+    );
+    expect(screen.queryByRole('link', { name: 'Record partial exit' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Close trade' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Partial Close' })).toBeVisible();
+  });
+
   it('shows System result Pending on the System section, independent of the Actual state', () => {
     renderDetail(base, 'system');
     expect(screen.getByRole('heading', { name: 'System Plan' })).toBeVisible();

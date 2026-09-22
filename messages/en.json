@@ -2486,7 +2486,9 @@
             "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter what you really had at risk, or choose Matched risk at entry.",
             "percentOverTotal": "Together your exits close more than the whole position. Check the percentages.",
             "entryTimeRequired": "Add the time to finish this entry, or clear the date.",
-            "entryDateRequired": "Add the date to finish this entry, or clear the time."
+            "entryDateRequired": "Add the date to finish this entry, or clear the time.",
+            "exitTimeRequired": "Add the time to finish this exit time, or clear the date.",
+            "exitDateRequired": "Add the date to finish this exit time, or clear the time."
           },
           "steps": {
             "progress": "Step {current} of {total}",
@@ -3022,6 +3024,107 @@
       "systemUnavailable": "No System Assessment yet",
       "systemLegacyNote": "This System result was recorded under the earlier System model. It stays visible as legacy evidence and is not compared with this Trade’s Actual R.",
       "gapUnavailable": "No comparable System Result"
+    },
+    "stage5": {
+      "optional": "Optional",
+      "time": {
+        "finalLabel": "Final exit date & time",
+        "legLabel": "Exit date & time",
+        "date": "Exit date",
+        "time": "Exit time",
+        "notRecorded": "Not recorded",
+        "timeNotRecorded": "Time not recorded",
+        "dateNotRecorded": "Date not recorded",
+        "description": "Times use {timezone}. Leave it blank if you don't know it.",
+        "useNow": "Use now",
+        "useNowAria": "Use now for {field}",
+        "useLast": "Use last recorded exit time ({time})",
+        "useLastAria": "Use the last recorded exit time for {field}",
+        "clear": "Clear date & time",
+        "clearAria": "Clear {field}",
+        "clearDate": "Clear date",
+        "clearTime": "Clear time",
+        "done": "Done",
+        "close": "Close",
+        "editAria": "Edit {field}",
+        "monthNav": "Change month",
+        "previousMonth": "Previous month",
+        "nextMonth": "Next month",
+        "hour": "Hour",
+        "minute": "Minute"
+      },
+      "pnl": {
+        "label": "Final net P&L",
+        "hint": "The whole trade's result after costs, in {currency}. Use a minus sign for a loss.",
+        "sourceTyped": "Entered by you.",
+        "sourceAdopted": "From your recorded exits. Type a figure to replace it.",
+        "subtotal": "Recorded exits add up to {amount}.",
+        "useRecorded": "Use recorded exits",
+        "needsComplete": "Recorded exits add up to {amount}. Answer that these are all the exits to use it as your final net P&L.",
+        "needsEveryPnl": "Some recorded exits have no P&L, so they cannot stand in for your final net P&L."
+      },
+      "leg": {
+        "pnl": "P&L for this exit",
+        "pnlHint": "This exit only, not the whole trade.",
+        "percent": "% of original position",
+        "price": "Exit price",
+        "reason": "Exit reason"
+      },
+      "history": {
+        "title": "Exit history",
+        "none": "No exits recorded yet.",
+        "noDetail": "No detail recorded",
+        "summaryEmpty": "No earlier exits",
+        "summaryCount": "{count, plural, one {# earlier exit} other {# earlier exits}}",
+        "description": "Supporting detail. Your final net P&L stays the trade’s result, and each exit is kept as recorded.",
+        "closingLeg": "This closing exit",
+        "closingLegHint": "Anything you know about the exit that closes the rest of the position."
+      },
+      "errors": {
+        "invalid_money": "Enter an amount like 125.50, or -80 for a loss.",
+        "invalid_price": "Enter a price above 0.",
+        "invalid_percent": "Enter a percentage above 0 and up to 100, with at most two decimals.",
+        "part_closes_position": "A partial exit cannot close the whole position. Use Close trade to close what remains.",
+        "percent_over_total": "Together your exits close more than the whole position. Check the percentages.",
+        "invalid_datetime": "Enter a valid date and time in your saved timezone.",
+        "exit_time_required": "Add the time to finish this exit time, or clear the date.",
+        "exit_date_required": "Add the date to finish this exit time, or clear the time.",
+        "exit_history_not_adoptable": "Recorded exits no longer add up to this figure. Type your final net P&L, or use the recorded exits again.",
+        "not_accepted": "This was not accepted. Check it and try again."
+      },
+      "page": {
+        "backToTrade": "Back to trade",
+        "partTitle": "Record partial exit",
+        "partDescription": "Record one exit. The trade stays open, and nothing here sets its final result.",
+        "closeTitle": "Close trade",
+        "closeDescription": "Confirm the rest of the position is closed. Every answer is optional, and your final net P&L is the result.",
+        "recordPartial": "Record partial exit",
+        "recordingPartial": "Recording…",
+        "closeTrade": "Close trade",
+        "closingTrade": "Closing…",
+        "sections": {
+          "exit": "This exit",
+          "finalTime": "When it closed",
+          "result": "Result",
+          "outcome": "Your outcome",
+          "history": "Exit history"
+        },
+        "context": {
+          "entered": "Entered",
+          "riskAtEntry": "Risk at entry",
+          "open": "Open",
+          "partiallyClosed": "Partially closed",
+          "remaining": "{percent}% still open",
+          "notRecorded": "Not recorded"
+        },
+        "attention": "{count, plural, one {# answer needs attention} other {# answers need attention}}",
+        "readOnly": "This workspace is read-only, so exits cannot be recorded.",
+        "notOpen": "This trade is not open, so there is nothing left to close.",
+        "legacy": "This trade was recorded before the current Add Trade flow. Record its exits from the trade page.",
+        "notFound": "This trade could not be found.",
+        "conflict": "This save was already used for a different exit. Go back to the trade to see what was recorded.",
+        "successPartial": "Partial exit recorded. The trade is still open."
+      }
     }
   },
   "strategies": {

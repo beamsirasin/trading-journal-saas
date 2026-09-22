@@ -280,7 +280,15 @@ async function fillEverything(page: Page) {
 
   // The final exit time says how the trade ended, so it asks on Result.
   await goTo(page, 'result');
-  await page.locator('#after-exitedAt').fill('2026-09-18T14:05');
+  // The same two-half sheet as the entry time (canonical Stage 5).
+  await page.locator('#after-exitedAt').click();
+  const exitSheet = page.getByRole('dialog');
+  await exitSheet.locator('#after-exitedAt-date').click();
+  await exitSheet.locator('[data-range-date="2026-09-18"]').click();
+  await exitSheet.locator('#after-exitedAt-time').click();
+  await exitSheet.locator('#after-exitedAt-wheel-hour [data-wheel-value="14"]').click();
+  await exitSheet.locator('#after-exitedAt-wheel-minute [data-wheel-value="05"]').click();
+  await exitSheet.getByRole('button', { name: 'Done' }).click();
   await page.locator('#after-finalPnl').fill('400');
   await clickChoice(page, 'Win');
   await page.locator('#after-exits-toggle').click();

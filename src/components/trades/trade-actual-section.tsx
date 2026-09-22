@@ -11,6 +11,8 @@ import {
 import { AddExitDialog, CorrectExitDialog } from '@/components/trades/trade-exit-actions';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeHistoricalAdoption } from '@/components/trades/trade-historical-adoption';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 /** ACTUAL answers only “what did I actually do?” System Plan ownership lives in SystemSection. */
 export function ActualSection({
@@ -28,6 +30,7 @@ export function ActualSection({
   const a = useTranslations('trades.create.recording.contractAfter');
   const c = useTranslations('trades.create.recording.contractEntry');
   const w = useTranslations('trades.workspace.details');
+  const s = useTranslations('trades.stage5');
   const contract = isContractRow(trade);
   // Save Closed Trade's record: its Final Net P&L is stated, never rebuilt from legs.
   const statedResult = hasStatedClosedResult(trade);
@@ -64,7 +67,12 @@ export function ActualSection({
   }
 
   const isClosed = trade.status === 'closed';
-  const isPartial = !isClosed && trade.closedBps !== null && trade.closedBps > 0;
+  // Partially Closed is derived, never stored: Open with a closed share, or — for a
+  // contract Trade, whose Part exit may leave its % unanswered — any Part leg (contract §11).
+  const isPartial =
+    !isClosed &&
+    ((trade.closedBps !== null && trade.closedBps > 0) ||
+      (contract && trade.exits.some((exit) => exit.exitScope === 'part')));
   const positionStatus = isClosed
     ? t('status.execution.closed')
     : isPartial
@@ -102,6 +110,9 @@ export function ActualSection({
             </div>
             <TraderOutcomeEvidence trade={trade} />
           </div>
+        ) : isPartial && contract ? (
+          // A Part exit sets no whole-trade result: no R until the Final Close.
+          <p className="text-sm font-medium">{t('detail.actualGroups.resultOpen')}</p>
         ) : isPartial ? (
           <div className="flex flex-col gap-1">
             <span className="text-muted-foreground text-xs">{t('field.realizedRToDate')}</span>
@@ -303,6 +314,32 @@ export function ActualSection({
               <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
             ) : (
               <>
+                {/*
+                  CANONICAL STAGE 5 FIRST. An Open contract Trade records its
+                  exits through the Stage 5 page, which chooses the scope from
+                  the action pressed. The legacy dialogs stay beside it until
+                  the legacy close is retired (not in this slice).
+                */}
+                {contract ? (
+                  <>
+                    <Button asChild variant="outline">
+                      <Link
+                        href={`/app/trades/close?trade=${trade.tradeId}&scope=part`}
+                        data-stage5-entry="part"
+                      >
+                        {s('page.recordPartial')}
+                      </Link>
+                    </Button>
+                    <Button asChild>
+                      <Link
+                        href={`/app/trades/close?trade=${trade.tradeId}&scope=all`}
+                        data-stage5-entry="all_remaining"
+                      >
+                        {s('page.closeTrade')}
+                      </Link>
+                    </Button>
+                  </>
+                ) : null}
                 <AddExitDialog trade={trade} timezone={timezone} />
                 {trade.remainingBps === null ? null : (
                   <AddExitDialog trade={trade} timezone={timezone} closeRemaining />

@@ -1447,7 +1447,10 @@ test.describe('real Trade Journal creation', () => {
         await afterTradeStep(page, 'result');
         // The final exit time is read here: it says how the trade ended.
         await expect(afterForm.locator('#after-exitedAt')).toBeVisible();
-        await expect(afterForm.locator('#after-exitedAt')).toHaveValue('');
+        await expect(afterForm.locator('[data-exit-time="after-exitedAt"]')).toHaveAttribute(
+          'data-value',
+          '',
+        );
         await expect(afterForm.locator('#after-finalPnl')).toBeVisible();
         await expect(afterForm.locator('[data-actual-r="unavailable"]')).toBeVisible();
         await afterTradeStep(page, 'plan');

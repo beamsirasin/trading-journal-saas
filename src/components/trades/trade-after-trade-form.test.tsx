@@ -328,6 +328,32 @@ function setEntryTime(time: string) {
   closeConcept();
 }
 
+/** The Stage 5 final exit time: a launcher row whose sheet holds the day and the minute. */
+function finalExitRow(): HTMLElement {
+  return document.getElementById('after-exitedAt')!;
+}
+
+function finalExitValue(): string {
+  return (
+    document.querySelector('[data-exit-time="after-exitedAt"]')?.getAttribute('data-value') ?? ''
+  );
+}
+
+function setFinalExitTime(date: string, time: string) {
+  fireEvent.click(finalExitRow());
+  const sheet = within(screen.getByRole('dialog'));
+  fireEvent.click(document.getElementById('after-exitedAt-date')!);
+  fireEvent.click(screen.getByRole('dialog').querySelector(`[data-range-date="${date}"]`)!);
+  fireEvent.click(document.getElementById('after-exitedAt-time')!);
+  fireEvent.click(
+    within(document.getElementById('after-exitedAt-wheel-hour')!).getByText(time.slice(0, 2)),
+  );
+  fireEvent.click(
+    within(document.getElementById('after-exitedAt-wheel-minute')!).getByText(time.slice(3, 5)),
+  );
+  fireEvent.click(sheet.getByRole('button', { name: 'Done' }));
+}
+
 function wheelColumn(half: 'hour' | 'minute'): HTMLElement {
   return document.getElementById(`after-enteredTime-${half}`)!;
 }
@@ -524,7 +550,10 @@ describe('After Trade — the moment and its steps', () => {
     }
     closeConcept();
     goTo('result');
-    expect(screen.getByLabelText('Final exit time')).toHaveValue('');
+    // Unanswered, and never "now": the shortcut is offered, not applied.
+    expect(finalExitValue()).toBe('');
+    expect(finalExitRow()).toHaveTextContent('Not recorded');
+    expect(screen.getByRole('button', { name: 'Use now for Final exit time' })).toBeInTheDocument();
     for (const name of ['Win', 'BE', 'Loss']) {
       expect(screen.getByRole('radio', { name })).not.toBeChecked();
     }
@@ -540,14 +569,15 @@ describe('After Trade — the moment and its steps', () => {
     renderForm();
     fillIdentity();
     // Each field is on the step that asks its question...
-    expect(within(stepSection('trade')).queryByLabelText('Final exit time')).toBeNull();
-    expect(within(stepSection('result')).getByLabelText('Final exit time')).toBeInTheDocument();
+    expect(stepSection('trade').querySelector('#after-exitedAt')).toBeNull();
+    expect(stepSection('result').querySelector('#after-exitedAt')).not.toBeNull();
     expect(within(stepSection('details')).queryByLabelText('Why this trade')).toBeNull();
     expect(within(stepSection('context')).getByLabelText('Why this trade')).toBeInTheDocument();
 
     // ...and each is sent exactly as it was before the move.
     goTo('result');
-    type('Final exit time', '2026-09-18T14:05');
+    setFinalExitTime('2026-09-18', '14:05');
+    expect(finalExitValue()).toBe('2026-09-18T14:05');
     goTo('context');
     type('Why this trade', 'Clean retest of the London high.');
     save();
@@ -2260,14 +2290,21 @@ describe('exit history', () => {
     openExitHistory();
     recordExit({ pnl: '60' });
     recordExit({ pnl: '40' });
-    expect(
-      screen.queryByRole('button', { name: 'Use recorded exits as final result' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use recorded exits' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('90');
-    fireEvent.click(screen.getByRole('button', { name: 'Use recorded exits as final result' }));
+    expect(screen.getByText('Entered by you.')).toBeInTheDocument();
+    // Offered beside the Final Net P&L it would replace, and only on request.
+    fireEvent.click(screen.getByRole('button', { name: 'Use recorded exits' }));
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('100.00');
+    // The source says where the figure now comes from.
+    expect(
+      screen.getByText('From your recorded exits. Type a figure to replace it.'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/but your final net P&L is/)).not.toBeInTheDocument();
+    // Typing makes it the trader's own figure again.
+    type('Final net P&L', '95');
+    expect(screen.getByText('Entered by you.')).toBeInTheDocument();
   });
 
   it('never re-weights exit P&L by percentage, and blocks exits that close more than 100%', async () => {

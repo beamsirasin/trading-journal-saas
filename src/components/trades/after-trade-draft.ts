@@ -579,6 +579,9 @@ export type AfterTradeErrorCode =
   | 'entry_time_required'
   /** The mirror of the above: a minute recorded without the day it falls on. */
   | 'entry_date_required'
+  /** The final exit time uses the same two-half editor (Stage 5), so the same rule. */
+  | 'exit_time_required'
+  | 'exit_date_required'
   | 'future_time'
   | 'exit_before_entry'
   | 'exit_outside_trade'
@@ -672,12 +675,12 @@ export function validateAfterTradeDraft(
       the other half, or for this one to be cleared. Either half can be the
       one that is missing; neither is more legitimate than the other.
     */
-    if (field === 'enteredAt' && isEntryDateWithoutTime(value)) {
-      errors[field] = 'entry_time_required';
+    if (isEntryDateWithoutTime(value)) {
+      errors[field] = field === 'enteredAt' ? 'entry_time_required' : 'exit_time_required';
       return null;
     }
-    if (field === 'enteredAt' && isEntryTimeWithoutDate(value)) {
-      errors[field] = 'entry_date_required';
+    if (isEntryTimeWithoutDate(value)) {
+      errors[field] = field === 'enteredAt' ? 'entry_date_required' : 'exit_date_required';
       return null;
     }
     const parsed = datetimeLocalToIso(value, context.timezone);

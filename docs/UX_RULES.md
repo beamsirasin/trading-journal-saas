@@ -1099,6 +1099,16 @@ Implementation evidence only, recorded so redesign and migration work can find t
     the product shell's own mechanism.
 - ~~After Trade redirects straight to the Review tab instead of offering Trade Saved → Review Trade /
   Done (§5.9–§5.10).~~ Closed with the After Trade migration.
+- **Close Existing Open Trade, stage 5 (implemented 2026-09-22):** `/app/trades/close` —
+  "Record partial exit" (Part) and "Close trade" (All Remaining) from the Trade's Execution panel,
+  scope chosen by the action, written through `recordContractExitAction`; Record Closed's Result
+  step uses the same Stage 5 controls. Still pending against §20.5:
+  - After-Trade Context (stage 6) is not built, so a Final Close returns straight to the Trade
+    rather than continuing to stage 6 and Trade Saved → Review Trade / Done (§5.9).
+  - Stages 1–4 appear as a one-line context summary, not the full read-only context.
+  - The legacy close dialogs are still offered beside Stage 5 on a contract row; a close through
+    them derives net P&L and outcome, and its R counts as legacy evidence.
+  - The Stage 5 page keeps no durable draft; its answers survive only while the page is open.
 - A Complete-history exit conflict blocks saving on a legacy row, and a live close derives net P&L
   from exit legs (§6.2, §13.8). After Trade keeps Final Net P&L authoritative with a non-blocking
   discrepancy notice.
