@@ -44,12 +44,24 @@ export const PRODUCTION_DATABASE_WRITE_ACKNOWLEDGEMENT =
   'I_UNDERSTAND_THIS_WRITES_TO_THE_PRODUCTION_DATABASE';
 
 /**
+ * Set, for one command, to authorize a write to the persistent staging
+ * database. A different string from the developer acknowledgement on purpose:
+ * one pasted into the other's place authorizes nothing.
+ */
+export const STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT =
+  'I_UNDERSTAND_THIS_WRITES_TO_THE_STAGING_DATABASE';
+
+/**
  * `development` — a personal branch or a local container. Developer-writable.
+ * `staging`     — the persistent staging deployment's own database (its own
+ *                 Neon branch). Writable only when its separately pinned
+ *                 target matches and the staging acknowledgement is given;
+ *                 never the development target.
  * `preview`     — per-branch deployment data. Managed by the deployment, never
  *                 written to from a laptop.
  * `production`  — real user data. Requires its own acknowledgement.
  */
-export const DATABASE_ENVIRONMENTS = ['development', 'preview', 'production'];
+export const DATABASE_ENVIRONMENTS = ['development', 'staging', 'preview', 'production'];
 
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
@@ -201,7 +213,18 @@ export function requireDeveloperDatabaseWrite(env = process.env, { operation, va
     );
   }
 
-  if (required(env, 'DEVELOPER_DATABASE_WRITE_ACK') !== DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT) {
+  const staging = environment === 'staging';
+  if (staging) {
+    if (required(env, 'STAGING_DATABASE_WRITE_ACK') !== STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT) {
+      throw new Error(
+        `Refusing ${label}: detected environment "staging", but STAGING_DATABASE_WRITE_ACK is missing or does not match.\n` +
+          `Set STAGING_DATABASE_WRITE_ACK=${STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT} for this one command to confirm ` +
+          'it is meant for the staging database. The developer acknowledgement does not authorize staging.',
+      );
+    }
+  } else if (
+    required(env, 'DEVELOPER_DATABASE_WRITE_ACK') !== DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT
+  ) {
     throw new Error(
       `Refusing ${label}: detected environment "development", but DEVELOPER_DATABASE_WRITE_ACK is missing or does not match.\n` +
         `Set DEVELOPER_DATABASE_WRITE_ACK=${DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT} in .env.local to confirm ` +
@@ -273,8 +296,42 @@ export function requireDeveloperDatabaseWrite(env = process.env, { operation, va
     A swapped URL produces a different fingerprint and is refused, whatever the
     flags around it still claim.
   */
-  const expected = required(env, 'DEVELOPER_DATABASE_TARGET_ID');
   const actual = databaseTargetFingerprint(raw, urlVariable);
+  if (staging) {
+    /*
+      STAGING IS PINNED ON ITS OWN, AND NEVER TO THE DEVELOPMENT TARGET. A
+      staging target that happened to equal the approved development one would
+      be the shared database this environment exists to separate, so it is
+      refused however the two variables were set.
+    */
+    const stagingTarget = required(env, 'STAGING_DATABASE_TARGET_ID');
+    if (stagingTarget === null) {
+      throw new Error(
+        `Refusing ${label}: STAGING_DATABASE_TARGET_ID is not set, so no database has been approved as staging.\n` +
+          `The database currently configured has target id ${actual}.`,
+      );
+    }
+    if (stagingTarget !== actual) {
+      throw new Error(
+        `Refusing ${label}: configured database does not match the approved staging target.\n` +
+          `Approved ${stagingTarget}, configured ${actual}.`,
+      );
+    }
+    if (required(env, 'DEVELOPER_DATABASE_TARGET_ID') === actual) {
+      throw new Error(
+        `Refusing ${label}: the staging target ${actual} is the approved development database. ` +
+          'Staging must have a database of its own.',
+      );
+    }
+    return {
+      environment,
+      databaseName,
+      host: hostClass(url),
+      variable: urlVariable,
+      targetId: actual,
+    };
+  }
+  const expected = required(env, 'DEVELOPER_DATABASE_TARGET_ID');
   if (expected === null) {
     throw new Error(
       `Refusing ${label}: DEVELOPER_DATABASE_TARGET_ID is not set, so no database has been approved for ` +

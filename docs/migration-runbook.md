@@ -35,6 +35,17 @@ DEVELOPER_DATABASE_WRITE_ACK=I_UNDERSTAND_THIS_DATABASE_ACCEPTS_DEVELOPER_WRITES
 DEVELOPER_DATABASE_TARGET_ID=db1_xxxxxxxxxxxxxxxx
 ```
 
+The persistent staging database is its own environment, with its own pin and its own acknowledgement, supplied for one command rather than kept in `.env.local`:
+
+```bash
+DATABASE_ENVIRONMENT=staging \
+STAGING_DATABASE_WRITE_ACK=I_UNDERSTAND_THIS_WRITES_TO_THE_STAGING_DATABASE \
+STAGING_DATABASE_TARGET_ID=db1_xxxxxxxxxxxxxxxx \
+DATABASE_URL=… DATABASE_MIGRATION_URL=… pnpm db:migrate
+```
+
+The developer acknowledgement never authorizes staging and the staging one never authorizes development, `preview` and `production` stay refused exactly as before, and a staging target that equals the approved development target is refused outright — that shared database is what the staging branch exists to replace.
+
 `DATABASE_ENVIRONMENT` is **declared, never detected.** A personal Neon branch is a remote host and is a perfectly good development database; a deployment database reached through a tunnel is `localhost` and is not. A hostname says where a database lives, never what it is for — so `scripts/database-safety.mjs` reads the declaration rather than guessing, and an unconfigured machine writes to nothing.
 
 | Command                             | Guarded?                                              |

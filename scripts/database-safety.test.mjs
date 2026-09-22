@@ -19,6 +19,7 @@ import {
   parsePostgresUrl,
   PRODUCTION_DATABASE_WRITE_ACKNOWLEDGEMENT,
   requireDeveloperDatabaseWrite,
+  STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT,
 } from './database-safety.mjs';
 import {
   TEST_DATABASE_ACKNOWLEDGEMENT,
@@ -56,9 +57,9 @@ describe('an unconfigured machine writes to nothing', () => {
   });
 
   it('refuses an environment name it does not recognize', () => {
-    expect(() =>
-      requireDeveloperDatabaseWrite(devEnv({ DATABASE_ENVIRONMENT: 'staging' })),
-    ).toThrow(/not a recognized environment/);
+    expect(() => requireDeveloperDatabaseWrite(devEnv({ DATABASE_ENVIRONMENT: 'qa' }))).toThrow(
+      /not a recognized environment/,
+    );
   });
 
   it('refuses a declared development database with no acknowledgement', () => {
@@ -453,5 +454,118 @@ describe('the approved developer target must be pinned', () => {
     expect(message).not.toContain('postgresql://');
     expect(message).not.toContain('neon.tech');
     expect(message).not.toContain('still-water');
+  });
+});
+
+describe('the staging database has its own identity, pin and acknowledgement', () => {
+  /* Staging's own branch; the developer pin in the same environment still names DEV. */
+  const STAGING_URL = OTHER_BRANCH;
+  const STAGING_TARGET = databaseTargetFingerprint(STAGING_URL, 'DATABASE_URL');
+  function stagingEnv(overrides = {}) {
+    return {
+      DATABASE_ENVIRONMENT: 'staging',
+      STAGING_DATABASE_WRITE_ACK: STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT,
+      STAGING_DATABASE_TARGET_ID: STAGING_TARGET,
+      DATABASE_URL: STAGING_URL,
+      // What a developer's .env.local leaves behind: never enough on its own.
+      DEVELOPER_DATABASE_WRITE_ACK: DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT,
+      DEVELOPER_DATABASE_TARGET_ID: DEV_TARGET,
+      ...overrides,
+    };
+  }
+
+  it('admits the pinned staging target with the staging acknowledgement', () => {
+    expect(requireDeveloperDatabaseWrite(stagingEnv())).toEqual({
+      environment: 'staging',
+      databaseName: 'tradechemist',
+      host: 'remote',
+      variable: 'DATABASE_URL',
+      targetId: STAGING_TARGET,
+    });
+  });
+
+  it('refuses staging without its own acknowledgement — the developer one does not count', () => {
+    expect(() =>
+      requireDeveloperDatabaseWrite(stagingEnv({ STAGING_DATABASE_WRITE_ACK: undefined })),
+    ).toThrow(/STAGING_DATABASE_WRITE_ACK is missing/);
+    expect(() =>
+      requireDeveloperDatabaseWrite(
+        stagingEnv({ STAGING_DATABASE_WRITE_ACK: DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT }),
+      ),
+    ).toThrow(/STAGING_DATABASE_WRITE_ACK is missing or does not match/);
+  });
+
+  it('refuses staging with no pinned target, and names the one configured', () => {
+    expect(() =>
+      requireDeveloperDatabaseWrite(stagingEnv({ STAGING_DATABASE_TARGET_ID: undefined })),
+    ).toThrow(new RegExp(`STAGING_DATABASE_TARGET_ID is not set[\\s\\S]*${STAGING_TARGET}`));
+  });
+
+  it('refuses a swapped URL while the declaration still says staging', () => {
+    expect(() => requireDeveloperDatabaseWrite(stagingEnv({ DATABASE_URL: LOCAL_URL }))).toThrow(
+      /does not match the approved staging target/,
+    );
+  });
+
+  it('refuses the development database pinned as staging — the shared database it replaces', () => {
+    expect(() =>
+      requireDeveloperDatabaseWrite(
+        stagingEnv({ DATABASE_URL: DEV_POOLED, STAGING_DATABASE_TARGET_ID: DEV_TARGET }),
+      ),
+    ).toThrow(/is the approved development database/);
+  });
+
+  it('keeps the app/migration and test-database contradictions for staging too', () => {
+    expect(() =>
+      requireDeveloperDatabaseWrite(stagingEnv({ DATABASE_MIGRATION_URL: DEV_DIRECT })),
+    ).toThrow(/address different databases/);
+    expect(() =>
+      requireDeveloperDatabaseWrite(stagingEnv({ TEST_DATABASE_URL: STAGING_URL })),
+    ).toThrow(/same database as TEST_DATABASE_URL/);
+  });
+
+  it('never lets the staging acknowledgement reach production or preview', () => {
+    for (const environment of ['production', 'preview']) {
+      expect(() =>
+        requireDeveloperDatabaseWrite(stagingEnv({ DATABASE_ENVIRONMENT: environment })),
+      ).toThrow(new RegExp(`detected environment "${environment}"`));
+    }
+  });
+
+  it('leaves development exactly as it was: the staging pin authorizes nothing there', () => {
+    expect(
+      requireDeveloperDatabaseWrite(devEnv({ STAGING_DATABASE_TARGET_ID: STAGING_TARGET }))
+        .environment,
+    ).toBe('development');
+    // A development declaration aimed at the staging branch is still refused by the developer pin.
+    expect(() =>
+      requireDeveloperDatabaseWrite(
+        devEnv({
+          DATABASE_URL: STAGING_URL,
+          STAGING_DATABASE_WRITE_ACK: STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT,
+          STAGING_DATABASE_TARGET_ID: STAGING_TARGET,
+        }),
+      ),
+    ).toThrow(/does not match the approved development write target/);
+  });
+
+  it('keeps the three acknowledgements distinct and leaks no credential', () => {
+    expect(
+      new Set([
+        DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT,
+        STAGING_DATABASE_WRITE_ACKNOWLEDGEMENT,
+        PRODUCTION_DATABASE_WRITE_ACKNOWLEDGEMENT,
+      ]).size,
+    ).toBe(3);
+    const refusal = (() => {
+      try {
+        requireDeveloperDatabaseWrite(stagingEnv({ DATABASE_URL: DEV_DIRECT }));
+      } catch (error) {
+        return String(error);
+      }
+      return '';
+    })();
+    expect(refusal).not.toContain(SECRET);
+    expect(refusal).not.toContain('ep-');
   });
 });
