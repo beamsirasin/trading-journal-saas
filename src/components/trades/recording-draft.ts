@@ -58,8 +58,16 @@ import {
  * draft is upgraded by `upgradeV1Envelope`, which keeps the At Entry section
  * whole and carries only the legacy After Trade values whose meaning did not
  * change. Any other version is never guessed.
+ *
+ * v3 (2026-09-23): At Entry's Actual Risk holds `unanswered`, and that is its
+ * default. In v2 the default was spelled `matched`, so a stored v2 draft
+ * cannot tell an untouched draft from one where the trader really said it
+ * matched. `upgradeV2Envelope` therefore reads every v2 `matched` as
+ * `unanswered`: downgrading an answer that might have been stated costs one
+ * re-answer, while upgrading a default nobody chose would manufacture a
+ * positive observation (contract §2, §8, §28).
  */
-export const RECORDING_DRAFT_VERSION = 2;
+export const RECORDING_DRAFT_VERSION = 3;
 
 /**
  * Conservative automatic retention: a draft untouched for 30 days is dropped
@@ -206,7 +214,8 @@ export function sharedFromAtEntry(draft: AtEntryDraft): SharedRecordingValues {
           : choice.kind === 'no_rule'
             ? { kind: 'no_rule' }
             : null,
-    // Matched is At Entry's visible assumption, not an After Trade answer.
+    // Only an explicit "it differed" carries: a match stated in one mode is
+    // not evidence about the other, and Unanswered carries nothing.
     actualRiskDifferent:
       draft.actualRisk.mode === 'different'
         ? { amount: draft.actualRisk.amount }
@@ -423,7 +432,7 @@ export function applySharedToAtEntry(
       ...next,
       actualRisk:
         different === null
-          ? { ...next.actualRisk, mode: 'matched' }
+          ? { ...next.actualRisk, mode: 'unanswered' }
           : different.amount === ''
             ? { ...next.actualRisk, mode: 'different_unknown' }
             : { mode: 'different', amount: different.amount },
@@ -730,7 +739,7 @@ const atEntrySchema = z.object({
   entryTime: z.object({ source: z.enum(['default_now', 'trader', 'cleared']), value: text }),
   risk: text,
   actualRisk: z.object({
-    mode: z.enum(['matched', 'different', 'different_unknown']),
+    mode: z.enum(['unanswered', 'matched', 'different', 'different_unknown']),
     amount: text,
   }),
   target: targetSchema,
@@ -835,7 +844,7 @@ const sharedSchema = z.object({
 }) satisfies z.ZodType<SharedRecordingValues>;
 
 const envelopeSchema = z.object({
-  version: z.literal(RECORDING_DRAFT_VERSION),
+  version: z.union([z.literal(2), z.literal(RECORDING_DRAFT_VERSION)]),
   activeMode: z.enum(['at_entry', 'after_trade']),
   mutationKey: z.string().uuid(),
   updatedAt: z.string().datetime({ offset: true }),
@@ -1033,6 +1042,29 @@ function upgradeV1Envelope(legacy: z.infer<typeof v1EnvelopeSchema>): RecordingD
   };
 }
 
+/**
+ * A v2 draft's At Entry Actual Risk, read the only way that cannot invent an
+ * answer: its `matched` was the untouched default far more often than it was
+ * a statement, and the two are indistinguishable in what was stored.
+ */
+function upgradeV2Envelope(parsed: z.infer<typeof envelopeSchema>): RecordingDraftEnvelope {
+  const envelope: RecordingDraftEnvelope = { ...parsed, version: RECORDING_DRAFT_VERSION };
+  if (
+    parsed.version === RECORDING_DRAFT_VERSION ||
+    envelope.atEntry === null ||
+    envelope.atEntry.actualRisk.mode !== 'matched'
+  ) {
+    return envelope;
+  }
+  return {
+    ...envelope,
+    atEntry: {
+      ...envelope.atEntry,
+      actualRisk: { ...envelope.atEntry.actualRisk, mode: 'unanswered' },
+    },
+  };
+}
+
 export type ParsedRecordingDraft =
   | { readonly status: 'recovered'; readonly envelope: RecordingDraftEnvelope }
   | { readonly status: 'expired' }
@@ -1062,10 +1094,10 @@ export function parseRecordingDraft(raw: string, now: Date): ParsedRecordingDraf
     const parsed = v1EnvelopeSchema.safeParse(value);
     if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
     envelope = upgradeV1Envelope(parsed.data);
-  } else if (version === undefined || version === RECORDING_DRAFT_VERSION) {
+  } else if (version === undefined || version === 2 || version === RECORDING_DRAFT_VERSION) {
     const parsed = envelopeSchema.safeParse(value);
     if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
-    envelope = parsed.data;
+    envelope = upgradeV2Envelope(parsed.data);
   } else {
     return { status: 'unrecoverable', reason: 'unsupported_version' };
   }

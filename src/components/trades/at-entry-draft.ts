@@ -48,11 +48,20 @@ export interface EntryTimeDraft {
   readonly value: string;
 }
 
-export type ActualRiskMode = 'matched' | 'different' | 'different_unknown';
+/**
+ * WHAT THE TRADER SAID ABOUT THE RISK THEY ACTUALLY CARRIED.
+ *
+ * `unanswered` is the default, and it is a state of its own: nobody has said
+ * whether the risk taken matched Risk at Entry. It is NOT `matched` — an
+ * unanswered observation is never a positive one (Add Trade contract §2, §8),
+ * and a Save from this state records no answer at all rather than a match the
+ * trader never stated. `matched` is reached only by saying so.
+ */
+export type ActualRiskMode = 'unanswered' | 'matched' | 'different' | 'different_unknown';
 
 export interface ActualRiskDraft {
   readonly mode: ActualRiskMode;
-  /** Kept while Matched or amount-unknown is chosen, so switching back restores it. */
+  /** Kept while another answer is chosen, so switching back restores it. */
   readonly amount: string;
 }
 
@@ -136,7 +145,7 @@ export function createAtEntryDraft(tradingAccountId: string): AtEntryDraft {
     direction: '',
     entryTime: { source: 'default_now', value: '' },
     risk: '',
-    actualRisk: { mode: 'matched', amount: '' },
+    actualRisk: { mode: 'unanswered', amount: '' },
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: { choice: { kind: 'inherit' }, customText: '', customBaseId: null },
     classification: { strategy: 'unanswered', strategyId: '', setupByStrategy: {}, conditions: {} },
@@ -833,7 +842,7 @@ export function hasUserWork(draft: AtEntryDraft, pristine: AtEntryDraft): boolea
   const { entryTime: _t, actualRisk: _a, exitPlan: _e, ...pristineRest } = pristine;
   return (
     entryTime.source !== 'default_now' ||
-    actualRisk.mode !== 'matched' ||
+    actualRisk.mode !== 'unanswered' ||
     actualRisk.amount !== '' ||
     exitPlan.choice.kind !== 'inherit' ||
     exitPlan.customText !== '' ||
@@ -889,7 +898,9 @@ export function buildAtEntryPayload(
     symbol: draft.symbol.trim().toUpperCase(),
     direction: draft.direction,
     plannedRiskMinor: validation.riskMinor,
-    actualRiskAnswer: draft.actualRisk.mode === 'matched' ? 'matched' : 'different',
+    ...(draft.actualRisk.mode === 'unanswered'
+      ? {}
+      : { actualRiskAnswer: draft.actualRisk.mode === 'matched' ? 'matched' : 'different' }),
     ...(actualRiskAmount?.ok ? { actualInitialRiskMinor: actualRiskAmount.value } : {}),
     ...(entered?.ok
       ? {

@@ -4,8 +4,9 @@
 > TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
 > final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
-> decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49 and the
-> recording-lifecycle decisions 50–51 (2026-09-22) are recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
+> decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49, the
+> recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52
+> (2026-09-23) are recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
 > place.
@@ -178,11 +179,18 @@ Actual risk differed
 
 ## Actual Risk at Entry
 
-การไม่เปิด `Actual risk differed` หมายถึง trader ยืนยันว่า actual risk ตรงกับ Risk at Entry ที่บันทึก
+**แก้ไข 2026-09-23 (decision 52):** Actual Risk at Entry เริ่มต้นเป็น **Unanswered**
 
-interaction ต้องสื่อความหมายนี้อย่างซื่อสัตย์ ห้ามเป็น hidden server inference
+การไม่ตอบ ไม่ใช่การยืนยันว่าตรง — ห้าม infer Matched จากการที่ไม่มีคำตอบ Different
 
-ถ้า trader เปิด `Actual risk differed` อย่าง explicit แต่ไม่กรอกจำนวน ให้เก็บเป็น **Different** และ **amount unknown** ห้าม revert เป็น Matched เงียบ ๆ
+trader ต้องระบุอย่าง explicit ว่า:
+
+- **Matched risk at entry** → Matched
+- **Different** → บันทึก Actual Risk (ถ้าไม่กรอกจำนวน เก็บเป็น **Different** และ **amount unknown** ห้าม revert เป็น Matched เงียบ ๆ)
+
+Unanswered ไม่ขัดขวาง primary System-vs-Actual comparison เพราะ Actual R ใช้ Risk at Entry เป็น 1R baseline ร่วม (§4, §17)
+
+_เดิม (v1, 2026-09-14 ถึง 2026-09-22): การไม่เปิด `Actual risk differed` หมายถึง trader ยืนยันว่า actual risk ตรงกับ Risk at Entry ที่บันทึก โดย interaction ต้องสื่อความหมายนี้อย่างซื่อสัตย์ ห้ามเป็น hidden server inference — Trade ที่บันทึกไว้ภายใต้ข้อตกลงเดิมยังคงเป็น historical observation ที่ valid ห้าม backfill หรือ reinterpret (decision 52)_
 
 ## Known Risk at Entry
 
@@ -1061,7 +1069,7 @@ Draft preservation รักษางานของ user ไม่ใช่ sys
 
 - ค่าร่วมที่ trader กรอกหรือเลือกเองอย่าง explicit และ semantics ยัง valid ถูก carry ข้าม เช่น Account, Symbol, Direction, Risk at Entry ที่กรอกเอง, Strategy / Setup ที่เลือกเอง, Exit Plan ที่เลือกเอง และ explicit shared observation อื่น
 - **Entry time:** ถ้า trader แก้ไขหรือยืนยัน Entry time อย่าง explicit ให้เก็บไว้ ถ้ายังเป็น automatic `now` default ที่ไม่ถูกแตะ ห้าม carry เป็น historical answer และ After Trade แสดง Entry time เป็น Unanswered
-- **implicit Actual Risk** ที่ตรงกับ Risk at Entry ("matches") ห้าม carry เป็น confirmed answer — After Trade Actual Risk เริ่มต้นเป็น Unanswered (ดู §4)
+- **Actual Risk** ที่ trader ยืนยันเองว่า Matched ห้าม carry ข้ามเป็นคำตอบของอีก recording moment — คำตอบเกี่ยวกับ Trade หนึ่งไม่ใช่หลักฐานของอีก Trade หนึ่ง ทั้ง At Entry และ After Trade เริ่มต้นเป็น Unanswered (ดู §4, decision 52)
 - **Strategy-default Exit Plan ที่ถูก inherit อัตโนมัติ** ห้าม carry เป็น confirmed answer — After Trade ไม่ apply Strategy / Exit Plan default ย้อนหลัง (ดู §5)
 
 ทุกทิศทางของการสลับ:
@@ -1110,7 +1118,7 @@ Unknown Risk ≠ $0 Risk
 
 P&L unknown ≠ Break-even
 
-Actual risk ยืนยันว่าตรง ≠ Actual Risk unknown (Don't know) ≠ Actual Risk unanswered
+Actual risk ยืนยันว่าตรง (explicit Matched) ≠ Actual Risk unknown (Don't know) ≠ Actual Risk unanswered (ยังไม่ได้ตอบ — ค่าเริ่มต้นของทั้ง At Entry และ After Trade ตั้งแต่ decision 52)
 
 Legacy-derived Trader Outcome ≠ Trader Outcome ที่ trader เลือกเอง
 
@@ -1549,12 +1557,36 @@ Lifecycle placement corrections, 2026-09-22 (item 51):
 51. **Lifecycle placements** — Risk at Entry (the intended 1R) and Actual Risk (the risk
     execution actually carried at entry, compared with Risk at Entry) both belong to Plan & Risk.
     Actual Risk is an entry-time fact, not a post-trade question: Record Open Trade answers it at
-    entry (§4 At Entry — the visible "matches" statement and "Actual risk differed"), and Record
-    Closed Trade reconstructs the same fact in Plan & Risk (§4 After Trade — Matched / Different /
-    Don't know). After-Trade Context may display it read-only but never asks it again, and no
+    entry (§4 At Entry — Matched risk at entry / Different, both explicit since decision 52
+    superseded the visible "matches" statement), and Record Closed Trade reconstructs the same
+    fact in Plan & Risk (§4 After Trade — Matched / Different / Don't know). After-Trade Context may display it read-only but never asks it again, and no
     second risk-adherence capture question is introduced. A Part exit stays within Exit & Result
     and asks no whole-Trade Final Net P&L or Trader Outcome; After-Trade Context is reached only
     when All Remaining makes the Trade Closed. The Trade's existing notes belong to Entry Context &
     Evidence and are not reused for After-Trade Context; a distinct after-trade note would be its
     own later schema change. _Revised the same day: an earlier wording placed Actual Risk in
     After-Trade Context; that placement is withdrawn._ Refines item 50. (§1, §4)
+
+Actual Risk at Entry amendment, 2026-09-23 (item 52):
+
+52. **Actual Risk at Entry is an explicit answer** — Actual Risk at Entry starts **Unanswered**
+    and becomes an answer only when the trader states one: **Matched risk at entry**, or
+    **Different** with an amount or with the amount unknown. Matched is never inferred from the
+    absence of a Different answer, and a Save from the unanswered state records no Actual Risk
+    answer at all. This **amends v1 §4**, which read the unopened "Actual risk differed" control
+    as the trader confirming a match and required the interaction to state that assumption
+    visibly. That rule was coherent while the control carried its own qualifying sentence beside
+    Risk at Entry; it stopped being honest once Plan & Risk was read as launcher rows, where a
+    glanceable row has no room for "assumed until you say otherwise" and would either assert a
+    match nobody stated or contradict what was saved. At Entry and After Trade now ask the same
+    question the same way (§4 After Trade is unchanged).
+
+    **Historical Trades are not touched.** A persisted `matched` recorded before this amendment
+    was a real confirmation under the interaction contract that applied then, and stays a valid
+    observation: no backfill, no reinterpretation, no re-derivation (§28 legacy provenance).
+
+    **Drafts that cannot prove which state they hold migrate to Unanswered.** A stored draft from
+    before this amendment spelled the untouched default `matched`, so an explicit confirmation and
+    an untouched draft are indistinguishable in it. Such a draft is read as Unanswered:
+    re-answering costs one tap, while the other reading would manufacture a positive observation
+    (§2, §8). Amends §4; refines §23 and §27. (§4, §23, §27)

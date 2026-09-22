@@ -47,7 +47,7 @@ import {
   type AtEntryField,
 } from './at-entry-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
-import { InlineAction, TextField } from './trade-at-entry-controls';
+import { InlineAction, StateText, TextField } from './trade-at-entry-controls';
 import { tradeDetailsRowId, TradeDetailsStep, type EntryErrorCode } from './trade-details-step';
 import { TradeEntryContextStep } from './trade-entry-context-step';
 import { instantToDatetimeLocal, parseTradeMoneyInput } from './trade-form-values';
@@ -881,18 +881,19 @@ export function TradeAtEntryForm({
             targetWrongSide: validation.notices.includes('target_wrong_side'),
           }}
           /*
-            `matched` IS THIS DRAFT'S UNTOUCHED DEFAULT, not an answer. The
-            editor offers it as a reversible assumption, with "Assumed until
-            you say otherwise" beside it saying exactly that. The row has no
-            such qualifier, so it reports nothing recorded rather than a match
-            nobody stated (contract §2, §8).
+            EVERY ANSWER HERE IS THE TRADER'S OWN. The draft starts
+            `unanswered` and only a named action moves it, so a match on the
+            row is one they stated — and an untouched draft says nothing
+            (contract §2, §8).
           */
           actualRisk={
             draft.actualRisk.mode === 'different'
               ? { kind: 'different', amount: draft.actualRisk.amount }
               : draft.actualRisk.mode === 'different_unknown'
                 ? { kind: 'different_unknown' }
-                : { kind: 'not_recorded' }
+                : draft.actualRisk.mode === 'matched'
+                  ? { kind: 'matched' }
+                  : { kind: 'not_recorded' }
           }
           actualRiskError={errorText('actualRiskAmount')}
           riskFollowUp={
@@ -981,11 +982,20 @@ export function TradeAtEntryForm({
 }
 
 /**
- * ACTUAL RISK, AS AT ENTRY ASKS IT (contract §4; UX Rules §3.4). Unopened, it
- * says plainly that actual risk matches Risk at Entry — a visible assumption,
- * never a silent server inference. Opening "Actual risk differed" records
- * Different, with an amount or with the amount unknown, and never reverts to
- * Matched except through its own named action.
+ * ACTUAL RISK, AS AT ENTRY ASKS IT (contract §4; UX Rules §3.4).
+ *
+ * IT STARTS UNANSWERED, AND SAYS SO. It once read as a standing assumption —
+ * "your actual risk matched this amount", qualified by "assumed until you say
+ * otherwise" — and that assumption reached the server as a stated `matched`
+ * answer on every Save. An unanswered observation is never a positive one
+ * (contract §2, §8), so the question is now asked plainly and answered by the
+ * trader: It matched, or It was different, with an amount or with the amount
+ * unknown. Nothing here is inferred from Risk at Entry.
+ *
+ * IT ONLY APPEARS BESIDE A REAL 1R. Matching, or differing from, a Risk at
+ * Entry that is missing or invalid is not a question that can be answered, so
+ * until one exists there is nothing to ask — except where the trader has
+ * already recorded a Different amount, which is theirs to keep.
  */
 function ActualRiskField({
   draft,
@@ -1004,17 +1014,34 @@ function ActualRiskField({
 }) {
   const c = useTranslations('trades.create.recording.contractEntry.actualRisk');
   const { mode, amount } = draft.actualRisk;
-  if (mode === 'matched') {
-    // The Matched assumption only makes sense beside a real, positive Risk at Entry.
+  const notAnswered = useTranslations('trades.create.recording.contractEntry');
+  if (mode === 'unanswered' || mode === 'matched') {
     if (!riskIsValid) return null;
+  }
+  if (mode === 'unanswered') {
+    return (
+      <div
+        data-actual-risk="unanswered"
+        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm"
+      >
+        <span className="text-foreground">{c('legend')}</span>
+        <StateText>{notAnswered('notAnswered')}</StateText>
+        <InlineAction onClick={() => onMode('matched')}>{c('confirmMatched')}</InlineAction>
+        <InlineAction onClick={() => onMode('different')}>{c('different')}</InlineAction>
+      </div>
+    );
+  }
+  if (mode === 'matched') {
     return (
       <div
         data-actual-risk="matched"
         className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm"
       >
         <span className="text-foreground">{c('matched')}</span>
-        <span>{c('assumption')}</span>
         <InlineAction onClick={() => onMode('different')}>{c('different')}</InlineAction>
+        <InlineAction ariaLabel={c('removeAria')} onClick={() => onMode('unanswered')}>
+          {notAnswered('removeAnswer')}
+        </InlineAction>
       </div>
     );
   }

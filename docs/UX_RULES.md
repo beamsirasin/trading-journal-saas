@@ -157,14 +157,19 @@ The non-negotiables. Each points to the full rule; the full rule governs.
    invisible and a trader can tell an untouched section from a completed one.
 3. **Disclosure MUST NOT hide a contract distinction.** For example, "Don't know" is never folded
    into a blank field behind a disclosure.
-4. **Actual risk differed (At Entry)** is a progressive action _(contract §4)_:
-   - While it has not been opened, the interface MUST visibly state that actual risk matches the
-     recorded Risk at Entry. That is an honest, visible affirmation, never a silent server
-     inference.
-   - Opening it records **Different**. An amount may be entered; left blank, the answer is
-     **Different, amount unknown** and MUST NOT silently revert to Matched.
-   - Collapsing the section does not change the answer (§3.1). Returning to the match is an explicit,
-     specifically labelled action.
+4. **Actual Risk (At Entry)** is an explicit answer _(contract §4, amended by decision 52,
+   2026-09-23)_:
+   - It starts **Unanswered** and the interface says so. Not answering is NOT a confirmation that
+     the risk matched, and Matched MUST NOT be inferred from the absence of a Different answer.
+     A Save from this state records no Actual Risk answer at all.
+   - **Matched risk at entry** and **Different** are both named actions. An amount may be entered
+     under Different; left blank, the answer is **Different, amount unknown** and MUST NOT
+     silently revert to Matched.
+   - Collapsing or closing an editor does not change the answer (§3.1). Returning to Matched, or
+     to Unanswered, is an explicit, specifically labelled action.
+   - _Superseded rule (contract v1): while "Actual risk differed" had not been opened, the
+     interface had to visibly state that actual risk matched Risk at Entry, and a Save recorded
+     that confirmation. Trades saved under it keep their answer._
 5. **Optional context (Tier 4) SHOULD be disclosed on demand.** Tier 1 and the Save action MUST be
    reachable without traversing optional sections.
 6. **Nested editors are views of the same Draft** _(contract §23)_. This covers editors such as
@@ -979,15 +984,13 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                                                                                                     |
    | **6 — After-Trade Context**      | Capture-only context about the close, such as Post-Trade Emotion                                                                                                                                                                   |
 
-   Actual Risk is an entry-time fact, asked in Plan & Risk in every flow: At Entry's visible
-   "matches" statement and "Actual risk differed" (§3.4, §11.4), or After Trade's Matched /
-   Different / Don't know reconstruction (§12.4). **A collapsed reading of Plan & Risk never states
-   that actual risk matched unless the trader established it.** At Entry's control may offer the
-   match as a reversible assumption because it shows the words that qualify it ("Assumed until you
-   say otherwise") and the way to change it; a launcher row shows neither, so it reads an
-   unestablished answer as not recorded. Turning that untouched default into a positive observation
-   is exactly what §2 and §8 of the contract forbid — and what the earlier "Opening matches plan"
-   claim was removed for. After-Trade Context may show it read-only as
+   Actual Risk is an entry-time fact, asked in Plan & Risk in every flow, and **in both flows it
+   starts Unanswered and is answered explicitly** (§3.4.4, contract decision 52): At Entry's
+   Matched risk at entry / Different (§11.4), or After Trade's Matched / Different / Don't know
+   reconstruction (§12.4). **Nothing states that actual risk matched unless the trader established
+   it** — not a row, not a Save. Turning an untouched default into a positive observation is what
+   §2 and §8 of the contract forbid, and what the earlier "Opening matches plan" claim was removed
+   for. After-Trade Context may show it read-only as
    context and never asks it again; there is no second risk-adherence question _(contract decision 51)_. The Trade's notes belong to Entry Context & Evidence and are not reused as an after-trade
    note (Appendix A).
 

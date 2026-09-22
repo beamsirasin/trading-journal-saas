@@ -520,7 +520,12 @@ type CreateTradeObject = z.output<typeof CreateTradeObjectSchema>;
 /**
  * The contract At Entry write: Account, Symbol, Direction and a positive Risk
  * at Entry are required; an explicit Fixed Target needs Target Profit or a TP
- * price; Actual Risk is matched or different; an entry time carries its source.
+ * price; an entry time carries its source.
+ *
+ * ACTUAL RISK IS NOT REQUIRED. Matched and Different are answers the trader
+ * gives; saying nothing is Unanswered, and the row is stored with no answer
+ * rather than a match nobody stated (contract §2, §8). Requiring one here is
+ * what made every At Entry Save claim `matched` by default.
  */
 function addAddTradeContractIssues(
   data: CreateTradeObject,
@@ -546,9 +551,6 @@ function addAddTradeContractIssues(
     }
   } else if (hasTargetProfit || hasTargetPrice) {
     issue('target_values_require_fixed_target', 'targetState');
-  }
-  if (data.actualRiskAnswer === undefined) {
-    issue('contract_requires_actual_risk_answer', 'actualRiskAnswer');
   }
   if (data.actualRiskAnswer === 'matched' && data.actualInitialRiskMinor != null) {
     issue('matched_actual_risk_has_no_amount', 'actualInitialRiskMinor');

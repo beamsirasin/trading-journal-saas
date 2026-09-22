@@ -33,11 +33,17 @@ describe('CreateTradeSchema — Add Trade contract v1', () => {
     expect(issueMessages(contractInput())).toEqual([]);
   });
 
-  it('requires a positive Risk at Entry and an Actual Risk answer', () => {
+  it('requires a positive Risk at Entry, and leaves Actual Risk to the trader', () => {
     const { plannedRiskMinor: _risk, ...withoutRisk } = contractInput();
     expect(issueMessages(withoutRisk)).toContain('contract_requires_risk_at_entry');
+    /*
+      ACTUAL RISK MAY BE UNANSWERED. Matched and Different are answers the
+      trader gives; an omitted answer is Unanswered and is accepted as such,
+      rather than being demanded and therefore defaulted to a match nobody
+      stated (contract §2, §8).
+    */
     const { actualRiskAnswer: _answer, ...withoutAnswer } = contractInput();
-    expect(issueMessages(withoutAnswer)).toContain('contract_requires_actual_risk_answer');
+    expect(issueMessages(withoutAnswer)).toEqual([]);
   });
 
   it('keeps a Matched Actual Risk free of a second amount but lets Different carry one or none', () => {

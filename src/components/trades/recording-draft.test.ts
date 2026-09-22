@@ -236,7 +236,9 @@ describe('round trips', () => {
     // Shared identity arrives; no historical answer becomes an At Entry assertion.
     expect(atEntry.atEntry).toMatchObject({ symbol: 'NAS100', direction: 'short' });
     expect(atEntry.atEntry?.entryTime.source).toBe('default_now');
-    expect(atEntry.atEntry?.actualRisk.mode).toBe('matched');
+    // Not even a match: an answer about a historical Trade says nothing about
+    // the risk carried on this one (contract §2, §8).
+    expect(atEntry.atEntry?.actualRisk.mode).toBe('unanswered');
     expect(atEntry.atEntry?.target.state).toBe('unanswered');
     const back = switchRecordingMode(atEntry, 'after_trade', CONTEXT);
     expect(back.afterTrade).toEqual(start.afterTrade);
@@ -281,7 +283,7 @@ describe('round trips', () => {
     });
   });
 
-  it('withdrawing "Different" in After Trade returns At Entry to its visible Matched assumption', () => {
+  it('withdrawing "Different" in After Trade returns At Entry to Unanswered, never to Matched', () => {
     const there = switchRecordingMode(
       envelopeWith(setActualRiskAmount(workedAtEntry(), '150')),
       'after_trade',
@@ -292,7 +294,7 @@ describe('round trips', () => {
       afterTrade: there.afterTrade && setActualRiskAnswer(there.afterTrade, 'unknown'),
     };
     const back = switchRecordingMode(withdrawn, 'at_entry', CONTEXT);
-    expect(back.atEntry?.actualRisk.mode).toBe('matched');
+    expect(back.atEntry?.actualRisk.mode).toBe('unanswered');
   });
 
   it('does not overwrite an account the first time the arriving mode is fresh and the source has none', () => {
@@ -337,8 +339,68 @@ describe('persisted shape', () => {
     });
   });
 
+  /*
+    RELOAD KEEPS THE DISTINCTION. An answer the trader gave and an answer
+    nobody gave must still be different after a round trip through storage —
+    otherwise the Save that follows a reload would claim what the Save before
+    it did not.
+  */
+  it('keeps a stated Matched, an Unanswered and a Different apart across a reload', () => {
+    for (const mode of ['unanswered', 'matched', 'different_unknown'] as const) {
+      const stored = envelopeWith({
+        ...workedAtEntry(),
+        actualRisk: { mode, amount: '' },
+      });
+      const parsed = parseRecordingDraft(serializeRecordingDraft(stored), NOW);
+      expect(parsed.status).toBe('recovered');
+      expect(parsed.status === 'recovered' ? parsed.envelope.atEntry?.actualRisk.mode : null).toBe(
+        mode,
+      );
+    }
+    const different = envelopeWith(setActualRiskAmount(workedAtEntry(), '150'));
+    const parsed = parseRecordingDraft(serializeRecordingDraft(different), NOW);
+    expect(parsed.status === 'recovered' ? parsed.envelope.atEntry?.actualRisk : null).toEqual({
+      mode: 'different',
+      amount: '150',
+    });
+  });
+
+  /*
+    A v2 DRAFT CANNOT TELL THE TWO APART, because v2 spelled the untouched
+    default `matched`. It is read as Unanswered: re-answering costs one tap,
+    while the other reading would manufacture a positive observation.
+  */
+  it("reads a v2 draft's Matched as Unanswered, and leaves its Different alone", () => {
+    const current = JSON.parse(serializeRecordingDraft(envelopeWith(workedAtEntry())));
+    const v2Matched = {
+      ...current,
+      version: 2,
+      atEntry: { ...current.atEntry, actualRisk: { mode: 'matched', amount: '' } },
+    };
+    const matched = parseRecordingDraft(JSON.stringify(v2Matched), NOW);
+    expect(matched.status).toBe('recovered');
+    expect(matched.status === 'recovered' ? matched.envelope.atEntry?.actualRisk.mode : null).toBe(
+      'unanswered',
+    );
+    expect(matched.status === 'recovered' ? matched.envelope.version : null).toBe(
+      RECORDING_DRAFT_VERSION,
+    );
+    // Everything else the v2 draft held is kept.
+    expect(matched.status === 'recovered' ? matched.envelope.atEntry?.symbol : null).toBe('XAUUSD');
+
+    const v2Different = {
+      ...current,
+      version: 2,
+      atEntry: { ...current.atEntry, actualRisk: { mode: 'different', amount: '150' } },
+    };
+    const different = parseRecordingDraft(JSON.stringify(v2Different), NOW);
+    expect(
+      different.status === 'recovered' ? different.envelope.atEntry?.actualRisk : null,
+    ).toEqual({ mode: 'different', amount: '150' });
+  });
+
   it('refuses an unknown schema version instead of reinterpreting its answers', () => {
-    const future = { ...JSON.parse(serializeRecordingDraft(envelope())), version: 3 };
+    const future = { ...JSON.parse(serializeRecordingDraft(envelope())), version: 4 };
     expect(parseRecordingDraft(JSON.stringify(future), NOW)).toEqual({
       status: 'unrecoverable',
       reason: 'unsupported_version',

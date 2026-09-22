@@ -359,9 +359,12 @@ describe('Record Open — Save and Save now', () => {
       symbol: 'XAUUSD',
       direction: 'long',
       plannedRiskMinor: '10000',
-      actualRiskAnswer: 'matched',
       enteredAtSource: 'default_now',
     });
+    // UNANSWERED IS NOT MATCHED. Nobody said what was really risked, so the
+    // Save says nothing about it rather than claiming a match (contract §2, §8).
+    expect(payload()).not.toHaveProperty('actualRiskAnswer');
+    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
     expect(payload()).not.toHaveProperty('targetState');
     expect(payload()).not.toHaveProperty('exitPlan');
     expect(payload()).not.toHaveProperty('plannedEntry');
@@ -502,15 +505,87 @@ describe('Record Open — Step 1 keeps At Entry’s "now"', () => {
 });
 
 describe('Record Open — Plan & Risk: Actual Risk', () => {
-  it('shows the matched assumption only beside a real Risk at Entry, and makes it reversible', () => {
+  it('asks the question beside a real Risk at Entry, and asserts nothing until answered', () => {
     renderForm();
     const editor = openPlanRow('risk');
-    expect(screen.queryByText('Your actual risk matched this amount.')).toBeNull();
+    // Nothing to match yet, so nothing is asked.
+    expect(screen.queryByText('It matched')).toBeNull();
     fireEvent.change(editor.getByLabelText('Risk at entry'), { target: { value: '100' } });
-    // Inside the editor the assumption is stated WITH the words that qualify it.
-    expect(editor.getByText('Your actual risk matched this amount.')).toBeVisible();
-    expect(editor.getByText('Assumed until you say otherwise.')).toBeVisible();
+    // The question, unanswered, with both answers offered and neither taken.
+    expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
+      'data-actual-risk',
+      'unanswered',
+    );
+    expect(editor.getByText('Not answered')).toBeVisible();
+    expect(editor.getByRole('button', { name: 'It matched' })).toBeVisible();
     expect(editor.getByRole('button', { name: 'It was different' })).toBeVisible();
+    // The standing assumption is gone: it is what reached the server as a claim.
+    expect(screen.queryByText('Your actual risk matched this amount.')).toBeNull();
+    expect(screen.queryByText('Assumed until you say otherwise.')).toBeNull();
+  });
+
+  /*
+    1 — UNTOUCHED DOES NOT PERSIST MATCHED. The state a trader never opens is
+    the one this product used to record as a match; it now records nothing.
+  */
+  it('sends no Actual Risk answer at all when the trader never answered it', async () => {
+    renderForm();
+    fillMinimum();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).not.toHaveProperty('actualRiskAnswer');
+    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
+  });
+
+  /* 2 — EXPLICIT MATCHED PERSISTS MATCHED, and only from a named action. */
+  it('sends Matched once the trader says it matched, with no second amount', async () => {
+    renderForm();
+    fillMinimum();
+    fireEvent.click(openPlanRow('risk').getByRole('button', { name: 'It matched' }));
+    expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
+      'data-actual-risk',
+      'matched',
+    );
+    closeEditor();
+    // Stated, so the row may say it.
+    expect(planRow('risk')).toHaveTextContent('Matched risk at entry');
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload().actualRiskAnswer).toBe('matched');
+    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
+  });
+
+  it('returns a stated Matched to Unanswered through its own named action', async () => {
+    renderForm();
+    fillMinimum();
+    const editor = openPlanRow('risk');
+    fireEvent.click(editor.getByRole('button', { name: 'It matched' }));
+    fireEvent.click(editor.getByRole('button', { name: 'Remove actual risk answer' }));
+    expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
+      'data-actual-risk',
+      'unanswered',
+    );
+    closeEditor();
+    expect(planRow('risk')).toHaveTextContent('Actual risk not recorded');
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).not.toHaveProperty('actualRiskAnswer');
+  });
+
+  /* 3 — EXPLICIT DIFFERENT still persists exactly as it did. */
+  it('sends Different with its amount, and Different with no amount, unchanged', async () => {
+    renderForm();
+    fillMinimum();
+    const editor = openPlanRow('risk');
+    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
+    fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
+    closeEditor();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      actualRiskAnswer: 'different',
+      actualInitialRiskMinor: '15000',
+    });
   });
 
   /*

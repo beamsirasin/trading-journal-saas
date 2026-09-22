@@ -2106,14 +2106,16 @@
           },
           "actualRisk": {
             "matched": "Your actual risk matched this amount.",
-            "assumption": "Assumed until you say otherwise.",
             "different": "It was different",
             "amount": "Actual risk",
             "amountHint": "What you really had at risk. Your 1R stays your risk at entry.",
             "unknown": "I don't know the amount",
             "unknownState": "Different, amount not known",
             "enterAmount": "Enter the amount",
-            "matchedAfterAll": "It matched after all"
+            "matchedAfterAll": "It matched after all",
+            "legend": "Actual risk",
+            "confirmMatched": "It matched",
+            "removeAria": "Remove actual risk answer"
           },
           "target": {
             "legend": "Target",

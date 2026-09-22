@@ -704,7 +704,13 @@ function validateContractCreate(
     if (input.exitPlanInheritanceDeclined === true) return 'invalid_exit_plan';
   } else {
     if (input.plannedRiskMinor == null) return 'invalid_initial_risk';
-    if (input.actualRiskAnswer !== 'matched' && input.actualRiskAnswer !== 'different') {
+    // Actual Risk is the trader's to answer or leave Unanswered; only a
+    // stated answer must be one this contract knows (contract §2, §8).
+    if (
+      input.actualRiskAnswer !== undefined &&
+      input.actualRiskAnswer !== 'matched' &&
+      input.actualRiskAnswer !== 'different'
+    ) {
       return 'invalid_initial_risk';
     }
     if (input.postTradeEmotionKeys !== undefined || input.closedAtCreation !== undefined) {

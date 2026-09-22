@@ -105,8 +105,12 @@ describe('At Entry draft — minimum Save and readiness', () => {
       recordingContract: 'add_trade_v1',
       symbol: 'XAUUSD',
       plannedRiskMinor: '10000',
-      actualRiskAnswer: 'matched',
     });
+    // Nobody said anything about the risk actually carried, so nothing is sent:
+    // an unanswered observation is never a positive one (contract §2, §8).
+    expect(
+      buildAtEntryPayload(minimum(), { ...context, mutationKey: ACCOUNT, options }),
+    ).not.toHaveProperty('actualRiskAnswer');
   });
 
   it('never reports Ready while any blocking error exists, including hidden ones', () => {
