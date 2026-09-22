@@ -2522,11 +2522,6 @@
               "title": "Context",
               "description": "Optional details that help you spot patterns later."
             },
-            "details": {
-              "label": "Save",
-              "title": "Review and save",
-              "description": "Check your trade, then save."
-            },
             "attention": "{count, plural, one {# item needs attention} other {# items need attention}}",
             "modeShort": "After trade",
             "groups": {
@@ -2545,6 +2540,11 @@
               "mindset": "Entry mindset",
               "afterTrade": "After the trade",
               "thesis": "Why you took it"
+            },
+            "after": {
+              "label": "After-trade",
+              "title": "After-trade context",
+              "description": "Optional context from after the trade, then save."
             }
           },
           "trade": {
@@ -3163,6 +3163,64 @@
         "reason": "Why this trade",
         "notes": "Entry notes",
         "chart": "Chart link"
+      }
+    },
+    "stage6": {
+      "title": "After-trade context",
+      "optional": "Optional",
+      "description": "Optional. Add anything useful while it is fresh. The trade is already saved.",
+      "close": "Close",
+      "done": "Done",
+      "emotion": {
+        "title": "After the trade",
+        "label": "Post-trade emotion",
+        "editAria": "Edit post-trade emotion",
+        "editor": "How you felt once the trade was over. This is separate from how you felt at entry.",
+        "removeAria": "Remove post-trade emotion answer"
+      },
+      "note": {
+        "title": "After-trade note",
+        "label": "After-trade note",
+        "placeholder": "What you noticed after the trade, while it is fresh."
+      },
+      "evidence": {
+        "title": "After-trade evidence",
+        "hint": "A chart of how the trade played out. Your entry chart link stays as it is.",
+        "chart": "TradingView link"
+      },
+      "errors": {
+        "invalidTradingViewUrl": "Enter an HTTPS TradingView URL.",
+        "blankNote": "Write a note, or leave it empty.",
+        "notAccepted": "This was not accepted. Check it and try again."
+      },
+      "page": {
+        "closedTitle": "Trade closed",
+        "closedDescription": "{symbol} is closed and its result is saved. Nothing below changes that.",
+        "title": "After-trade context",
+        "backToTrade": "Back to trade",
+        "save": "Save context",
+        "saving": "Saving…",
+        "skip": "Skip for now",
+        "savedTitle": "Trade saved",
+        "savedDescription": "{symbol} is saved.",
+        "savedContext": "Your after-trade context is saved.",
+        "savedSkipped": "You can add after-trade context later from the trade.",
+        "review": "Review Trade",
+        "finish": "Done",
+        "restored": "Your unsaved after-trade context was restored.",
+        "stale": "This trade changed since you started. Check your answers before you save them.",
+        "keep": "Keep my answers",
+        "discard": "Discard answers",
+        "notClosed": "After-trade context is added once the trade is closed.",
+        "legacy": "This trade was recorded before the current Add Trade flow, so it has no after-trade context.",
+        "notFound": "This trade could not be found.",
+        "readOnly": "This workspace is read-only, so after-trade context cannot be saved.",
+        "conflict": "This save was already used for different answers. Go back to the trade to see what was saved.",
+        "attention": "{count, plural, one {# answer needs attention} other {# answers need attention}}"
+      },
+      "detail": {
+        "add": "Add after-trade context",
+        "edit": "Edit after-trade context"
       }
     }
   },

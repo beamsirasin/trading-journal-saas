@@ -112,9 +112,12 @@ export interface AfterTradeDraft {
   readonly confidence: number | null;
   /** Recalled Entry Emotion. */
   readonly emotions: EmotionsDraft;
-  /** Post-Trade Emotion — separate, never merged into Entry Emotion. */
+  /** Post-Trade Emotion — separate, never merged into Entry Emotion. Stage 6. */
   readonly postTradeEmotions: EmotionsDraft;
   readonly context: ContextDraft;
+  /** Stage 6 After-Trade Context: never the entry notes or link. '' is Unanswered. */
+  readonly afterTradeNote: string;
+  readonly afterTradeTradingviewUrl: string;
 }
 
 export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft {
@@ -146,6 +149,8 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
       tradingviewUrl: '',
       notes: '',
     },
+    afterTradeNote: '',
+    afterTradeTradingviewUrl: '',
   };
 }
 
@@ -536,13 +541,15 @@ export const AFTER_TRADE_STATIC_FIELDS = [
   'contextStopPrice',
   'contextPositionSize',
   'tradingviewUrl',
+  'afterTradeNote',
+  'afterTradeTradingviewUrl',
 ] as const;
 export type AfterTradeStaticField = (typeof AFTER_TRADE_STATIC_FIELDS)[number];
 export type AfterTradeExitField = 'pnl' | 'closedPercent' | 'exitedAt' | 'price';
 /** A per-exit field is keyed `exit:<id>:<field>`. */
 export type AfterTradeField = AfterTradeStaticField | `exit:${string}:${AfterTradeExitField}`;
 
-export type AfterTradeSection = 'trade' | 'result' | 'plan' | 'exits' | 'context';
+export type AfterTradeSection = 'trade' | 'result' | 'plan' | 'exits' | 'context' | 'after';
 
 export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSection {
   if (field.startsWith('exit:') || field === 'exits') return 'exits';
@@ -559,6 +566,9 @@ export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSectio
     case 'contextPositionSize':
     case 'tradingviewUrl':
       return 'context';
+    case 'afterTradeNote':
+    case 'afterTradeTradingviewUrl':
+      return 'after';
     default:
       return 'trade';
   }
@@ -792,6 +802,13 @@ export function validateAfterTradeDraft(
   ) {
     errors.tradingviewUrl = 'invalid_tradingview_url';
   }
+  // Stage 6 evidence follows the same rule, at its own field.
+  if (
+    draft.afterTradeTradingviewUrl.trim() !== '' &&
+    !isValidTradingViewUrl(draft.afterTradeTradingviewUrl)
+  ) {
+    errors.afterTradeTradingviewUrl = 'invalid_tradingview_url';
+  }
 
   const reconciliation = reconcileExitHistory({
     completeness: draft.completeness === 'unanswered' ? null : draft.completeness,
@@ -890,6 +907,9 @@ export function orderedAfterTradeErrorFields(
     'contextStopPrice',
     'contextPositionSize',
     'tradingviewUrl',
+    // Stage 6 comes last in the reading order, as it does in the flow.
+    'afterTradeNote',
+    'afterTradeTradingviewUrl',
   ];
   return order.filter((field) => errors[field] !== undefined);
 }
@@ -1097,6 +1117,9 @@ export function buildAfterTradePayload(
     confirmationNotes: draft.context.reason,
     tradingviewUrl: draft.context.tradingviewUrl,
     notes: draft.context.notes,
+    // Stage 6, saved with the Closed Trade it describes.
+    afterTradeNote: draft.afterTradeNote,
+    afterTradeTradingviewUrl: draft.afterTradeTradingviewUrl,
     chartAttachmentStorageKey: null,
     ...(draft.confidence === null ? {} : { confidence: draft.confidence }),
   };

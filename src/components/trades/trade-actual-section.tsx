@@ -31,6 +31,12 @@ export function ActualSection({
   const c = useTranslations('trades.create.recording.contractEntry');
   const w = useTranslations('trades.workspace.details');
   const s = useTranslations('trades.stage5');
+  const s6 = useTranslations('trades.stage6');
+  // Stage 6 already answered, in any of its three parts.
+  const hasAfterTradeContext =
+    trade.afterTradeNote !== null ||
+    trade.afterTradeTradingviewUrl !== null ||
+    trade.postTradeEmotionsRecordedAt !== null;
   const contract = isContractRow(trade);
   // Save Closed Trade's record: its Final Net P&L is stated, never rebuilt from legs.
   const statedResult = hasStatedClosedResult(trade);
@@ -314,6 +320,20 @@ export function ActualSection({
             {t('detail.actualGroups.actions')}
           </h4>
           <div className="flex flex-wrap gap-2">
+            {/*
+              STAGE 6, RESUMED OR EDITED: a Closed contract Trade's optional
+              After-Trade Context. Never offered on a legacy Trade.
+            */}
+            {contract && isClosed ? (
+              <Button asChild variant="outline">
+                <Link
+                  href={`/app/trades/after-trade?trade=${trade.tradeId}`}
+                  data-stage6-entry={hasAfterTradeContext ? 'edit' : 'add'}
+                >
+                  {hasAfterTradeContext ? s6('detail.edit') : s6('detail.add')}
+                </Link>
+              </Button>
+            ) : null}
             {statedResult ? null : isClosed ? (
               <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
             ) : (

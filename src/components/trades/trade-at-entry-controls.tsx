@@ -279,6 +279,8 @@ export function TextAreaField({
   onChange,
   placeholder,
   hint,
+  maxLength,
+  error,
 }: {
   id: string;
   label: string;
@@ -286,8 +288,16 @@ export function TextAreaField({
   onChange: (value: string) => void;
   placeholder?: string;
   hint?: string;
+  /** The application limit the server enforces, stated to the browser too. */
+  maxLength?: number;
+  error?: string | undefined;
 }) {
   const hintId = `${id}-hint`;
+  const errorId = `${id}-error`;
+  const describedBy =
+    [hint === undefined ? null : hintId, error === undefined ? null : errorId]
+      .filter((part): part is string => part !== null)
+      .join(' ') || undefined;
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -296,11 +306,17 @@ export function TextAreaField({
         value={value}
         rows={3}
         placeholder={placeholder}
-        aria-describedby={hint === undefined ? undefined : hintId}
+        maxLength={maxLength}
+        aria-describedby={describedBy}
+        aria-invalid={error === undefined ? undefined : true}
         onChange={(event) => onChange(event.target.value)}
-        className="bg-background border-control-border text-foreground placeholder:text-subtle-foreground focus-visible:border-ring focus-visible:ring-ring/40 min-h-24 w-full rounded-md border px-3 py-2.5 text-base outline-none focus-visible:ring-[3px]"
+        className={cn(
+          'bg-background border-control-border text-foreground placeholder:text-subtle-foreground focus-visible:border-ring focus-visible:ring-ring/40 min-h-24 w-full rounded-md border px-3 py-2.5 text-base outline-none focus-visible:ring-[3px]',
+          error !== undefined && 'border-destructive',
+        )}
       />
       {hint === undefined ? null : <Helper id={hintId}>{hint}</Helper>}
+      {error === undefined ? null : <FieldError id={errorId}>{error}</FieldError>}
     </div>
   );
 }

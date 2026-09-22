@@ -1120,9 +1120,13 @@ Implementation evidence only, recorded so redesign and migration work can find t
   Trade: the legacy exit / close / exit-correction dialogs are hidden for it and their server
   actions refuse it (`contract_close_required`); legacy Trades keep them. Its answers persist in
   the Close Trade draft (§20.5) and the entry context is readable through "View entry details".
-  Still pending against §20.5: After-Trade Context (stage 6) is not built, so a Final Close
-  returns straight to the Trade rather than continuing to stage 6 and Trade Saved → Review Trade
-  / Done (§5.9).
+  **Stage 6 (implemented 2026-09-22):** a Final Close continues to `/app/trades/after-trade`,
+  which says the Trade is closed first and asks only optional After-Trade Context (Post-Trade
+  Emotion, an after-trade note, after-trade evidence); saved or skipped it ends at Trade Saved →
+  Review Trade / Done (§5.9), and a Closed contract Trade's Execution panel offers "Add / Edit
+  after-trade context" to resume it. A Part exit never enters stage 6. Record Closed's last step
+  is the same stage 6, with Save at its end; its answers are saved atomically with the Trade.
+  Chart image upload stays deferred.
 - A Complete-history exit conflict blocks saving on a legacy row, and a live close derives net P&L
   from exit legs (§6.2, §13.8). After Trade keeps Final Net P&L authoritative with a non-blocking
   discrepancy notice.

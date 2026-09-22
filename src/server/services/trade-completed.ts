@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { actualR } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
@@ -109,6 +109,9 @@ export interface CreateCompletedTradeInput {
   readonly tradingviewUrl?: string | null;
   readonly notes?: string | null;
   readonly chartAttachmentStorageKey?: string | null;
+  /** Stage 6 After-Trade Context, saved atomically with the Closed Trade. */
+  readonly afterTradeNote?: string | null;
+  readonly afterTradeTradingviewUrl?: string | null;
 }
 
 export type CreateCompletedTradeErrorCode =
@@ -400,6 +403,17 @@ export async function createCompletedTrade(
             updatedAt: now,
           })),
         );
+      }
+
+      // STAGE 6, IN THE SAME TRANSACTION: the Trade is created Closed, so its
+      // After-Trade Context can be written before anything commits.
+      const afterTradeNote = normalizeOptionalText(input.afterTradeNote);
+      const afterTradeTradingviewUrl = normalizeOptionalText(input.afterTradeTradingviewUrl);
+      if (afterTradeNote !== null || afterTradeTradingviewUrl !== null) {
+        await tx
+          .update(trades)
+          .set({ afterTradeNote, afterTradeTradingviewUrl })
+          .where(and(eq(trades.id, created.tradeId), eq(trades.workspaceId, workspaceId)));
       }
 
       await insertAuditLog(tx, {

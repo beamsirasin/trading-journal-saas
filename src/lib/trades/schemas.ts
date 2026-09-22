@@ -1093,6 +1093,13 @@ const CompletedTradeObjectSchema = z
     tradingviewUrl: tradingViewUrlField(),
     notes: optionalTextField(NOTES_MAX_LENGTH),
     chartAttachmentStorageKey: chartAttachmentStorageKeyField().nullable().optional(),
+    /**
+     * Stage 6 After-Trade Context, answered before the Trade exists and saved
+     * with it: distinct from the entry notes and the before-entry chart link.
+     * Blank is Unanswered; the link follows the Entry Context rule.
+     */
+    afterTradeNote: optionalTextField(NOTES_MAX_LENGTH),
+    afterTradeTradingviewUrl: tradingViewUrlField(),
   })
   .strict();
 

@@ -291,7 +291,13 @@ export function TradeCloseForm({
       const result = await recordContractExitAction(payload);
       if (result.ok) {
         if (draftScope !== null) removeCloseTask(draftScope, scope, new Date());
-        router.push(tradeHref, { scroll: false });
+        // The Trade is Closed now. The Final Close continues into Stage 6 —
+        // optional After-Trade Context — while a Part exit returns to the
+        // still-Open Trade and never enters it.
+        router.push(
+          allRemaining ? `/app/trades/after-trade?trade=${trade.tradeId}&from=close` : tradeHref,
+          { scroll: false },
+        );
         router.refresh();
         return;
       }

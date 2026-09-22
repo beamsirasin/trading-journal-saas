@@ -218,7 +218,7 @@ const STEP_LABEL = {
   result: 'Result',
   plan: 'Plan',
   context: 'Context',
-  save: 'Save',
+  after: 'After-trade',
 } as const;
 
 /** Open a step from the step list — the same control a trader taps. */
@@ -229,7 +229,7 @@ function goTo(step: keyof typeof STEP_LABEL) {
 }
 
 /** One step's own section, mounted whether or not it is the step being shown. */
-function stepSection(step: 'trade' | 'result' | 'plan' | 'context' | 'details'): HTMLElement {
+function stepSection(step: 'trade' | 'result' | 'plan' | 'context' | 'after'): HTMLElement {
   return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
 }
 
@@ -392,7 +392,7 @@ function type(label: string | RegExp, value: string, scope: HTMLElement = docume
 
 /** Save lives on the last step only. */
 function save() {
-  goTo('save');
+  goTo('after');
   fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
 }
 
@@ -426,11 +426,14 @@ function emotions(phase: 'emotions' | 'postTradeEmotions'): HTMLElement {
     }
     return document.querySelector<HTMLElement>('[data-emotions-phase="emotions"]')!;
   }
-  // Leave the Entry Emotion editor by its Done: routine dismissal keeps the answer.
-  if (open !== null) fireEvent.click(within(open).getByRole('button', { name: 'Done' }));
-  if (currentStep() !== 'context') goTo('context');
-  const toggle = document.getElementById(`after-${phase}-toggle`)!;
-  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  // Post-Trade Emotion is Stage 6's: a launcher row on the After-trade step.
+  if (open !== null && open.querySelector('[data-emotions-phase="emotions"]') !== null) {
+    fireEvent.click(within(open).getByRole('button', { name: 'Done' }));
+  }
+  if (currentStep() !== 'after') goTo('after');
+  if (screen.queryByRole('dialog') === null) {
+    fireEvent.click(screen.getByRole('button', { name: 'Edit post-trade emotion' }));
+  }
   return document.querySelector<HTMLElement>(`[data-emotions-phase="${phase}"]`)!;
 }
 
@@ -455,7 +458,7 @@ describe('After Trade — the moment and its steps', () => {
   it('asks one topic at a time, in reading order, with no Money/Price result basis', () => {
     renderForm();
     const seen: string[] = [];
-    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: Save']) {
+    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: After-trade']) {
       seen.push(screen.getByRole('heading', { level: 2 }).textContent ?? '');
       fireEvent.click(screen.getByRole('button', { name: next }));
     }
@@ -465,7 +468,7 @@ describe('After Trade — the moment and its steps', () => {
       'Result',
       'Plan at entry',
       'Context',
-      'Review and save',
+      'After-trade context',
     ]);
     expect(screen.getByText('Step 5 of 5')).toBeInTheDocument();
     expect(screen.queryByText(/price levels instead/i)).not.toBeInTheDocument();
@@ -477,10 +480,10 @@ describe('After Trade — the moment and its steps', () => {
     renderForm();
     expect(screen.queryByRole('button', { name: 'Save closed trade' })).not.toBeInTheDocument();
     expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
-    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: Save']) {
+    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: After-trade']) {
       fireEvent.click(screen.getByRole('button', { name: next }));
     }
-    expect(currentStep()).toBe('details');
+    expect(currentStep()).toBe('after');
     expect(screen.getByRole('button', { name: 'Save closed trade' })).toBeInTheDocument();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
@@ -510,7 +513,7 @@ describe('After Trade — the moment and its steps', () => {
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('120');
     expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
-    goTo('save');
+    goTo('after');
     expect(document.querySelector('[data-trade-summary]')).toHaveTextContent(
       /XAUUSD · Long · Main USD/,
     );
@@ -571,7 +574,7 @@ describe('After Trade — the moment and its steps', () => {
     // Each field is on the step that asks its question...
     expect(stepSection('trade').querySelector('#after-exitedAt')).toBeNull();
     expect(stepSection('result').querySelector('#after-exitedAt')).not.toBeNull();
-    expect(within(stepSection('details')).queryByLabelText('Why this trade')).toBeNull();
+    expect(within(stepSection('after')).queryByLabelText('Why this trade')).toBeNull();
     expect(within(stepSection('context')).getByLabelText('Why this trade')).toBeInTheDocument();
 
     // ...and each is sent exactly as it was before the move.
@@ -588,7 +591,7 @@ describe('After Trade — the moment and its steps', () => {
     });
   });
 
-  it('asks timeframe and session with the entry context, not on the Save step', async () => {
+  it('asks timeframe and session with the entry context, not on the After-trade step', async () => {
     renderForm();
     fillIdentity();
     goTo('context');
@@ -597,9 +600,9 @@ describe('After Trade — the moment and its steps', () => {
     // Entry-time context lives in Entry Context; Save holds no context fields.
     const context = stepSection('context');
     expect(within(context).getByLabelText('Timeframe')).toHaveValue('15m');
-    expect(within(stepSection('details')).queryByLabelText('Timeframe')).toBeNull();
-    expect(within(stepSection('details')).queryByLabelText('Notes')).toBeNull();
-    expect(within(stepSection('details')).queryByLabelText('Chart link')).toBeNull();
+    expect(within(stepSection('after')).queryByLabelText('Timeframe')).toBeNull();
+    expect(within(stepSection('after')).queryByLabelText('Notes')).toBeNull();
+    expect(within(stepSection('after')).queryByLabelText('Chart link')).toBeNull();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({ timeframe: '15m', session: 'London' });
@@ -608,7 +611,7 @@ describe('After Trade — the moment and its steps', () => {
   it('calls an untouched optional step Optional, never unfinished', () => {
     renderForm();
     fillIdentity();
-    goTo('save');
+    goTo('after');
     const review = document.querySelector('[data-trade-summary]')!;
     expect(review).toHaveTextContent(/XAUUSD · Long/);
     // Result, Plan and Context are untouched — and that is a complete answer.
@@ -656,7 +659,7 @@ describe('After Trade — the moment and its steps', () => {
       document.getElementById('after-plan-price'),
     );
     expect(
-      within(stepSection('details')).queryByRole('button', {
+      within(stepSection('after')).queryByRole('button', {
         name: /^Price levels/,
         hidden: true,
       }),
@@ -681,7 +684,7 @@ describe('After Trade — the moment and its steps', () => {
     // This one cannot fold: the error inside it has to stay reachable.
     expect(group).toHaveAttribute('aria-expanded', 'true');
     // Save from elsewhere: the blocked Save brings the trader back to Plan.
-    goTo('save');
+    goTo('after');
     save();
     expect(
       await screen.findByText(
@@ -1387,12 +1390,12 @@ describe('Step 1 — entry date and entry time', () => {
     renderForm();
     fillIdentity();
     pickEntryDate('2026-09-18');
-    goTo('save');
+    goTo('after');
     const review = document.querySelector('[data-trade-summary]')!;
     expect(review).toHaveTextContent('Time not recorded');
     goTo('trade');
     setEntryTime('09:30');
-    goTo('save');
+    goTo('after');
     expect(document.querySelector('[data-trade-summary]')).not.toHaveTextContent(
       'Time not recorded',
     );
@@ -1986,7 +1989,7 @@ describe('Save Closed Trade — only identity is required', () => {
 
   it('prompts for Final Net P&L and the outcome without requiring them', async () => {
     renderForm();
-    goTo('save');
+    goTo('after');
     expect(screen.getByText(/not recorded yet\. You can still save/)).toBeInTheDocument();
     fillIdentity();
     save();
@@ -2200,6 +2203,8 @@ describe('psychology', () => {
     fireEvent.click(
       within(emotions('postTradeEmotions')).getByRole('button', { name: 'Frustrated' }),
     );
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' }));
+    goTo('context');
     fireEvent.click(screen.getByRole('radio', { name: 'Very High' }));
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -2215,6 +2220,12 @@ describe('psychology', () => {
     fillIdentity();
     fireEvent.click(
       within(emotions('postTradeEmotions')).getByRole('button', { name: 'None of these' }),
+    );
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' }));
+    // The launcher row reads the explicit answer back; it never shows as unanswered.
+    expect(document.querySelector('[data-post-trade-emotions]')).toHaveAttribute(
+      'data-post-trade-emotions',
+      'none',
     );
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -2415,5 +2426,66 @@ describe('after Save', () => {
     expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1);
     resolve({ ok: true, data: { tradeId: TRADE_ID } });
     expect(await screen.findByRole('heading', { name: 'Trade saved' })).toBeInTheDocument();
+  });
+});
+
+describe('Stage 6 — After-Trade Context, the last canonical stage', () => {
+  it('asks Post-Trade Emotion, the note and the evidence on After-trade, and saves them with the Trade', async () => {
+    renderForm();
+    fillIdentity();
+    // Context no longer holds Post-Trade Emotion: Stage 6 owns it.
+    expect(
+      stepSection('context').querySelector('[data-emotions-phase="postTradeEmotions"]'),
+    ).toBeNull();
+    goTo('after');
+    const after = stepSection('after');
+    expect(within(after).getByRole('button', { name: 'Edit post-trade emotion' })).toBeVisible();
+    fireEvent.change(within(after).getByLabelText('After-trade note'), {
+      target: { value: 'Exited on fear.' },
+    });
+    fireEvent.change(within(after).getByLabelText('TradingView link'), {
+      target: { value: 'https://www.tradingview.com/x/After0001/' },
+    });
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({
+      afterTradeNote: 'Exited on fear.',
+      afterTradeTradingviewUrl: 'https://www.tradingview.com/x/After0001/',
+      // The entry evidence is its own, untouched.
+      notes: '',
+      tradingviewUrl: '',
+    });
+    expect(payload()).not.toHaveProperty('postTradeEmotionKeys');
+  });
+
+  it('blocks Save at the after-trade link, on the After-trade step, with its own error', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('after');
+    fireEvent.change(within(stepSection('after')).getByLabelText('TradingView link'), {
+      target: { value: 'https://example.com/chart' },
+    });
+    goTo('trade');
+    save();
+    await waitFor(() => expect(currentStep()).toBe('after'));
+    const link = within(stepSection('after')).getByLabelText('TradingView link');
+    await waitFor(() => expect(link).toHaveFocus());
+    expect(link).toHaveAttribute('aria-invalid', 'true');
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps Stage 6 answers through a reload, but not the step being shown', () => {
+    renderForm();
+    fillIdentity();
+    goTo('after');
+    fireEvent.change(within(stepSection('after')).getByLabelText('After-trade note'), {
+      target: { value: 'Still fresh.' },
+    });
+    cleanup();
+    renderForm();
+    expect(currentStep()).toBe('trade');
+    expect(within(stepSection('after')).getByLabelText('After-trade note')).toHaveValue(
+      'Still fresh.',
+    );
   });
 });

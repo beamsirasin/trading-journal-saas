@@ -40,7 +40,7 @@ const STEP_KEY = {
   result: 'result',
   plan: 'plan',
   context: 'context',
-  save: 'details',
+  save: 'after',
 } as const;
 type StepName = keyof typeof STEP_KEY;
 
@@ -246,11 +246,6 @@ async function closeConcept(page: Page) {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
-async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') {
-  const toggle = page.locator(`#after-${phase}-toggle`);
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-}
-
 /** A meaningful closed trade: every step holds real answers. */
 async function fillEverything(page: Page) {
   const symbol = await openConcept(page, 'Symbol');
@@ -325,18 +320,17 @@ async function fillEverything(page: Page) {
   await page.locator('#after-entry-emotions').click();
   await page.getByRole('dialog').getByRole('button', { name: 'Focused' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
-  await openEmotion(page, 'postTradeEmotions');
-  await page
-    .locator('[data-emotions-phase="postTradeEmotions"]')
-    .getByRole('button', { name: 'Calm' })
-    .click();
-  // Collapse it again: the capture shows the summary a trader returns to.
-  await openEmotion(page, 'postTradeEmotions');
   // The thesis reads with the rest of the trader's read on the trade.
   await page.getByLabel('Why this trade').fill('Clean retest of the London high.');
   // Market context is entry-time context, asked directly in Entry Context.
   await page.getByLabel('Timeframe').fill('15m');
   await page.getByLabel('Session').fill('London');
+  // Post-Trade Emotion is Stage 6's: its launcher on the After-trade step.
+  await goTo(page, 'save');
+  await page.locator('#after-stage6-post-emotions').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Calm' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await page.getByLabel('After-trade note').fill('Exited as planned.');
 }
 
 /**

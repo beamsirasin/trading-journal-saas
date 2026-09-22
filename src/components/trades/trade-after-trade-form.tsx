@@ -65,21 +65,18 @@ import {
   type AfterTradeErrors,
   type AfterTradeExitDraft,
   type AfterTradeField,
-  type EmotionPhase,
 } from './after-trade-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
+import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
 import {
   ChoiceGroup,
-  Disclosure,
   Helper,
   InlineAction,
   Notice,
-  StateText,
   Tag,
   TextField,
 } from './trade-at-entry-controls';
 import { formatEntryStamp, tradeDetailsRowId, TradeDetailsStep } from './trade-details-step';
-import { TradeEmotionFields } from './trade-emotion-fields';
 import { TradeEntryContextStep } from './trade-entry-context-step';
 import {
   ActualRReadoutRow,
@@ -99,19 +96,20 @@ import { TradeStepFlow, TradeStepSection } from './trade-step-flow';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 /**
- * THE FIVE STEPS OF A CLOSED-TRADE RECORDING. One topic at a time: the trade,
- * its result (the moment's question), the plan as remembered, the trader's
- * read, then lower-priority details and Save. Only Step 1 holds anything Save
- * needs; every other step can be left unanswered and still advanced.
+ * THE FIVE STEPS OF A CLOSED-TRADE RECORDING — Record Closed's task order over
+ * the canonical stages: Trade (1), Result (5), Plan (2), Setup and Entry
+ * Context (3–4), then After-Trade Context (6), which ends with Save. Save is
+ * the last step's action, not a stage of its own. Only Step 1 holds anything
+ * Save needs; every other step can be left unanswered and still advanced.
  */
-const STEPS = ['trade', 'result', 'plan', 'context', 'details'] as const;
+const STEPS = ['trade', 'result', 'plan', 'context', 'after'] as const;
 type StepKey = (typeof STEPS)[number];
 const STEP_INDEX: Readonly<Record<StepKey, number>> = {
   trade: 0,
   result: 1,
   plan: 2,
   context: 3,
-  details: 4,
+  after: 4,
 };
 const LAST_STEP = STEPS.length - 1;
 
@@ -145,10 +143,16 @@ function fieldStep(field: AfterTradeField): number {
       return STEP_INDEX.plan;
     case 'context':
       return STEP_INDEX.context;
+    case 'after':
+      return STEP_INDEX.after;
     default:
       return STEP_INDEX.trade;
   }
 }
+
+/** Stage 6's control ids on this form (`fieldTargetId` focuses them). */
+const AFTER_CONTEXT_PREFIX = 'after-stage6';
+const AFTER_CONTEXT_IDS = afterTradeContextIds(AFTER_CONTEXT_PREFIX);
 
 /** One Save in the document at a time — see `trade-at-entry-form.tsx`. */
 const WIDE_VIEWPORT_QUERY = '(min-width: 64rem)';
@@ -192,6 +196,10 @@ function fieldTargetId(field: AfterTradeField): string {
       return 'after-actual-risk-amount';
     case 'tradingviewUrl':
       return 'after-context-chart';
+    case 'afterTradeNote':
+      return AFTER_CONTEXT_IDS.note;
+    case 'afterTradeTradingviewUrl':
+      return AFTER_CONTEXT_IDS.tradingviewUrl;
     default:
       return `after-${field}`;
   }
@@ -242,6 +250,8 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   contextStopPrice: 'contextStopPrice',
   contextPositionSize: 'contextPositionSize',
   tradingviewUrl: 'tradingviewUrl',
+  afterTradeNote: 'afterTradeNote',
+  afterTradeTradingviewUrl: 'afterTradeTradingviewUrl',
 };
 
 /** Inside the step being shown, rather than one kept mounted but hidden. */
@@ -269,6 +279,7 @@ function serverFieldErrorCode(field: AfterTradeField): AfterTradeErrorCode {
     case 'contextPositionSize':
       return 'invalid_price';
     case 'tradingviewUrl':
+    case 'afterTradeTradingviewUrl':
       return 'invalid_tradingview_url';
     case 'risk':
     case 'actualRisk':
@@ -334,6 +345,7 @@ export function TradeAfterTradeForm({
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
+  const s6 = useTranslations('trades.stage6');
   const r = useTranslations('trades.create.replay');
   const locale = useLocale();
   const router = useRouter();
@@ -374,10 +386,6 @@ export function TradeAfterTradeForm({
   }, [saved]);
 
   const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
-  const [emotionsOpen, setEmotionsOpen] = useState<Readonly<Record<EmotionPhase, boolean>>>({
-    emotions: false,
-    postTradeEmotions: false,
-  });
   /*
     THE CURRENT STEP IS VIEW STATE, NOT DRAFT STATE. Every step stays mounted
     and only the current one is shown, so moving between steps can never drop
@@ -396,7 +404,6 @@ export function TradeAfterTradeForm({
     readonly reason: 'different' | 'unverifiable';
   } | null>(null);
   const [pending, setPending] = useState(false);
-  const [emotionHint, setEmotionHint] = useState<EmotionPhase | null>(null);
 
   const apply = (change: (current: AfterTradeDraft) => AfterTradeDraft) => {
     setDraft((current) => change(current));
@@ -450,6 +457,10 @@ export function TradeAfterTradeForm({
         return draft.context.positionSize;
       case 'tradingviewUrl':
         return draft.context.tradingviewUrl;
+      case 'afterTradeNote':
+        return draft.afterTradeNote;
+      case 'afterTradeTradingviewUrl':
+        return draft.afterTradeTradingviewUrl;
       default:
         return '';
     }
@@ -792,10 +803,13 @@ export function TradeAfterTradeForm({
   if (summary.emotions.answer === 'selected') {
     analysisLines.push(c('summary.emotionsCount', { count: summary.emotions.count }));
   }
-  if (summary.postTradeEmotions.answer === 'none') analysisLines.push(a('summary.postTradeNone'));
+  const afterTradeLines: string[] = [];
+  if (summary.postTradeEmotions.answer === 'none') afterTradeLines.push(a('summary.postTradeNone'));
   if (summary.postTradeEmotions.answer === 'selected') {
-    analysisLines.push(a('summary.postTradeCount', { count: summary.postTradeEmotions.count }));
+    afterTradeLines.push(a('summary.postTradeCount', { count: summary.postTradeEmotions.count }));
   }
+  if (draft.afterTradeNote.trim() !== '') afterTradeLines.push(s6('note.title'));
+  if (draft.afterTradeTradingviewUrl.trim() !== '') afterTradeLines.push(s6('evidence.title'));
 
   // The latest recorded exit time, offered — never applied — as the final exit time.
   const latestExitLocal = (() => {
@@ -887,8 +901,7 @@ export function TradeAfterTradeForm({
       ...analysisLines,
       contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
     ]),
-    // The Save step holds no answers of its own any more: it is the read-back.
-    details: null,
+    after: joinParts(afterTradeLines),
   };
   const missingRequirements = requirements.filter(
     (item) => !item.done || visibleErrors[item.field] !== undefined,
@@ -907,55 +920,6 @@ export function TradeAfterTradeForm({
   const currentKey = STEPS[step] ?? 'trade';
   const onLastStep = step === LAST_STEP;
   const progressText = a('steps.progress', { current: step + 1, total: STEPS.length });
-
-  /** One emotion question, folded to its answer until the trader opens it. */
-  const emotionQuestion = (phase: EmotionPhase) => {
-    const answer = draft[phase];
-    const legend = phase === 'emotions' ? a('emotions.entryLegend') : a('emotions.postLegend');
-    return (
-      <Disclosure
-        id={`after-${phase}-toggle`}
-        title={legend}
-        summary={
-          answer.answer === 'selected'
-            ? answer.keys.map((key) => t(`emotions.${key}`)).join(', ')
-            : answer.answer === 'none'
-              ? c('emotions.none')
-              : c('notAnswered')
-        }
-        open={emotionsOpen[phase]}
-        onToggle={() => setEmotionsOpen((current) => ({ ...current, [phase]: !current[phase] }))}
-      >
-        <TradeEmotionFields
-          phase={phase}
-          answer={answer}
-          legend={legend}
-          hint={phase === 'postTradeEmotions' ? a('emotions.postHint') : undefined}
-          removeAria={
-            phase === 'emotions' ? c('emotions.removeAria') : a('emotions.removePostAria')
-          }
-          catalog={options.emotionCatalog}
-          showLastOneHint={emotionHint === phase}
-          onToggle={(key) => {
-            if (!canDeselectEmotion(draft[phase], key)) {
-              setEmotionHint(phase);
-              return;
-            }
-            setEmotionHint(null);
-            apply((current) => toggleEmotion(current, phase, key));
-          }}
-          onNone={() => {
-            setEmotionHint(null);
-            apply((current) => answerNoEmotions(current, phase));
-          }}
-          onRemove={() => {
-            setEmotionHint(null);
-            apply((current) => removeEmotionsAnswer(current, phase));
-          }}
-        />
-      </Disclosure>
-    );
-  };
 
   const stepAttention = stepErrorCounts[step] ?? 0;
   /** The steps a Save would stop on, named so the last step can point at them. */
@@ -1356,25 +1320,34 @@ export function TradeAfterTradeForm({
               apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
             }
           />
-
-          {/*
-                AFTER THE TRADE: Post-Trade Emotion, separate from Entry Emotion.
-                It stays on this task step until After-Trade Context is built.
-              */}
-          <GroupCard
-            title={a('steps.cards.afterTrade')}
-            aside={<StateText>{a('steps.optional')}</StateText>}
-          >
-            {emotionQuestion('postTradeEmotions')}
-          </GroupCard>
         </>,
       )}
 
-      {/* 5 — DETAILS, THE SUMMARY, AND SAVE */}
+      {/* 5 — AFTER-TRADE CONTEXT (canonical Stage 6), THEN THE READ-BACK AND SAVE */}
       {section(
-        'details',
+        'after',
         'gap-6',
         <>
+          <TradeAfterTradeContextStep
+            idPrefix={AFTER_CONTEXT_PREFIX}
+            emotions={draft.postTradeEmotions}
+            catalog={options.emotionCatalog}
+            note={draft.afterTradeNote}
+            tradingviewUrl={draft.afterTradeTradingviewUrl}
+            errors={{ tradingviewUrl: errorText('afterTradeTradingviewUrl') }}
+            canDeselectEmotion={(key) => canDeselectEmotion(draft.postTradeEmotions, key)}
+            onToggleEmotion={(key) =>
+              apply((current) => toggleEmotion(current, 'postTradeEmotions', key))
+            }
+            onNoEmotions={() => apply((current) => answerNoEmotions(current, 'postTradeEmotions'))}
+            onRemoveEmotions={() =>
+              apply((current) => removeEmotionsAnswer(current, 'postTradeEmotions'))
+            }
+            onNote={(afterTradeNote) => apply((current) => ({ ...current, afterTradeNote }))}
+            onTradingviewUrl={(afterTradeTradingviewUrl) =>
+              apply((current) => ({ ...current, afterTradeTradingviewUrl }))
+            }
+          />
           {/*
                 THE FINAL READ-BACK, WHERE THERE IS NOTHING ELSE SAYING IT. On
                 a wide screen the rail already restates every step beside the

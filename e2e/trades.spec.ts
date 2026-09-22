@@ -661,10 +661,7 @@ async function openRecordedEmotions(page: Page) {
  * asserts the radio really became checked.
  */
 /** Open one of After Trade's five steps from its step list (rail or phone segments). */
-async function afterTradeStep(
-  page: Page,
-  step: 'trade' | 'result' | 'plan' | 'context' | 'details',
-) {
+async function afterTradeStep(page: Page, step: 'trade' | 'result' | 'plan' | 'context' | 'after') {
   await page.locator(`[data-step-link="${step}"]`).click();
   await expect(page.locator('[data-after-trade-form]')).toHaveAttribute(
     'data-after-trade-step',
@@ -1459,7 +1456,7 @@ test.describe('real Trade Journal creation', () => {
         await expect(afterForm.locator('[data-journal-area]')).toHaveCount(0);
         await afterTradeStep(page, 'context');
         await expect(page.locator('#after-strategy')).toBeVisible();
-        await afterTradeStep(page, 'details');
+        await afterTradeStep(page, 'after');
         await expect(page.locator('[data-global-save]:visible button[type="submit"]')).toHaveCount(
           1,
         );
@@ -1536,7 +1533,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(afterForm.getByText(/Your recorded exits add up to/)).toHaveCount(0);
     await chooseRadio(afterForm, 'These are all the exits');
     await expect(afterForm.getByText(/Your recorded exits add up to/)).toBeVisible();
-    await afterForm.getByRole('button', { name: 'Use recorded exits as final result' }).click();
+    await afterForm.getByRole('button', { name: 'Use recorded exits' }).click();
     await expect(afterForm.locator('#after-finalPnl')).toHaveValue('350.00');
     await expect(afterForm.getByText(/Your recorded exits add up to/)).toHaveCount(0);
     await expect(actualR).toContainText('+3.50R');
@@ -1547,7 +1544,7 @@ test.describe('real Trade Journal creation', () => {
     await afterTradeStep(page, 'plan');
     await chooseRadio(afterForm, 'No fixed target You will close on a rule or judgement');
 
-    await afterTradeStep(page, 'details');
+    await afterTradeStep(page, 'after');
     await page.locator('[data-global-save]:visible button[type="submit"]').click();
     const saved = page.locator('[data-after-trade-saved]');
     await expect(saved.getByRole('heading', { name: 'Trade saved' })).toBeFocused({

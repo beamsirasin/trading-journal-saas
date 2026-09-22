@@ -791,6 +791,9 @@ const afterTradeSchema = z.object({
   emotions: emotionsSchema,
   postTradeEmotions: emotionsSchema,
   context: contextSchema,
+  // Stage 6 (2026-09-22). Absent from a draft written before it: Unanswered.
+  afterTradeNote: text.default(''),
+  afterTradeTradingviewUrl: text.default(''),
 }) satisfies z.ZodType<AfterTradeDraft>;
 
 const sharedSchema = z.object({

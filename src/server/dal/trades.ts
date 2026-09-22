@@ -684,6 +684,9 @@ export interface TradeDetail {
   readonly tradingviewUrl: string | null;
   readonly notes: string | null;
   readonly reviewNotes: string | null;
+  /** Stage 6 After-Trade Context (migration 0028): null = Unanswered. Never the entry notes or link. */
+  readonly afterTradeNote: string | null;
+  readonly afterTradeTradingviewUrl: string | null;
   /** Null means the historical Trade predates explicit emotion capture. */
   readonly emotionsRecordedAt: string | null;
   /** Post-Trade Emotion: null = Unanswered; a timestamp with no emotions = None of these. */
@@ -1015,6 +1018,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       tradingviewUrl: trade.tradingviewUrl,
       notes: trade.notes,
       reviewNotes: trade.reviewNotes,
+      afterTradeNote: trade.afterTradeNote,
+      afterTradeTradingviewUrl: trade.afterTradeTradingviewUrl,
       emotionsRecordedAt: dateToIso(trade.emotionsRecordedAt),
       postTradeEmotionsRecordedAt: dateToIso(trade.postTradeEmotionsRecordedAt),
       hasChartAttachment: trade.chartAttachmentStorageKey !== null,

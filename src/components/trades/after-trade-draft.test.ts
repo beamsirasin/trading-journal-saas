@@ -155,9 +155,34 @@ describe('the Save payload', () => {
       confirmationNotes: '',
       tradingviewUrl: '',
       notes: '',
+      afterTradeNote: '',
+      afterTradeTradingviewUrl: '',
       chartAttachmentStorageKey: null,
     });
     expect(CreateCompletedTradeSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('sends Stage 6 After-Trade Context apart from the entry notes and link', () => {
+    const payload = payloadOf({
+      ...identified(),
+      afterTradeNote: 'Exited on fear.',
+      afterTradeTradingviewUrl: 'https://www.tradingview.com/x/After0001/',
+    });
+    expect(payload).toMatchObject({
+      notes: '',
+      tradingviewUrl: '',
+      afterTradeNote: 'Exited on fear.',
+      afterTradeTradingviewUrl: 'https://www.tradingview.com/x/After0001/',
+    });
+    const parsed = CreateCompletedTradeSchema.safeParse(payload);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('names a malformed after-trade link at its own field, not the entry link', () => {
+    const draft = { ...identified(), afterTradeTradingviewUrl: 'https://example.com/chart' };
+    expect(validateAfterTradeDraft(draft, CONTEXT).errors).toEqual({
+      afterTradeTradingviewUrl: 'invalid_tradingview_url',
+    });
   });
 
   it('is never built from a draft that is not ready', () => {

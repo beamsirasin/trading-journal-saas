@@ -150,9 +150,11 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
       await chooseChoice(page, 'Loss');
       await expectNoOverflow(page, `${name} close`);
       await page.getByRole('button', { name: 'Close trade', exact: true }).click();
-      await expect(page).toHaveURL(new RegExp(`/en/app/trades\\?trade=${saved.id}`), {
-        timeout: 60_000,
-      });
+      // The Final Close continues into Stage 6 (optional After-Trade Context).
+      await expect(page).toHaveURL(
+        new RegExp(`/en/app/trades/after-trade\\?trade=${saved.id}&from=close`),
+        { timeout: 60_000 },
+      );
       await expect
         .poll(async () => (await latestTrade(workspaceId)).status, { timeout: 20_000 })
         .toBe('closed');
@@ -246,11 +248,12 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
     await sheet.getByRole('button', { name: 'Done' }).click();
     await expectNoOverflow(page, 'draft close');
 
-    // A successful close clears the draft.
+    // A successful close clears the Exit & Result draft, and continues into Stage 6.
     await page.getByRole('button', { name: 'Close trade', exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/en/app/trades\\?trade=${saved.id}`), {
-      timeout: 60_000,
-    });
+    await expect(page).toHaveURL(
+      new RegExp(`/en/app/trades/after-trade\\?trade=${saved.id}&from=close`),
+      { timeout: 60_000 },
+    );
     expect(await closeDrafts()).toBe(0);
     await expect
       .poll(async () => (await latestTrade(workspaceId)).status, { timeout: 20_000 })

@@ -60,6 +60,8 @@ function detail(overrides: Partial<TradeDetail> = {}): TradeDetail {
     tradingviewUrl: null,
     notes: null,
     reviewNotes: null,
+    afterTradeNote: null,
+    afterTradeTradingviewUrl: null,
     emotionsRecordedAt: null,
     hasChartAttachment: false,
     chartAttachmentUploadedAt: null,

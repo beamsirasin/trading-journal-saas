@@ -497,3 +497,27 @@ describe('entry context, read-only', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+describe('after the close', () => {
+  it('a Final Close continues into Stage 6; a Part exit never does', async () => {
+    const closed = renderForm('all_remaining');
+    type('Final net P&L', '10');
+    submit('Close trade');
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(
+        `/app/trades/after-trade?trade=${TRADE_ID}&from=close`,
+        { scroll: false },
+      ),
+    );
+    closed.unmount();
+    pushMock.mockReset();
+
+    renderForm('part');
+    submit('Record partial exit');
+    await waitFor(() => expect(pushMock).toHaveBeenCalled());
+    expect(pushMock).toHaveBeenCalledWith(`/app/trades?trade=${TRADE_ID}&tab=execution`, {
+      scroll: false,
+    });
+    expect(String(pushMock.mock.calls[0]?.[0])).not.toContain('after-trade');
+  });
+});

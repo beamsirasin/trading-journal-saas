@@ -79,6 +79,8 @@ const base: TradeDetailModel = {
   tradingviewUrl: null,
   notes: null,
   reviewNotes: null,
+  afterTradeNote: null,
+  afterTradeTradingviewUrl: null,
   emotionsRecordedAt: null,
   hasChartAttachment: false,
   chartAttachmentUploadedAt: null,
@@ -430,6 +432,45 @@ describe('Trade record sections', () => {
     for (const name of ['Partial Close', 'Close Remaining', 'Full Close', 'Correct Exit']) {
       expect(screen.queryByRole('button', { name })).toBeNull();
     }
+  });
+
+  it('offers Stage 6 on a Closed contract Trade — add, then edit — and never on a legacy Trade', () => {
+    const closedContract = {
+      ...base,
+      status: 'closed' as const,
+      recordingContract: 'add_trade_v1' as const,
+      actualResultMode: 'money' as const,
+      plannedRiskMinor: '10000',
+      netPnlMinor: '1000',
+      finalPnlSource: 'manual_total' as const,
+      enteredAt: '2026-08-08T00:00:00.000Z',
+      exitedAt: '2026-08-08T01:00:00.000Z',
+    };
+    const add = renderDetail(closedContract, 'actual', true);
+    expect(screen.getByRole('link', { name: 'Add after-trade context' })).toHaveAttribute(
+      'href',
+      `/app/trades/after-trade?trade=${base.tradeId}`,
+    );
+    add.unmount();
+    const edit = renderDetail({ ...closedContract, afterTradeNote: 'Noted.' }, 'actual', true);
+    expect(screen.getByRole('link', { name: 'Edit after-trade context' })).toBeVisible();
+    edit.unmount();
+    renderDetail(
+      {
+        ...base,
+        status: 'closed',
+        actualResultMode: 'money',
+        actualInitialRiskMinor: '5000',
+        netPnlMinor: '1000',
+        actualR: '0.2000',
+        traderOutcome: 'win',
+        enteredAt: '2026-08-08T00:00:00.000Z',
+        exitedAt: '2026-08-08T01:00:00.000Z',
+      },
+      'actual',
+      true,
+    );
+    expect(screen.queryByRole('link', { name: /after-trade context/ })).toBeNull();
   });
 
   it('keeps a legacy Open Trade on its legacy close, with no Stage 5 entry', () => {
