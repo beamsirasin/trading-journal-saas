@@ -219,7 +219,7 @@ async function verifyActiveMembership(
   return rows.length > 0;
 }
 
-async function resolveMutationDenial(
+export async function resolveMutationDenial(
   tx: Parameters<typeof lockAndResolveEntitlement>[0],
   workspaceId: string,
   clock: Clock,
@@ -240,7 +240,7 @@ async function resolveMutationDenial(
  * Split from entitlement resolution specifically for `createTrade`'s
  * idempotency-replay exception — see the module comment.
  */
-async function lockWorkspaceAndVerifyMembership(
+export async function lockWorkspaceAndVerifyMembership(
   tx: Executor,
   workspaceId: string,
   userId: string,
@@ -273,7 +273,7 @@ async function acquireWorkspaceWriteAccess(
  * 08B decision) — EXCEPT `softDeleteTrade` itself, which uses its own,
  * separate lookup so a repeated soft-delete can still succeed as a no-op.
  */
-async function lockTradeRow(
+export async function lockTradeRow(
   tx: Executor,
   workspaceId: string,
   tradeId: string,
@@ -756,7 +756,7 @@ function validateContractCreate(
 }
 
 /** Stable emotion keys → usable system emotion types, or the refusal code. */
-export async function resolveEmotionTypesInTx(
+async function resolveEmotionTypesInTx(
   tx: Executor,
   keys: readonly string[],
 ): Promise<

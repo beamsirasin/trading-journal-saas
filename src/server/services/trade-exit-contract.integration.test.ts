@@ -14,7 +14,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   auditLogs,
-  emotionTypes,
   tradeEmotions,
   tradeExits,
   trades,
@@ -300,14 +299,18 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       expect(await readTrade(tradeId)).toMatchObject(WHOLE_TRADE_UNTOUCHED);
     });
 
-    it('rejects an exit time before entry or in the future', async () => {
+    it('rejects an exit time before entry or in the future, each with its own reason', async () => {
       const tradeId = await openContractTrade();
-      for (const exitedAt of [new Date(ENTERED_AT.getTime() - 1), new Date(Date.now() + HOUR)]) {
-        expect(await record(tradeId, part({ exitedAt }))).toEqual({
+      expect(await record(tradeId, part({ exitedAt: new Date(ENTERED_AT.getTime() - 1) }))).toEqual(
+        {
           ok: false,
-          code: 'invalid_exit_time',
-        });
-      }
+          code: 'exit_time_before_entry',
+        },
+      );
+      expect(await record(tradeId, part({ exitedAt: new Date(Date.now() + HOUR) }))).toEqual({
+        ok: false,
+        code: 'exit_time_in_future',
+      });
       expect(await readExits(tradeId)).toHaveLength(0);
     });
   });
@@ -472,19 +475,31 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
     });
 
     it('validates the final exit time against entry, the clock and every leg', async () => {
-      for (const [label, legAt, finalAt] of [
-        ['before entry', null, new Date(ENTERED_AT.getTime() - 1)],
-        ['in the future', null, new Date(Date.now() + HOUR)],
-        ['before a recorded leg', at(4), at(3)],
+      for (const [code, legAt, finalAt] of [
+        ['exit_time_before_entry', null, new Date(ENTERED_AT.getTime() - 1)],
+        ['exit_time_in_future', null, new Date(Date.now() + HOUR)],
+        ['final_exit_before_recorded_exit', at(4), at(3)],
       ] as const) {
         const tradeId = await openContractTrade();
         if (legAt !== null) await record(tradeId, part({ exitedAt: legAt }));
-        expect(await record(tradeId, finalClose({ finalExitedAt: finalAt })), label).toEqual({
+        expect(await record(tradeId, finalClose({ finalExitedAt: finalAt })), code).toEqual({
           ok: false,
-          code: 'invalid_exit_time',
+          code,
         });
-        expect(await readTrade(tradeId), label).toMatchObject({ status: 'open' });
+        expect(await readTrade(tradeId), code).toMatchObject({ status: 'open' });
       }
+      // The closing leg itself counts as a recorded exit.
+      const closingLeg = await openContractTrade();
+      expect(
+        await record(closingLeg, finalClose({ exitedAt: at(4), finalExitedAt: at(3) })),
+      ).toEqual({ ok: false, code: 'final_exit_before_recorded_exit' });
+    });
+
+    it('leaves an unanswered final exit time unknown, never "now" or the last leg time', async () => {
+      const tradeId = await openContractTrade();
+      await record(tradeId, part({ exitedAt: at(2) }));
+      await record(tradeId, finalClose({ exitedAt: at(3), finalPnlMinor: 1_000n }));
+      expect(await readTrade(tradeId)).toMatchObject({ status: 'closed', exitedAt: null });
     });
 
     it('refuses closed percentages over the whole position', async () => {
@@ -500,33 +515,22 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       });
     });
 
-    it('records Post-Trade Emotion, where None is an answer and omission is Unanswered', async () => {
-      const selected = await openContractTrade();
-      await record(selected, finalClose({ postTradeEmotionKeys: ['calm'] }));
-      const rows = await db
-        .select({ key: emotionTypes.key, phase: tradeEmotions.phase })
-        .from(tradeEmotions)
-        .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
-        .where(eq(tradeEmotions.tradeId, selected));
-      expect(rows).toEqual([{ key: 'calm', phase: 'post_trade' }]);
-      expect((await readTrade(selected)).postTradeEmotionsRecordedAt).toBeInstanceOf(Date);
-
-      const none = await openContractTrade();
-      await record(none, finalClose({ postTradeEmotionKeys: [] }));
-      expect((await readTrade(none)).postTradeEmotionsRecordedAt).toBeInstanceOf(Date);
-
-      const unanswered = await openContractTrade();
-      await record(unanswered, finalClose());
-      expect((await readTrade(unanswered)).postTradeEmotionsRecordedAt).toBeNull();
-
-      const unknown = await openContractTrade();
+    it('takes no Post-Trade Emotion: that is After-Trade Context, captured once Closed', async () => {
+      const { RecordContractExitSchema } = await import('@/lib/trades/schemas');
       expect(
-        await record(unknown, finalClose({ postTradeEmotionKeys: ['not-an-emotion'] })),
-      ).toEqual({
-        ok: false,
-        code: 'unknown_emotion_key',
-      });
-      expect(await readTrade(unknown)).toMatchObject({ status: 'open' });
+        RecordContractExitSchema.safeParse({
+          tradeId: crypto.randomUUID(),
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          postTradeEmotionKeys: ['calm'],
+        }).success,
+      ).toBe(false);
+      const tradeId = await openContractTrade();
+      await record(tradeId, finalClose({ finalPnlMinor: 1_000n }));
+      expect((await readTrade(tradeId)).postTradeEmotionsRecordedAt).toBeNull();
+      expect(
+        await db.select().from(tradeEmotions).where(eq(tradeEmotions.tradeId, tradeId)),
+      ).toEqual([]);
     });
 
     it('a Closed Trade takes no further exit of either scope', async () => {
@@ -709,17 +713,83 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       expect(await readExits(tradeId)).toHaveLength(0);
     });
 
-    it('a read-only workspace cannot record an exit or close', async () => {
-      const tradeId = await openContractTrade();
+    async function makeReadOnly(): Promise<void> {
       await db
         .update(workspaceEntitlements)
         .set({ status: 'expired', currentPeriodStartedAt: null, currentPeriodEndsAt: null })
         .where(eq(workspaceEntitlements.workspaceId, workspaceId));
+    }
+
+    it('a read-only workspace cannot record a new exit or close', async () => {
+      const tradeId = await openContractTrade();
+      await makeReadOnly();
       for (const input of [part({ closedBps: 1_000 }), finalClose({ finalPnlMinor: 1_000n })]) {
         expect(await record(tradeId, input)).toEqual({ ok: false, code: 'read_only_workspace' });
       }
       expect(await readTrade(tradeId)).toMatchObject(WHOLE_TRADE_UNTOUCHED);
       expect(await readExits(tradeId)).toHaveLength(0);
+    });
+
+    it('a read-only workspace still gets the recorded result of an exact replay, and nothing else', async () => {
+      const partTrade = await openContractTrade();
+      const partInput = part({ realizedPnlMinor: 1_000n, closedBps: 2_000 });
+      const partFirst = await record(partTrade, partInput);
+      const closedTrade = await openContractTrade();
+      const closeInput = finalClose({ finalPnlMinor: -3_000n, traderOutcome: 'loss' });
+      const closeFirst = await record(closedTrade, closeInput);
+      await makeReadOnly();
+
+      // Exact replays write nothing, so write entitlement is not needed.
+      expect(await record(partTrade, partInput)).toEqual({ ...partFirst, alreadyRecorded: true });
+      expect(await record(closedTrade, closeInput)).toEqual({
+        ...closeFirst,
+        alreadyRecorded: true,
+      });
+      // Different content under a used key is still a conflict, never a write.
+      expect(await record(partTrade, { ...partInput, closedBps: 3_000 })).toEqual({
+        ok: false,
+        code: 'mutation_replay_conflict',
+        replayConflict: 'different',
+      });
+      // A new key is a new write: refused.
+      expect(await record(partTrade, part({ closedBps: 1_000 }))).toEqual({
+        ok: false,
+        code: 'read_only_workspace',
+      });
+      expect((await readExits(partTrade)).map((leg) => leg.closedBps)).toEqual([2_000]);
+      expect(await readExits(closedTrade)).toHaveLength(1);
+    });
+
+    it('an exact replay still needs a valid membership', async () => {
+      const tradeId = await openContractTrade();
+      const input = part({ closedBps: 1_000 });
+      await record(tradeId, input);
+      await db
+        .delete(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, workspaceId),
+            eq(workspaceMembers.userId, actorUserId),
+          ),
+        );
+      try {
+        expect(await record(tradeId, input)).toEqual({
+          ok: false,
+          code: 'workspace_access_denied',
+        });
+      } finally {
+        await db
+          .insert(workspaceMembers)
+          .values({ workspaceId, userId: actorUserId, role: 'owner' });
+      }
+    });
+
+    it('an exact replay on a Trade since deleted is not found', async () => {
+      const tradeId = await openContractTrade();
+      const input = part({ closedBps: 1_000 });
+      await record(tradeId, input);
+      await db.update(trades).set({ deletedAt: new Date() }).where(eq(trades.id, tradeId));
+      expect(await record(tradeId, input)).toEqual({ ok: false, code: 'trade_not_found' });
     });
 
     it('a soft-deleted Trade is not found', async () => {

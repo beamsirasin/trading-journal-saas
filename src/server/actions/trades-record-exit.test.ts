@@ -159,6 +159,31 @@ describe('recordContractExitAction', () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
+  it('passes each precise exit-time reason through to the client', async () => {
+    for (const code of [
+      'exit_time_before_entry',
+      'exit_time_in_future',
+      'final_exit_before_recorded_exit',
+    ]) {
+      mocks.recordContractExit.mockResolvedValueOnce({ ok: false, code });
+      expect(
+        await recordContractExitAction({ tradeId: TRADE_ID, mutationKey: KEY, scope: 'part' }),
+      ).toEqual({ ok: false, error: { code } });
+    }
+  });
+
+  it('refuses Post-Trade Emotion on a Final Close before reaching the service', async () => {
+    expect(
+      await recordContractExitAction({
+        tradeId: TRADE_ID,
+        mutationKey: KEY,
+        scope: 'all_remaining',
+        postTradeEmotionKeys: ['calm'],
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'validation_error' } });
+    expect(mocks.recordContractExit).not.toHaveBeenCalled();
+  });
+
   it('an unauthenticated caller never reaches the service', async () => {
     const error = new Error('no session');
     error.name = 'UnauthenticatedError';

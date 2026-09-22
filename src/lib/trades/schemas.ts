@@ -1505,10 +1505,8 @@ const FinalCloseSchema = z
     traderOutcome: z.enum(OUTCOME_VALUES).optional(),
     /** Absent = Unanswered. */
     exitHistoryCompleteness: z.enum(EXIT_HISTORY_COMPLETENESS_VALUES).optional(),
-    /** The Trade's final exit time. Never adopted from an exit leg on its own. */
+    /** The Trade's final exit time. Optional; never filled in by the server. Post-Trade Emotion is not part of a close (stage 6). */
     finalExitedAt: nullableInstantField(),
-    /** Post-Trade Emotion: omitted = Unanswered, `[]` = None of these. */
-    postTradeEmotionKeys: emotionKeysField().optional(),
   })
   .strict();
 

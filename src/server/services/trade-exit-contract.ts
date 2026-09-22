@@ -14,13 +14,14 @@ import {
 } from '@/lib/trades/constants';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb } from '@/server/db/client';
-import { tradeEmotions, tradeExits, trades } from '@/server/db/schema';
+import { tradeExits, trades } from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
 import type { TradeExecutionTx } from './trade-execution';
 import {
-  acquireTradeWriteContext,
-  resolveEmotionTypesInTx,
+  lockTradeRow,
+  lockWorkspaceAndVerifyMembership,
+  resolveMutationDenial,
   type WorkspaceAccessDenial,
 } from './trade-management';
 import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
@@ -52,14 +53,20 @@ import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
  * lifecycle and evidence; this path refuses it rather than making it look
  * canonical (contract §28).
  *
+ * NOT HERE: Post-Trade Emotion. It is After-Trade Context (lifecycle stage 6),
+ * captured once the Trade is Closed, never part of the close itself.
+ *
  * SAFETY. Session-derived workspace and user only. Workspace lock →
- * membership → write entitlement → Trade row lock, in the one order every
- * Trade mutation uses, so concurrent exits on a workspace serialize. Every
- * exit carries a Save key (`mutation_key`, unique per workspace) and the
- * fingerprint of what the request said: a replay with the same content
- * returns the recorded result and writes nothing; different content under a
+ * membership → Save-key replay lookup → write entitlement → Trade row lock —
+ * the order `createTrade` uses — so concurrent exits on a workspace
+ * serialize. Every exit carries a Save key (`mutation_key`, unique per
+ * workspace) and the fingerprint of what the request said: a replay with the
+ * same content returns the recorded result and writes nothing, so it needs a
+ * valid membership but not current write entitlement (a read-only workspace
+ * can still learn that its earlier Save succeeded); different content under a
  * used key is a replay conflict; a key recorded before fingerprints existed is
- * unverifiable, never assumed identical.
+ * unverifiable, never assumed identical. Every new write still needs write
+ * entitlement.
  */
 
 type Tx = TradeExecutionTx;
@@ -92,10 +99,12 @@ export interface FinalCloseInput extends ContractExitLegInput {
   readonly traderOutcome?: OutcomeValue;
   /** Absent = Unanswered. */
   readonly exitHistoryCompleteness?: ExitHistoryCompleteness;
-  /** The Trade's final exit time; never adopted from a leg on its own. */
+  /**
+   * The Trade's final exit time. Optional: absent stays unknown — the server
+   * never fills in "now" or the last leg's time; offering either is an
+   * explicit UI choice.
+   */
   readonly finalExitedAt?: Date | null;
-  /** Omitted = Unanswered; `[]` = None of these. */
-  readonly postTradeEmotionKeys?: readonly string[];
 }
 
 export type RecordContractExitInput = RecordPartExitInput | FinalCloseInput;
@@ -106,13 +115,12 @@ export type RecordContractExitErrorCode =
   | 'legacy_trade_not_supported'
   | 'invalid_status_transition'
   | 'invalid_closed_bps'
-  | 'invalid_exit_time'
+  | 'exit_time_before_entry'
+  | 'exit_time_in_future'
+  | 'final_exit_before_recorded_exit'
   | 'exit_limit_reached'
   | 'exit_history_not_adoptable'
   | 'invalid_initial_risk'
-  | 'duplicate_emotion_key'
-  | 'unknown_emotion_key'
-  | 'emotion_type_not_usable'
   | 'mutation_replay_conflict';
 
 export type RecordContractExitResult =
@@ -175,6 +183,20 @@ function successFor(
   };
 }
 
+/** A stated exit time must fall inside the Trade: not before entry, not in the future. */
+function exitTimeError(
+  trade: TradeRow,
+  time: Date | null,
+  now: Date,
+): 'exit_time_before_entry' | 'exit_time_in_future' | null {
+  if (time === null) return null;
+  if (time.getTime() > now.getTime()) return 'exit_time_in_future';
+  if (trade.enteredAt !== null && time.getTime() < trade.enteredAt.getTime()) {
+    return 'exit_time_before_entry';
+  }
+  return null;
+}
+
 /**
  * Leg-level checks shared by both scopes. Every value is optional, but one
  * that is given must make sense: an exit time inside the Trade (after entry,
@@ -187,13 +209,8 @@ function validateLeg(
   input: RecordContractExitInput,
   now: Date,
 ): RecordContractExitErrorCode | null {
-  const time = input.exitedAt ?? null;
-  if (time !== null) {
-    if (time.getTime() > now.getTime()) return 'invalid_exit_time';
-    if (trade.enteredAt !== null && time.getTime() < trade.enteredAt.getTime()) {
-      return 'invalid_exit_time';
-    }
-  }
+  const timeError = exitTimeError(trade, input.exitedAt ?? null, now);
+  if (timeError !== null) return timeError;
   const recorded = exits.reduce((sum, exit) => sum + (exit.closedBps ?? 0), 0);
   const bps = input.closedBps ?? null;
   if (bps !== null) {
@@ -269,12 +286,12 @@ export async function recordContractExitInTx(
   input: RecordContractExitInput,
   clock: Clock,
 ): Promise<RecordContractExitResult> {
-  const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
-  if (!ctx.ok) return ctx;
-  const { trade } = ctx;
+  const membershipDenial = await lockWorkspaceAndVerifyMembership(tx, workspaceId, userId);
+  if (membershipDenial !== null) return { ok: false, code: membershipDenial };
   const fingerprint = fingerprintOf(tradeId, input);
 
   // A Save key already used: the same request answers with what it recorded.
+  // Checked BEFORE write entitlement, because answering it writes nothing.
   const replay = await tx.query.tradeExits.findFirst({
     where: and(
       eq(tradeExits.workspaceId, workspaceId),
@@ -289,8 +306,17 @@ export async function recordContractExitInTx(
         replayConflict: replay.mutationFingerprint === null ? 'unverifiable' : 'different',
       };
     }
-    return successFor(trade, replay, true);
+    const recorded = await lockTradeRow(tx, workspaceId, tradeId);
+    if (!recorded.ok) return recorded;
+    return successFor(recorded.trade, replay, true);
   }
+
+  // Everything below writes, so it needs write entitlement.
+  const denial = await resolveMutationDenial(tx, workspaceId, clock);
+  if (denial !== null) return { ok: false, code: denial };
+  const locked = await lockTradeRow(tx, workspaceId, tradeId);
+  if (!locked.ok) return locked;
+  const { trade } = locked;
 
   if (!isContractRow(trade)) return { ok: false, code: 'legacy_trade_not_supported' };
   // Record Exit and Final Close are for a live position only (contract §10–§11).
@@ -303,18 +329,15 @@ export async function recordContractExitInTx(
   if (legError !== null) return { ok: false, code: legError };
 
   let final: Extract<ReturnType<typeof composeFinalResult>, { ok: true }> | null = null;
-  let postTradeEmotionIds: readonly { readonly id: string }[] | null = null;
   if (input.scope === 'all_remaining') {
     const finalExitedAt = input.finalExitedAt ?? null;
+    const finalTimeError = exitTimeError(trade, finalExitedAt, now);
+    if (finalTimeError !== null) return { ok: false, code: finalTimeError };
     if (finalExitedAt !== null) {
-      if (finalExitedAt.getTime() > now.getTime()) return { ok: false, code: 'invalid_exit_time' };
-      if (trade.enteredAt !== null && finalExitedAt.getTime() < trade.enteredAt.getTime()) {
-        return { ok: false, code: 'invalid_exit_time' };
-      }
       // No recorded exit leg may fall after the Trade's own final exit.
       const legTimes = [...exits.map((exit) => exit.exitedAt), input.exitedAt ?? null];
       if (legTimes.some((time) => time !== null && time.getTime() > finalExitedAt.getTime())) {
-        return { ok: false, code: 'invalid_exit_time' };
+        return { ok: false, code: 'final_exit_before_recorded_exit' };
       }
     }
     const composed = composeFinalResult(
@@ -324,11 +347,6 @@ export async function recordContractExitInTx(
     );
     if (!composed.ok) return composed;
     final = composed;
-    if (input.postTradeEmotionKeys !== undefined) {
-      const resolved = await resolveEmotionTypesInTx(tx, input.postTradeEmotionKeys);
-      if (!resolved.ok) return { ok: false, code: resolved.code };
-      postTradeEmotionIds = resolved.value;
-    }
   }
 
   const sequence = exits.reduce((highest, exit) => Math.max(highest, exit.sequence), 0) + 1;
@@ -376,23 +394,12 @@ export async function recordContractExitInTx(
         exitedAt: input.finalExitedAt ?? null,
         actualExit: null,
         calcVersion: CALC_VERSION,
-        postTradeEmotionsRecordedAt: postTradeEmotionIds === null ? null : now,
         updatedAt: now,
       })
       .where(and(eq(trades.id, tradeId), eq(trades.workspaceId, workspaceId)))
       .returning();
     if (row === undefined) throw new Error('recordContractExit: trade close returned no row');
     updated = row;
-    if (postTradeEmotionIds !== null && postTradeEmotionIds.length > 0) {
-      await tx.insert(tradeEmotions).values(
-        postTradeEmotionIds.map((emotion) => ({
-          workspaceId,
-          tradeId,
-          emotionTypeId: emotion.id,
-          phase: 'post_trade' as const,
-        })),
-      );
-    }
   }
 
   await insertAuditLog(tx, {
