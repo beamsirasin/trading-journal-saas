@@ -756,7 +756,7 @@ function validateContractCreate(
 }
 
 /** Stable emotion keys → usable system emotion types, or the refusal code. */
-async function resolveEmotionTypesInTx(
+export async function resolveEmotionTypesInTx(
   tx: Executor,
   keys: readonly string[],
 ): Promise<

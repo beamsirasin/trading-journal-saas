@@ -30,6 +30,7 @@ import {
   MarkSystemCannotDetermineSchema,
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
+  RecordAfterTradeContextSchema,
   RecordContractExitSchema,
   RemoveTradeMistakeSchema,
   ReplaceTradeEmotionsSchema,
@@ -44,6 +45,11 @@ import {
   getActiveWorkspaceContext,
   requireTradeManagement,
 } from '@/server/auth/dal';
+import {
+  recordAfterTradeContext,
+  type AfterTradeContextView,
+  type RecordAfterTradeContextInput,
+} from '@/server/services/trade-after-trade-context';
 import {
   createCompletedTrade,
   type CreateCompletedTradeInput,
@@ -773,6 +779,64 @@ export async function recordContractExitAction(
         status: result.status,
         actualR: result.actualR,
         traderOutcome: result.traderOutcome,
+      },
+    };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5b. recordAfterTradeContextAction — Stage 6 After-Trade Context
+// ---------------------------------------------------------------------------
+
+export type RecordAfterTradeContextData = {
+  readonly tradeId: string;
+  /** `true`: this exact Save (same key, same content) was already recorded; nothing was written. */
+  readonly alreadyRecorded: boolean;
+} & AfterTradeContextView;
+
+export type RecordAfterTradeContextActionResult = TradeActionResult<RecordAfterTradeContextData>;
+
+/**
+ * Stage 6 for a Closed contract Trade: the after-trade note, the after-trade
+ * chart link and Post-Trade Emotion, each a three-way patch (absent =
+ * unchanged, `null` = cleared, a value = set). Never the result, the outcome,
+ * the entry evidence or Review / System Assessment.
+ */
+export async function recordAfterTradeContextAction(
+  input: unknown,
+): Promise<RecordAfterTradeContextActionResult> {
+  const parsed = RecordAfterTradeContextSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const { tradeId, ...patch } = parsed.data;
+    const result = await recordAfterTradeContext(
+      ctx.workspaceId,
+      ctx.userId,
+      tradeId,
+      asServiceInput<RecordAfterTradeContextInput>(patch),
+    );
+    if (!result.ok) {
+      if (result.code === 'mutation_replay_conflict') {
+        return {
+          ok: false,
+          error: { code: 'mutation_replay_conflict', replayConflict: 'different' },
+        };
+      }
+      return serviceFailure(result.code);
+    }
+    revalidateTradeRoutes();
+    return {
+      ok: true,
+      data: {
+        tradeId: result.tradeId,
+        alreadyRecorded: result.alreadyRecorded,
+        afterTradeNote: result.afterTradeNote,
+        afterTradeTradingviewUrl: result.afterTradeTradingviewUrl,
+        postTradeEmotions: result.postTradeEmotions,
       },
     };
   } catch {

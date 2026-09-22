@@ -1516,3 +1516,44 @@ export const RecordContractExitSchema = z.discriminatedUnion('scope', [
 ]);
 export type RecordContractExitActionInput = z.input<typeof RecordContractExitSchema>;
 export type RecordContractExitActionData = z.output<typeof RecordContractExitSchema>;
+
+// ---------------------------------------------------------------------------
+// 19. Stage 6 — After-Trade Context
+// ---------------------------------------------------------------------------
+
+/**
+ * A three-way patch: a key left out is unchanged, `null` clears it back to
+ * Unanswered, and a value sets it. A note is trimmed and never blank — clear
+ * it with `null`. The chart link follows the Entry Context rule exactly.
+ * Post-Trade Emotion: `[]` is an explicit None, a list is the trader's choice.
+ */
+const afterTradeNoteField = () =>
+  z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z
+      .string()
+      .min(1, { message: 'blank_note' })
+      .max(NOTES_MAX_LENGTH)
+      .refine(hasNoControlOrHtmlCharacters, { message: 'invalid_characters' })
+      .nullable()
+      .optional(),
+  );
+
+export const RecordAfterTradeContextSchema = z
+  .object({
+    tradeId: uuidField(),
+    mutationKey: uuidField(),
+    afterTradeNote: afterTradeNoteField(),
+    afterTradeTradingviewUrl: patchableTradingViewUrlField(),
+    postTradeEmotionKeys: emotionKeysField().nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.afterTradeNote !== undefined ||
+      input.afterTradeTradingviewUrl !== undefined ||
+      input.postTradeEmotionKeys !== undefined,
+    { message: 'empty_patch' },
+  );
+export type RecordAfterTradeContextActionInput = z.input<typeof RecordAfterTradeContextSchema>;
+export type RecordAfterTradeContextActionData = z.output<typeof RecordAfterTradeContextSchema>;

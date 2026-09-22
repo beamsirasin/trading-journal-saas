@@ -27,7 +27,8 @@
  *   fingerprint; only the clock reading is not content.
  */
 
-export type MutationFingerprintPath = 'at_entry' | 'completed' | 'exit_part' | 'exit_final';
+export type MutationFingerprintPath =
+  'at_entry' | 'completed' | 'exit_part' | 'exit_final' | 'after_trade_context';
 
 const OMITTED_KEYS = new Set(['mutationKey', 'chartAttachmentStorageKey']);
 

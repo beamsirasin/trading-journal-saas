@@ -97,6 +97,7 @@ export const AUDIT_ACTIONS = [
   'trade.emotions_corrected',
   'trade.deleted',
   'trade.classified',
+  'trade.after_trade_context_recorded',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -166,6 +166,15 @@ export const trades = pgTable(
     postTradeEmotionsRecordedAt: timestamp('post_trade_emotions_recorded_at', {
       withTimezone: true,
     }),
+    /**
+     * Stage 6 After-Trade Context (migration 0028): what the trader noted, and
+     * the chart they linked, after the Trade closed. Distinct from the entry
+     * notes (`confirmation_notes`, `notes`), the before-entry `tradingview_url`
+     * and the legacy `review_notes` — never copied from or into them. NULL is
+     * Unanswered. Only a Closed contract Trade may carry either.
+     */
+    afterTradeNote: text('after_trade_note'),
+    afterTradeTradingviewUrl: text('after_trade_tradingview_url'),
 
     // -------------------------------------------------------------------
     // Chart attachment — Image upload (migration 0010). Distinct from
@@ -632,6 +641,15 @@ export const trades = pgTable(
         ${table.recordingContract} IS NOT NULL
         AND ${table.traderOutcome} IS NOT NULL
       )`,
+    ),
+    check(
+      'trades_after_trade_note_not_blank_check',
+      sql`${table.afterTradeNote} IS NULL OR btrim(${table.afterTradeNote}) <> ''`,
+    ),
+    check(
+      'trades_after_trade_context_check',
+      sql`(${table.afterTradeNote} IS NULL AND ${table.afterTradeTradingviewUrl} IS NULL)
+        OR (${table.recordingContract} IS NOT NULL AND ${table.status} = 'closed')`,
     ),
     check(
       'trades_post_trade_emotions_check',

@@ -197,6 +197,13 @@
       "when": 1790029781074,
       "tag": "0027_trade_exit_mutation_fingerprint",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790083616768,
+      "tag": "0028_after_trade_context",
+      "breakpoints": true
     }
   ]
 }

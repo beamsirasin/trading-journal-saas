@@ -28,6 +28,9 @@ vi.mock('@/server/services/trade-execution', () => ({
   correctTradeExit: vi.fn(),
 }));
 vi.mock('@/server/services/trade-exit-contract', () => ({ recordContractExit: vi.fn() }));
+vi.mock('@/server/services/trade-after-trade-context', () => ({
+  recordAfterTradeContext: vi.fn(),
+}));
 vi.mock('@/server/services/trade-historical-execution', () => ({
   adoptHistoricalExitSubtotal: vi.fn(),
   applyHistoricalExitHistoryCorrection: vi.fn(),

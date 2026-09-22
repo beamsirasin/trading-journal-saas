@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getActiveWorkspaceContext: vi.fn(),
   requireTradeManagement: vi.fn(),
   recordContractExit: vi.fn(),
+  recordAfterTradeContext: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -29,6 +30,9 @@ vi.mock('@/server/services/trade-execution', () => ({
 vi.mock('@/server/services/trade-exit-contract', () => ({
   recordContractExit: mocks.recordContractExit,
 }));
+vi.mock('@/server/services/trade-after-trade-context', () => ({
+  recordAfterTradeContext: mocks.recordAfterTradeContext,
+}));
 vi.mock('@/server/services/trade-historical-execution', () => ({
   adoptHistoricalExitSubtotal: vi.fn(),
   applyHistoricalExitHistoryCorrection: vi.fn(),
@@ -50,7 +54,7 @@ vi.mock('@/server/services/trade-management', () => ({
   updateTradePlan: vi.fn(),
 }));
 
-const { recordContractExitAction } = await import('./trades');
+const { recordAfterTradeContextAction, recordContractExitAction } = await import('./trades');
 
 const TRADE_ID = '019112a0-0000-7000-8000-000000000001';
 const KEY = '019112a0-0000-7000-8000-0000000000aa';
@@ -192,5 +196,89 @@ describe('recordContractExitAction', () => {
       await recordContractExitAction({ tradeId: TRADE_ID, mutationKey: KEY, scope: 'part' }),
     ).toEqual({ ok: false, error: { code: 'unauthenticated' } });
     expect(mocks.recordContractExit).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordAfterTradeContextAction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getActiveWorkspaceContext.mockResolvedValue({
+      workspaceId: 'workspace-1',
+      userId: 'user-1',
+    });
+    mocks.requireTradeManagement.mockResolvedValue('member');
+    mocks.recordAfterTradeContext.mockResolvedValue({
+      ok: true,
+      tradeId: TRADE_ID,
+      alreadyRecorded: false,
+      afterTradeNote: 'Held too long.',
+      afterTradeTradingviewUrl: null,
+      postTradeEmotions: { answer: 'none' },
+    });
+  });
+
+  it('passes a three-way patch with the session identity, and a trimmed note', async () => {
+    const result = await recordAfterTradeContextAction({
+      tradeId: TRADE_ID,
+      mutationKey: KEY,
+      afterTradeNote: '  Held too long.  ',
+      afterTradeTradingviewUrl: null,
+      postTradeEmotionKeys: [],
+    });
+    expect(result).toMatchObject({ ok: true, data: { postTradeEmotions: { answer: 'none' } } });
+    // The note is set, the link is cleared, the emotion answer is an explicit None.
+    expect(mocks.recordAfterTradeContext).toHaveBeenCalledWith('workspace-1', 'user-1', TRADE_ID, {
+      mutationKey: KEY,
+      afterTradeNote: 'Held too long.',
+      afterTradeTradingviewUrl: null,
+      postTradeEmotionKeys: [],
+    });
+  });
+
+  it('refuses a blank note, a non-TradingView link, an empty patch and result fields', async () => {
+    for (const extra of [
+      { afterTradeNote: '   ' },
+      { afterTradeTradingviewUrl: 'https://example.com/chart' },
+      { afterTradeTradingviewUrl: 'http://www.tradingview.com/x/abc/' },
+      {},
+      { afterTradeNote: 'ok', finalPnlMinor: '100' },
+      { afterTradeNote: 'ok', traderOutcome: 'win' },
+      { afterTradeNote: 'ok', notes: 'entry note' },
+      { afterTradeNote: 'ok', tradingviewUrl: 'https://www.tradingview.com/x/abc/' },
+    ]) {
+      expect(
+        await recordAfterTradeContextAction({ tradeId: TRADE_ID, mutationKey: KEY, ...extra }),
+      ).toMatchObject({ ok: false, error: { code: 'validation_error' } });
+    }
+    expect(mocks.recordAfterTradeContext).not.toHaveBeenCalled();
+  });
+
+  it('maps a replay conflict and a legacy Trade to their own codes', async () => {
+    mocks.recordAfterTradeContext.mockResolvedValueOnce({
+      ok: false,
+      code: 'mutation_replay_conflict',
+      replayConflict: 'different',
+    });
+    expect(
+      await recordAfterTradeContextAction({
+        tradeId: TRADE_ID,
+        mutationKey: KEY,
+        afterTradeNote: 'x',
+      }),
+    ).toEqual({
+      ok: false,
+      error: { code: 'mutation_replay_conflict', replayConflict: 'different' },
+    });
+    mocks.recordAfterTradeContext.mockResolvedValueOnce({
+      ok: false,
+      code: 'legacy_trade_not_supported',
+    });
+    expect(
+      await recordAfterTradeContextAction({
+        tradeId: TRADE_ID,
+        mutationKey: KEY,
+        afterTradeNote: 'x',
+      }),
+    ).toEqual({ ok: false, error: { code: 'legacy_trade_not_supported' } });
   });
 });

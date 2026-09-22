@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  CLOSE_DRAFT_VERSION,
   closeBasisMatches,
   closeDraftStorageKey,
+  loadAfterTradeContextTask,
   loadCloseTask,
   ownerCloseDrafts,
+  removeAfterTradeContextTask,
   removeCloseDraft,
   removeCloseTask,
+  saveAfterTradeContextTask,
   saveCloseTask,
   type CloseDraftTask,
 } from './close-trade-draft-storage';
@@ -113,5 +117,56 @@ describe('the Close Trade draft', () => {
     saveCloseTask(SCOPE, 'all_remaining', task(), CONTEXT);
     removeCloseDraft(SCOPE);
     expect(window.localStorage.length).toBe(0);
+  });
+});
+
+describe('Stage 6 in the same close-flow draft (version 2)', () => {
+  const STAGE6 = {
+    basis: { status: 'closed' },
+    answers: { note: 'Exited on fear.', tradingviewUrl: '', postTradeEmotionKeys: [] },
+    submission: { key: '018f0000-0000-7000-8000-0000000000bb', body: '{"note":1}' },
+  };
+
+  it('survives the Final Close clearing its task, and a reload, with its own Save key', () => {
+    const closeSubmission = { key: '018f0000-0000-7000-8000-0000000000aa', body: '{}' };
+    saveCloseTask(SCOPE, 'all_remaining', task({ submission: closeSubmission }), CONTEXT);
+    saveAfterTradeContextTask(SCOPE, STAGE6, CONTEXT);
+    // The Final Close succeeded: its task goes, Stage 6 stays.
+    removeCloseTask(SCOPE, 'all_remaining', NOW);
+    const resumed = loadAfterTradeContextTask(SCOPE, NOW);
+    expect(resumed).toEqual(STAGE6);
+    expect(resumed?.submission?.key).not.toBe(closeSubmission.key);
+    // The close page for a no-longer-open Trade clears Exit & Result only.
+    saveCloseTask(SCOPE, 'part', task(), CONTEXT);
+    removeCloseDraft(SCOPE, NOW);
+    expect(loadCloseTask(SCOPE, 'part', NOW)).toBeNull();
+    expect(loadAfterTradeContextTask(SCOPE, NOW)).toEqual(STAGE6);
+    // A confirmed Stage 6 Save or a discard clears it, and the envelope with it.
+    removeAfterTradeContextTask(SCOPE, NOW);
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it('keeps an Exit & Result task when Stage 6 answers are written beside it', () => {
+    saveCloseTask(SCOPE, 'part', task(), CONTEXT);
+    saveAfterTradeContextTask(SCOPE, STAGE6, CONTEXT);
+    expect(loadCloseTask(SCOPE, 'part', NOW)?.exitResult.leg.pnl).toBe('50');
+    removeAfterTradeContextTask(SCOPE, NOW);
+    expect(loadCloseTask(SCOPE, 'part', NOW)).not.toBeNull();
+  });
+
+  it('reads a version-1 draft as version 2, with no Stage 6 answers', () => {
+    window.localStorage.setItem(
+      closeDraftStorageKey(SCOPE),
+      JSON.stringify({
+        kind: 'tradechemist.close-draft',
+        version: 1,
+        savedAt: NOW.toISOString(),
+        symbol: 'XAUUSD',
+        tasks: { part: task() },
+      }),
+    );
+    expect(CLOSE_DRAFT_VERSION).toBe(2);
+    expect(loadCloseTask(SCOPE, 'part', NOW)?.exitResult.leg.pnl).toBe('50');
+    expect(loadAfterTradeContextTask(SCOPE, NOW)).toBeNull();
   });
 });
