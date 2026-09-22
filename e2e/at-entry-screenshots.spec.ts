@@ -17,6 +17,8 @@ import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 import {
+  closePlanEditor,
+  openPlanRow,
   recordOpenClassify,
   recordOpenMinimum,
   recordOpenPriceLevels,
@@ -108,10 +110,12 @@ const STATES: readonly CaptureState[] = [
   {
     name: 'validation',
     prepare: async (page) => {
-      await recordOpenStep(page, 'plan');
+      await openPlanRow(page, 'target');
       await clickChoice(page, /^Fixed target/);
-      await recordOpenPriceLevels(page);
-      await page.locator('#entry-context-stop-price').fill('12..5');
+      await closePlanEditor(page);
+      const prices = await recordOpenPriceLevels(page);
+      await prices.locator('#entry-context-stop-price').fill('12..5');
+      await closePlanEditor(page);
       await page.locator('#entry-quick-save').click();
     },
   },

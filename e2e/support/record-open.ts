@@ -1,5 +1,8 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import * as rows from './plan-rows';
+import type { PlanConcept } from './plan-rows';
+
 /**
  * RECORD OPEN TRADE, DRIVEN THE WAY A TRADER DRIVES IT.
  *
@@ -53,10 +56,28 @@ export async function recordOpenDirection(page: Page, direction: 'Long' | 'Short
   );
 }
 
-/** Risk at Entry — the 1R baseline — on Plan & Risk. */
-export async function recordOpenRisk(page: Page, amount: string) {
+/** Record Open shows the shared Plan & Risk rows on its second step. */
+export function planRow(page: Page, concept: PlanConcept): Locator {
+  return rows.planRow(page, concept);
+}
+
+export async function openPlanRow(page: Page, concept: PlanConcept) {
   await recordOpenStep(page, 'plan');
-  await page.locator('#entry-risk').fill(amount);
+  return rows.openPlanRow(page, concept);
+}
+
+export async function openExitPlanRow(page: Page) {
+  await recordOpenStep(page, 'plan');
+  return rows.openExitPlanRow(page);
+}
+
+export const closePlanEditor = rows.closePlanEditor;
+
+/** Risk at Entry — the 1R baseline — recorded in the Risk row's editor. */
+export async function recordOpenRisk(page: Page, amount: string) {
+  const editor = await openPlanRow(page, 'risk');
+  await editor.locator('#entry-risk').fill(amount);
+  await closePlanEditor(page);
 }
 
 /** Save Open Trade's minimum: Symbol and Direction on Step 1, Risk at Entry on Plan & Risk. */
@@ -81,11 +102,9 @@ export async function recordOpenClassify(page: Page, strategy: string, setup?: s
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
-/** Opens the folded price levels on Plan & Risk — context, never a result. */
+/** Opens the price levels editor on Plan & Risk — context, never a result. */
 export async function recordOpenPriceLevels(page: Page) {
-  await recordOpenStep(page, 'plan');
-  const toggle = page.locator('#entry-plan-price');
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  return openPlanRow(page, 'price');
 }
 
 /** Save Open Trade from the last step, where it is the primary action. */

@@ -109,11 +109,26 @@ function fillIdentity(symbol: string) {
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Long' }));
 }
 
+/** Plan & Risk reads as launcher rows; its answers live in the editors they open. */
+function openRiskEditor() {
+  fireEvent.click(document.querySelector<HTMLElement>('[data-plan-row="risk"]')!);
+  return within(screen.getByRole('dialog'));
+}
+
+function closeEditor() {
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+}
+
+function typeRisk(value: string) {
+  fireEvent.change(openRiskEditor().getByLabelText('Risk at entry'), { target: { value } });
+  closeEditor();
+}
+
 /** Record Open's Save minimum: identity on Step 1, Risk at Entry on Plan & Risk. */
 function fillAtEntry() {
   fillIdentity('xauusd');
   fireEvent.click(screen.getByRole('button', { name: /^Step 2 of 4: / }));
-  fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+  typeRisk('100');
 }
 
 /**
@@ -156,7 +171,10 @@ describe('Recording Draft — Type → Draft and reload recovery', () => {
 
     mount();
     expect(symbolValue()).toBe('XAUUSD');
-    expect((screen.getByLabelText('Risk at entry') as HTMLInputElement).value).toBe('100');
+    expect((openRiskEditor().getByLabelText('Risk at entry') as HTMLInputElement).value).toBe(
+      '100',
+    );
+    closeEditor();
     // Both step flows say it as one compact row.
     expect(screen.getByRole('status')).toHaveTextContent(copy.recoveredCompact);
   });
@@ -231,7 +249,10 @@ describe('Recording Draft — mode switching through the page', () => {
 
     mount('at_entry');
     expect(symbolValue()).toBe('XAUUSD');
-    expect((screen.getByLabelText('Risk at entry') as HTMLInputElement).value).toBe('100');
+    expect((openRiskEditor().getByLabelText('Risk at entry') as HTMLInputElement).value).toBe(
+      '100',
+    );
+    closeEditor();
     expect(stored()?.activeMode).toBe('at_entry');
   });
 });
@@ -488,7 +509,7 @@ describe('Recording Draft — saving one mode never silently drops the other', (
     fireEvent.change(document.getElementById('after-finalPnl')!, { target: { value: '250' } });
     after.unmount();
     mount('at_entry');
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    typeRisk('100');
   }
 
   it('asks before an At Entry Save removes After Trade answers, and keeping editing keeps them', async () => {
@@ -522,7 +543,7 @@ describe('Recording Draft — saving one mode never silently drops the other', (
     fillIdentity('xauusd');
     after.unmount();
     mount('at_entry');
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    typeRisk('100');
     saveAtEntry();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -575,7 +596,7 @@ describe('Recording Draft — a chosen answer whose source went away', () => {
       exitPlan: { ...atEntry!.exitPlan, choice: { kind: 'saved', exitPlanId: 'archived-plan' } },
     }));
     expect(screen.getByText(entryCopy.exitPlan.unavailable)).toBeInTheDocument();
-    expect(document.querySelector('[data-exit-plan-state="unavailable"]')).not.toBeNull();
+    expect(document.querySelector('[data-exit-plan-row="unavailable"]')).not.toBeNull();
     saveAtEntry();
     await screen.findAllByText(entryCopy.save.staleBlocked);
     expect(createTradeMock).not.toHaveBeenCalled();

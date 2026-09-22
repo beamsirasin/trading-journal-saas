@@ -196,7 +196,10 @@ function fillMinimum() {
   chooseSymbol('xauusd');
   chooseDirection('Long');
   goTo('plan');
-  fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+  fireEvent.change(openPlanRow('risk').getByLabelText('Risk at entry'), {
+    target: { value: '100' },
+  });
+  closeEditor();
 }
 
 /** Strategy and Setup are Setup & Checklist's launcher rows; the choice is the answer. */
@@ -206,8 +209,43 @@ function chooseClassification(field: 'Strategy' | 'Setup', choice: string) {
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: choice }));
 }
 
+/**
+ * The Exit Plan's state, read from its launcher row so it can be checked
+ * whether or not its editor happens to be open.
+ */
 function exitPlanState() {
-  return document.querySelector('[data-exit-plan-state]')?.getAttribute('data-exit-plan-state');
+  return document.querySelector('[data-exit-plan-row]')?.getAttribute('data-exit-plan-row');
+}
+
+/**
+ * PLAN & RISK ANSWERS LIVE IN ROW EDITORS (UX Rules §20.4). The row reads the
+ * answer back; the editor it opens is where the answer is given.
+ */
+function planRow(concept: 'risk' | 'target' | 'price'): HTMLElement {
+  if (currentStep() !== 'plan') goTo('plan');
+  return document.querySelector<HTMLElement>(`[data-plan-row="${concept}"]`)!;
+}
+
+function openPlanRow(concept: 'risk' | 'target' | 'price') {
+  fireEvent.click(planRow(concept));
+  return within(screen.getByRole('dialog'));
+}
+
+/** The Exit Plan's launcher row, which reads its state and provenance back. */
+function exitPlanRow(): HTMLElement {
+  if (currentStep() !== 'plan') goTo('plan');
+  return document.querySelector<HTMLElement>('[data-exit-plan-row]')!;
+}
+
+/** The Exit Plan's own row opens the same states and actions it always had. */
+function openExitPlan() {
+  if (currentStep() !== 'plan') goTo('plan');
+  fireEvent.click(document.querySelector<HTMLElement>('[data-exit-plan-row]')!);
+  return within(screen.getByRole('dialog'));
+}
+
+function closeEditor() {
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 }
 
 function statusText() {
@@ -281,7 +319,8 @@ describe('Record Open — the canonical stages', () => {
       'xauusd',
     );
     goTo('plan');
-    expect(screen.getByLabelText('Risk at entry')).toHaveValue('100');
+    expect(openPlanRow('risk').getByLabelText('Risk at entry')).toHaveValue('100');
+    closeEditor();
     goTo('context');
     expect(screen.getByLabelText('Why this trade')).toHaveValue('Retest.');
   });
@@ -303,7 +342,7 @@ describe('Record Open — the canonical stages', () => {
       'xauusd',
     );
     goTo('plan');
-    expect(screen.getByLabelText('Risk at entry')).toHaveValue('100');
+    expect(openPlanRow('risk').getByLabelText('Risk at entry')).toHaveValue('100');
   });
 });
 
@@ -360,7 +399,10 @@ describe('Record Open — Save and Save now', () => {
   it('takes a blocked Save to Step 1 and focuses the row a missing answer belongs to', async () => {
     renderForm();
     goTo('plan');
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    fireEvent.change(openPlanRow('risk').getByLabelText('Risk at entry'), {
+      target: { value: '100' },
+    });
+    closeEditor();
     fireEvent.click(document.getElementById('entry-quick-save')!);
     await waitFor(() => expect(currentStep()).toBe('trade'));
     await waitFor(() => expect(document.getElementById('entry-row-symbol')).toHaveFocus());
@@ -375,7 +417,7 @@ describe('Record Open — Save and Save now', () => {
     goTo('context');
     fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
     await waitFor(() => expect(currentStep()).toBe('plan'));
-    await waitFor(() => expect(screen.getByLabelText('Risk at entry')).toHaveFocus());
+    await waitFor(() => expect(planRow('risk')).toHaveFocus());
     expect(screen.getByText('Enter your risk at entry.')).toBeVisible();
     expect(createTradeMock).not.toHaveBeenCalled();
   });
@@ -462,29 +504,64 @@ describe('Record Open — Step 1 keeps At Entry’s "now"', () => {
 describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('shows the matched assumption only beside a real Risk at Entry, and makes it reversible', () => {
     renderForm();
-    goTo('plan');
+    const editor = openPlanRow('risk');
     expect(screen.queryByText('Your actual risk matched this amount.')).toBeNull();
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
-    expect(screen.getByText('Your actual risk matched this amount.')).toBeVisible();
-    expect(screen.getByText('Assumed until you say otherwise.')).toBeVisible();
+    fireEvent.change(editor.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    // Inside the editor the assumption is stated WITH the words that qualify it.
+    expect(editor.getByText('Your actual risk matched this amount.')).toBeVisible();
+    expect(editor.getByText('Assumed until you say otherwise.')).toBeVisible();
+    expect(editor.getByRole('button', { name: 'It was different' })).toBeVisible();
+  });
+
+  /*
+    THE ROW HAS NO ROOM FOR "ASSUMED UNTIL YOU SAY OTHERWISE", so it must not
+    make the claim that sentence exists to qualify. `matched` is this draft's
+    untouched default (`createAtEntryDraft`), and reading it back as a match
+    would turn an unanswered observation into a positive one — Add Trade
+    contract §2 and §8, and the "Opening matches plan" claim this product
+    already removed once.
+  */
+  it('never reads the untouched default back as a match on the closed row', () => {
+    renderForm();
+    fillMinimum();
+    const row = planRow('risk');
+    expect(row).toHaveTextContent('100 USD');
+    expect(row).toHaveTextContent('Actual risk not recorded');
+    expect(row).not.toHaveTextContent(/matched/i);
+    expect(row).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
+  });
+
+  it('reads an explicit Different answer back on the row, with its amount', () => {
+    renderForm();
+    fillMinimum();
+    const editor = openPlanRow('risk');
+    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
+    fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
+    closeEditor();
+    expect(planRow('risk')).toHaveTextContent('Actual risk 150 USD');
+    expect(planRow('risk')).toHaveAttribute('data-actual-risk-summary', 'different');
   });
 
   it('keeps a Different amount through Matched and back', () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByRole('button', { name: 'It was different' }));
-    fireEvent.change(screen.getByLabelText('Actual risk'), { target: { value: '150' } });
-    fireEvent.click(screen.getByRole('button', { name: 'It matched after all' }));
-    fireEvent.click(screen.getByRole('button', { name: 'It was different' }));
-    expect(screen.getByLabelText('Actual risk')).toHaveValue('150');
+    const editor = openPlanRow('risk');
+    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
+    fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
+    fireEvent.click(editor.getByRole('button', { name: 'It matched after all' }));
+    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
+    expect(editor.getByLabelText('Actual risk')).toHaveValue('150');
   });
 
   it('records Different with the amount unknown without demanding a second figure', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByRole('button', { name: 'It was different' }));
-    fireEvent.click(screen.getByRole('button', { name: "I don't know the amount" }));
-    expect(screen.getByText('Different, amount not known')).toBeVisible();
+    const editor = openPlanRow('risk');
+    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
+    fireEvent.click(editor.getByRole('button', { name: "I don't know the amount" }));
+    expect(editor.getByText('Different, amount not known')).toBeVisible();
+    closeEditor();
+    expect(planRow('risk')).toHaveTextContent('Different, amount not known');
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     expect(payload().actualRiskAnswer).toBe('different');
@@ -494,12 +571,11 @@ describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('says Risk at Entry is required here, and shows no Money/Price switch', () => {
     renderForm();
     goTo('plan');
-    expect(
-      within(stepSection('plan')).getByRole('heading', { name: 'Risk', level: 3 }).parentElement,
-    ).toHaveTextContent('Required');
+    expect(planRow('risk')).toHaveTextContent('Required');
     expect(screen.queryByRole('button', { name: /Use price levels instead/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /^Price levels/ }));
-    expect(screen.getByText('Context only, never used to calculate results')).toBeVisible();
+    expect(
+      openPlanRow('price').getByText('Context only, never used to calculate results'),
+    ).toBeVisible();
   });
 });
 
@@ -507,36 +583,47 @@ describe('Record Open — Plan & Risk: Target', () => {
   it('attaches an incomplete Fixed Target to Target profit, never to No fixed target', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByLabelText(/^Fixed target/));
+    fireEvent.click(openPlanRow('target').getByLabelText(/^Fixed target/));
+    closeEditor();
     save();
+    // The row a blocked Save lands on says what is wrong before anything opens.
+    await waitFor(() => expect(planRow('target')).toHaveAttribute('data-invalid', 'true'));
     const message = await screen.findByText(
       'Add a target profit or a TP price, or choose No fixed target.',
     );
     expect(message).toBeVisible();
-    expect(screen.getByLabelText('Target profit')).toHaveAttribute(
+    const editor = openPlanRow('target');
+    expect(editor.getByLabelText('Target profit')).toHaveAttribute(
       'aria-describedby',
-      expect.stringContaining(message.id),
+      expect.stringContaining(
+        editor.getByText('Add a target profit or a TP price, or choose No fixed target.').id,
+      ),
     );
-    expect(screen.getByLabelText(/^No fixed target/)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(editor.getByLabelText(/^No fixed target/)).not.toHaveAttribute('aria-invalid', 'true');
     expect(createTradeMock).not.toHaveBeenCalled();
   });
 
   it('returns Target to Unanswered by an explicit, labelled action', () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByLabelText(/^No fixed target/));
-    expect(screen.getByLabelText(/^No fixed target/)).toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove target answer' }));
-    expect(screen.getByLabelText(/^No fixed target/)).not.toBeChecked();
-    expect(screen.getByLabelText(/^Fixed target/)).not.toBeChecked();
+    const editor = openPlanRow('target');
+    fireEvent.click(editor.getByLabelText(/^No fixed target/));
+    expect(editor.getByLabelText(/^No fixed target/)).toBeChecked();
+    fireEvent.click(editor.getByRole('button', { name: 'Remove target answer' }));
+    expect(editor.getByLabelText(/^No fixed target/)).not.toBeChecked();
+    expect(editor.getByLabelText(/^Fixed target/)).not.toBeChecked();
   });
 
   it('keeps a money-based target R as context beside the Target', () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByLabelText(/^Fixed target/));
-    fireEvent.change(screen.getByLabelText('Target profit'), { target: { value: '300' } });
-    expect(screen.getByText('Reaching your target would be +3.00R.')).toBeVisible();
+    const editor = openPlanRow('target');
+    fireEvent.click(editor.getByLabelText(/^Fixed target/));
+    fireEvent.change(editor.getByLabelText('Target profit'), { target: { value: '300' } });
+    expect(editor.getByText('Reaching your target would be +3.00R.')).toBeVisible();
+    closeEditor();
+    // And it reads back where the Target is read.
+    expect(planRow('target')).toHaveTextContent('Reaching your target would be +3.00R.');
   });
 });
 
@@ -547,14 +634,12 @@ describe('Record Open — readiness and errors', () => {
     goTo('context');
     expect(statusText()).toContain('Ready to save');
 
-    goTo('plan');
-    fireEvent.click(screen.getByRole('button', { name: /^Price levels/ }));
-    fireEvent.change(screen.getByLabelText('SL price'), { target: { value: '12..5' } });
-    // An error keeps its group open and says so.
-    expect(screen.getByRole('button', { name: /^Price levels/ })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    fireEvent.change(openPlanRow('price').getByLabelText('SL price'), {
+      target: { value: '12..5' },
+    });
+    closeEditor();
+    // An error is never hidden behind a tap: the closed row carries it.
+    expect(planRow('price')).toHaveAttribute('data-invalid', 'true');
     goTo('context');
     expect(statusText()).not.toContain('Ready to save');
     expect(statusText()).toContain('attention');
@@ -563,16 +648,24 @@ describe('Record Open — readiness and errors', () => {
   it('takes a blocked Save back to the price level that holds the error', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByRole('button', { name: /^Price levels/ }));
-    fireEvent.change(screen.getByLabelText('Entry price'), { target: { value: 'abc' } });
+    fireEvent.change(openPlanRow('price').getByLabelText('Entry price'), {
+      target: { value: 'abc' },
+    });
+    closeEditor();
     goTo('context');
     fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
     expect(createTradeMock).not.toHaveBeenCalled();
     await waitFor(() => expect(currentStep()).toBe('plan'));
-    await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
+    // The row is the focusable thing that exists: it names the concept, holds
+    // the error, and opens the input in one press (as Step 1 has always done).
+    await waitFor(() => expect(planRow('price')).toHaveFocus());
     expect(
       screen.getByText('Enter a price greater than zero, using digits and one decimal point.'),
     ).toBeVisible();
+    expect(openPlanRow('price').getByLabelText('Entry price')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
   });
 });
 
@@ -613,28 +706,29 @@ describe('Record Open — Exit Plan inheritance across stages', () => {
     renderForm();
     fillMinimum();
     chooseClassification('Strategy', 'Breakout');
-    goTo('plan');
+    openExitPlan();
     // An explicit override: another choice, made in the Exit Plan editor.
     fireEvent.click(screen.getByRole('button', { name: 'Choose another' }));
     fireEvent.click(screen.getByRole('radio', { name: /^No defined exit rule/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(exitPlanState()).toBe('no_rule');
+    closeEditor();
     chooseClassification('Strategy', 'Reversal');
     // No announcement, and the override stands.
     expect(within(stepSection('setup')).queryByText(/currently supplies the exit plan/)).toBeNull();
-    goTo('plan');
     expect(exitPlanState()).toBe('no_rule');
     // Only the explicit restore brings the default back.
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: 'Use strategy default' }));
     expect(exitPlanState()).toBe('inherited');
-    expect(screen.getByText('From Strategy: Reversal')).toBeVisible();
+    expect(within(exitPlanRow()).getByText('From Strategy: Reversal')).toBeVisible();
   });
 
   it('opening the chooser and closing without a change never manufactures an override', () => {
     renderForm();
     fillMinimum();
     chooseClassification('Strategy', 'Breakout');
-    goTo('plan');
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: 'Choose another' }));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(exitPlanState()).toBe('inherited');
@@ -648,7 +742,7 @@ describe('Record Open — Exit Plan inheritance across stages', () => {
     renderForm();
     fillMinimum();
     chooseClassification('Strategy', 'Breakout');
-    goTo('plan');
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     expect(screen.getByLabelText('Your plan for this trade')).toHaveValue(
       'Half at 1R, trail the rest.',
@@ -662,14 +756,14 @@ describe('Record Open — Exit Plan inheritance across stages', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(exitPlanState()).toBe('customized');
-    expect(screen.getByText('Customized for this trade')).toBeVisible();
+    expect(within(exitPlanRow()).getByText('Customized for this trade')).toBeVisible();
   });
 
   it('discards an edit only when Discard changes is chosen', () => {
     renderForm();
     fillMinimum();
     chooseClassification('Strategy', 'Breakout');
-    goTo('plan');
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
       target: { value: 'Something else entirely.' },
@@ -682,7 +776,7 @@ describe('Record Open — Exit Plan inheritance across stages', () => {
     renderForm();
     fillMinimum();
     chooseClassification('Strategy', 'Breakout');
-    goTo('plan');
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
       target: { value: 'Close before the news.' },
@@ -696,6 +790,7 @@ describe('Record Open — Exit Plan inheritance across stages', () => {
     expect(exitPlanState()).toBe('customized');
     expect(screen.getByText('Close before the news.')).toBeVisible();
 
+    closeEditor();
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     expect(payload()).toMatchObject({
@@ -719,7 +814,7 @@ describe('Record Open — Exit Plan inheritance across stages', () => {
 
 describe('Record Open — managing saved exit plans', () => {
   function openManage() {
-    if (currentStep() !== 'plan') goTo('plan');
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: /^(Choose another|Choose exit plan)$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Manage saved plans' }));
   }
@@ -809,6 +904,8 @@ describe('Record Open — managing saved exit plans', () => {
       screen.getByText('To set a Strategy default, choose a Strategy for this trade first.'),
     ).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    // Closing the chooser returns to the Exit Plan sheet it opened from.
+    closeEditor();
 
     chooseClassification('Strategy', 'Breakout');
     openManage();

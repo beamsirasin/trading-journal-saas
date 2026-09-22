@@ -981,7 +981,13 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
 
    Actual Risk is an entry-time fact, asked in Plan & Risk in every flow: At Entry's visible
    "matches" statement and "Actual risk differed" (§3.4, §11.4), or After Trade's Matched /
-   Different / Don't know reconstruction (§12.4). After-Trade Context may show it read-only as
+   Different / Don't know reconstruction (§12.4). **A collapsed reading of Plan & Risk never states
+   that actual risk matched unless the trader established it.** At Entry's control may offer the
+   match as a reversible assumption because it shows the words that qualify it ("Assumed until you
+   say otherwise") and the way to change it; a launcher row shows neither, so it reads an
+   unestablished answer as not recorded. Turning that untouched default into a positive observation
+   is exactly what §2 and §8 of the contract forbid — and what the earlier "Opening matches plan"
+   claim was removed for. After-Trade Context may show it read-only as
    context and never asks it again; there is no second risk-adherence question _(contract decision 51)_. The Trade's notes belong to Entry Context & Evidence and are not reused as an after-trade
    note (Appendix A).
 
@@ -1052,9 +1058,19 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
     condition is Met / Not Met / Unanswered, plus Don't remember in Record Closed Trade, never a
     binary checkbox (§8.4, §11.7, §12.7).
 11. **Money is the result; Price is context** in every stage (§8.1–§8.2). The TP price stays with
-    the Target it describes, and Entry, SL and size stay folded, labelled context in Plan & Risk.
+    the Target it describes, and Entry, SL and size stay collapsed and labelled context in Plan &
+    Risk — since 2026-09-23 as the step's Price levels launcher row, which reads its values back and
+    opens them in one editor.
 12. **"Evidence" in a stage name means context the trader attaches**, such as a chart. It is never
     presented as verified, and it is not the Capture evidence Review reads (§9.4).
+13. **Plan & Risk is read as launcher rows (2026-09-23).** Both recording moments show the stage
+    as four rows — Risk at Entry, Target, Exit Plan, Price levels — each reading back what is
+    recorded and opening one focused editor that records it, as Step 1 and stages 3–6 already do.
+    The Risk row reads Actual Risk beneath the 1R amount under the §20.1 rule above, and says nothing
+    about it while Risk at Entry is unanswered. Nothing about the answers, their states, their
+    defaults, their validation or their provenance changes with the reading. A blocked Save focuses
+    the ROW that holds the error, never an input inside a closed editor, and the row shows the error
+    without being opened.
 
 ---
 

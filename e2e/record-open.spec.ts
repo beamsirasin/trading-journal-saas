@@ -18,6 +18,10 @@ import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 import {
+  closePlanEditor,
+  openExitPlanRow,
+  openPlanRow,
+  planRow,
   recordOpenClassify,
   recordOpenConcept,
   recordOpenDirection,
@@ -258,13 +262,21 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
       await page.getByRole('button', { name: 'Next: Plan & risk' }).click();
       await expectStep(page, 'plan');
       await expect(page.locator('[data-step-progress]:visible').first()).toHaveText('Step 2 of 4');
-      await page.locator('#entry-risk').fill('100');
-      await expect(page.getByText('Your actual risk matched this amount.')).toBeVisible();
+      const riskEditor = await openPlanRow(page, 'risk');
+      await riskEditor.locator('#entry-risk').fill('100');
+      // The assumption is stated in the editor, with the words that qualify it.
+      await expect(riskEditor.getByText('Your actual risk matched this amount.')).toBeVisible();
+      await closePlanEditor(page);
+      // The row never repeats it as a fact nobody stated.
+      await expect(planRow(page, 'risk')).toContainText('Actual risk not recorded');
+      const targetEditor = await openPlanRow(page, 'target');
       await chooseChoice(page, /^Fixed target/);
-      await page.locator('#entry-target-profit').fill('300');
-      await expect(page.getByText('Reaching your target would be +3.00R.')).toBeVisible();
-      await recordOpenPriceLevels(page);
-      await page.locator('#entry-context-entry-price').fill('2400');
+      await targetEditor.locator('#entry-target-profit').fill('300');
+      await expect(targetEditor.getByText('Reaching your target would be +3.00R.')).toBeVisible();
+      await closePlanEditor(page);
+      const priceEditor = await recordOpenPriceLevels(page);
+      await priceEditor.locator('#entry-context-entry-price').fill('2400');
+      await closePlanEditor(page);
       await expect(page.locator('#entry-quick-save')).toBeInViewport();
       await expectNoOverflow(page, `${name} step 2`);
 
@@ -358,7 +370,8 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
     }
     await expectStep(page, 'context');
     await expect(page.getByLabel('Why this trade')).toHaveValue('Pullback into value.');
-    await expect(page.locator('#entry-risk')).toHaveValue('75');
+    await expect(planRow(page, 'risk')).toContainText('75');
+    await recordOpenStep(page, 'setup');
     await expect(page.locator('#entry-strategy')).toContainText(GOLDEN);
 
     await waitForDraft(page);
@@ -370,7 +383,7 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
     await expect(recordOpenConcept(page, 'symbol')).toHaveAttribute('data-value', 'GBPJPY');
     await expect(recordOpenConcept(page, 'direction')).toHaveAttribute('data-value', 'long');
     await recordOpenStep(page, 'plan');
-    await expect(page.locator('#entry-risk')).toHaveValue('75');
+    await expect(planRow(page, 'risk')).toContainText('75');
     await recordOpenStep(page, 'setup');
     await expect(page.locator('#entry-setup')).toContainText(RETEST);
     const retest = page.getByRole('group', { name: /Retest held/ });
@@ -474,8 +487,8 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
     const user = await newUser(page, 'ro-inherit');
     await page.goto(ROUTE);
     await recordOpenMinimum(page, { symbol: 'XAUUSD', direction: 'Long', risk: '100' });
-    const state = page.locator('[data-exit-plan-state]');
-    await expect(state).toHaveAttribute('data-exit-plan-state', 'not_recorded');
+    const state = page.locator('[data-exit-plan-row]');
+    await expect(state).toHaveAttribute('data-exit-plan-row', 'not_recorded');
 
     // Inherited, and announced where the Strategy is chosen.
     await recordOpenClassify(page, GOLDEN);
@@ -485,8 +498,9 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
       ),
     ).toBeVisible();
     await recordOpenStep(page, 'plan');
-    await expect(state).toHaveAttribute('data-exit-plan-state', 'inherited');
-    await expect(page.getByText('From Strategy: Golden Breakout')).toBeVisible();
+    await expect(state).toHaveAttribute('data-exit-plan-row', 'inherited');
+    // The provenance is readable on the row, without opening anything.
+    await expect(state).toContainText('From Strategy: Golden Breakout');
 
     // A Strategy change follows while still inherited.
     await recordOpenClassify(page, RANGE);
@@ -496,23 +510,27 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
       ),
     ).toBeVisible();
     await recordOpenStep(page, 'plan');
-    await expect(page.getByText('From Strategy: Range Fade')).toBeVisible();
+    await expect(state).toContainText('From Strategy: Range Fade');
 
     // An explicit override stops the following.
+    await openExitPlanRow(page);
     await page.getByRole('button', { name: 'Choose another' }).click();
     const editor = page.getByRole('dialog', { name: 'Exit plan' });
     await editor.locator('label', { hasText: 'No defined exit rule' }).click();
     await editor.getByRole('button', { name: 'Done' }).click();
-    await expect(state).toHaveAttribute('data-exit-plan-state', 'no_rule');
+    await expect(state).toHaveAttribute('data-exit-plan-row', 'no_rule');
+    await closePlanEditor(page);
     await recordOpenClassify(page, GOLDEN);
     await expect(page.getByText(/currently supplies the exit plan/)).toHaveCount(0);
     await recordOpenStep(page, 'plan');
-    await expect(state).toHaveAttribute('data-exit-plan-state', 'no_rule');
+    await expect(state).toHaveAttribute('data-exit-plan-row', 'no_rule');
 
     // Only the named action restores inheritance.
+    await openExitPlanRow(page);
     await page.getByRole('button', { name: 'Use strategy default' }).click();
-    await expect(state).toHaveAttribute('data-exit-plan-state', 'inherited');
-    await expect(page.getByText('From Strategy: Golden Breakout')).toBeVisible();
+    await expect(state).toHaveAttribute('data-exit-plan-row', 'inherited');
+    await closePlanEditor(page);
+    await expect(state).toContainText('From Strategy: Golden Breakout');
     await page.locator('#entry-quick-save').click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
     expect(await latestTrade(user.workspaceId)).toMatchObject({
@@ -538,31 +556,41 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
     // Risk missing → Step 2, on Risk at Entry.
     await recordOpenSymbol(page, 'NZDUSD');
     await recordOpenDirection(page, 'Long');
-    await recordOpenStep(page, 'plan');
-    await page.locator('#entry-risk').fill('');
+    const riskEditor = await openPlanRow(page, 'risk');
+    await riskEditor.locator('#entry-risk').fill('');
+    await closePlanEditor(page);
     await recordOpenSave(page);
     await expectStep(page, 'plan');
-    await expect(page.locator('#entry-risk')).toBeFocused();
+    // The row is the control on screen: it takes the focus and the error.
+    await expect(planRow(page, 'risk')).toBeFocused();
     await expect(page.getByText('Enter your risk at entry.')).toBeVisible();
 
-    // An incomplete Fixed Target → Step 2, on Target profit.
-    await page.locator('#entry-risk').fill('100');
+    // An incomplete Fixed Target → Step 2, on the Target row.
+    await recordOpenRisk(page, '100');
+    await openPlanRow(page, 'target');
     await chooseChoice(page, /^Fixed target/);
+    await closePlanEditor(page);
     await recordOpenSave(page);
     await expectStep(page, 'plan');
-    await expect(page.locator('#entry-target-profit')).toBeFocused();
+    await expect(planRow(page, 'target')).toBeFocused();
     await expect(
       page.getByText('Add a target profit or a TP price, or choose No fixed target.'),
     ).toBeVisible();
+    await openPlanRow(page, 'target');
     await chooseChoice(page, /^No fixed target/);
+    await closePlanEditor(page);
 
-    // A malformed price level → Step 2, on that price.
-    await recordOpenPriceLevels(page);
-    await page.locator('#entry-context-stop-price').fill('12..5');
+    // A malformed price level → Step 2, on the Price levels row.
+    const priceEditor = await recordOpenPriceLevels(page);
+    await priceEditor.locator('#entry-context-stop-price').fill('12..5');
+    await closePlanEditor(page);
     await recordOpenSave(page);
     await expectStep(page, 'plan');
-    await expect(page.locator('#entry-context-stop-price')).toBeFocused();
-    await page.locator('#entry-context-stop-price').fill('');
+    await expect(planRow(page, 'price')).toBeFocused();
+    await expect(planRow(page, 'price')).toHaveAttribute('data-invalid', 'true');
+    const repaired = await recordOpenPriceLevels(page);
+    await repaired.locator('#entry-context-stop-price').fill('');
+    await closePlanEditor(page);
 
     // A malformed TradingView link → Step 4, on the link.
     await recordOpenStep(page, 'context');

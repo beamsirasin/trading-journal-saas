@@ -192,8 +192,16 @@ function fieldTargetId(field: AfterTradeField): string {
     case 'direction':
     case 'enteredAt':
       return tradeDetailsRowId('after', field);
+    case 'risk':
     case 'actualRisk':
-      return 'after-actual-risk-amount';
+      return PLAN_ROW_ID.risk;
+    case 'targetProfit':
+    case 'targetPrice':
+      return PLAN_ROW_ID.target;
+    case 'contextEntryPrice':
+    case 'contextStopPrice':
+    case 'contextPositionSize':
+      return PLAN_ROW_ID.price;
     case 'tradingviewUrl':
       return 'after-context-chart';
     case 'afterTradeNote':
@@ -205,11 +213,24 @@ function fieldTargetId(field: AfterTradeField): string {
   }
 }
 
+/** Plan & Risk's launcher rows — the concept a blocked Save lands on. */
+const PLAN_ROW_ID = {
+  risk: 'after-risk-row',
+  target: 'after-target-row',
+  exitPlan: 'after-exit-plan-row',
+  price: 'after-price-row',
+} as const;
+
 /**
- * The Plan & Risk step's ids, kept as they were before the step was shared, so
- * a blocked Save focuses exactly the control it always did (`fieldTargetId`).
+ * The Plan & Risk step's ids: its four launcher rows, and the inputs inside
+ * the editors those rows open. The input ids are the ones this form always
+ * used; only the focus targets moved to the rows (`fieldTargetId`).
  */
 const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
+  riskRow: PLAN_ROW_ID.risk,
+  targetRow: PLAN_ROW_ID.target,
+  exitPlanRow: PLAN_ROW_ID.exitPlan,
+  priceRow: PLAN_ROW_ID.price,
   risk: 'after-risk',
   targetState: 'after-target',
   targetProfit: 'after-targetProfit',
@@ -217,7 +238,6 @@ const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
   entryPrice: 'after-contextEntryPrice',
   stopPrice: 'after-contextStopPrice',
   positionSize: 'after-contextPositionSize',
-  priceContextToggle: 'after-plan-price',
 };
 
 /** The Plan & Risk step's fields, as this draft names them. */
@@ -1215,6 +1235,21 @@ export function TradeAfterTradeForm({
               apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
             }
             onLibraryChanged={setAdoptedExitPlans}
+            /*
+              EVERY ANSWER HERE IS THE TRADER'S OWN. This draft starts at
+              `unanswered` and only a selection moves it, so `matched` reaching
+              the row really does mean they said it matched.
+            */
+            actualRisk={
+              draft.actualRisk.answer === 'matched'
+                ? { kind: 'matched' }
+                : draft.actualRisk.answer === 'different'
+                  ? { kind: 'different', amount: draft.actualRisk.amount }
+                  : draft.actualRisk.answer === 'unknown'
+                    ? { kind: 'unknown' }
+                    : { kind: 'not_recorded' }
+            }
+            actualRiskError={errorText('actualRisk')}
             riskFollowUp={
               <div className="flex min-w-0 flex-col gap-3">
                 <ChoiceGroup

@@ -84,33 +84,56 @@ function fieldStep(field: AtEntryField): number {
   }
 }
 
-/** Where a blocked Save sends focus for each field — always a real, focusable control. */
+/** Plan & Risk's launcher rows — the concept a blocked Save lands on. */
+const PLAN_ROW_ID = {
+  risk: 'entry-risk-row',
+  target: 'entry-target-row',
+  exitPlan: 'entry-exit-plan-row',
+  price: 'entry-price-row',
+} as const;
+
+/**
+ * Where a blocked Save sends focus for each field — always a real, focusable
+ * control that is on screen at the time.
+ *
+ * AN ANSWER THAT LIVES IN AN EDITOR FOCUSES ITS ROW. Step 1 has always worked
+ * this way, and since Plan & Risk became four launcher rows its answers do
+ * too: the row names the concept, carries the error, and opens the control
+ * that needs attention in one press. Focusing an input inside a closed sheet
+ * would focus nothing at all.
+ */
 const FIELD_TARGET_ID: Readonly<Record<AtEntryField, string>> = {
-  // Step 1's controls live in editors; its launcher row names the concept and opens it.
   tradingAccountId: tradeDetailsRowId('entry', 'tradingAccountId'),
   symbol: tradeDetailsRowId('entry', 'symbol'),
   direction: tradeDetailsRowId('entry', 'direction'),
   enteredAt: tradeDetailsRowId('entry', 'enteredAt'),
-  risk: 'entry-risk',
-  actualRiskAmount: 'entry-actual-risk',
-  targetProfit: 'entry-target-profit',
-  targetPrice: 'entry-target-price',
-  contextEntryPrice: 'entry-context-entry-price',
-  contextStopPrice: 'entry-context-stop-price',
-  contextPositionSize: 'entry-context-size',
+  risk: PLAN_ROW_ID.risk,
+  actualRiskAmount: PLAN_ROW_ID.risk,
+  targetProfit: PLAN_ROW_ID.target,
+  targetPrice: PLAN_ROW_ID.target,
+  contextEntryPrice: PLAN_ROW_ID.price,
+  contextStopPrice: PLAN_ROW_ID.price,
+  contextPositionSize: PLAN_ROW_ID.price,
   tradingviewUrl: 'entry-context-chart',
 };
 
-/** The Plan & Risk step's ids for Record Open. */
+/**
+ * The Plan & Risk step's ids for Record Open — its four launcher rows, and the
+ * inputs inside the editors those rows open. The input ids are the ones this
+ * form always used; only the focus targets above moved to the rows.
+ */
 const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
-  risk: FIELD_TARGET_ID.risk,
+  riskRow: PLAN_ROW_ID.risk,
+  targetRow: PLAN_ROW_ID.target,
+  exitPlanRow: PLAN_ROW_ID.exitPlan,
+  priceRow: PLAN_ROW_ID.price,
+  risk: 'entry-risk',
   targetState: 'entry-target',
-  targetProfit: FIELD_TARGET_ID.targetProfit,
-  targetPrice: FIELD_TARGET_ID.targetPrice,
-  entryPrice: FIELD_TARGET_ID.contextEntryPrice,
-  stopPrice: FIELD_TARGET_ID.contextStopPrice,
-  positionSize: FIELD_TARGET_ID.contextPositionSize,
-  priceContextToggle: 'entry-plan-price',
+  targetProfit: 'entry-target-profit',
+  targetPrice: 'entry-target-price',
+  entryPrice: 'entry-context-entry-price',
+  stopPrice: 'entry-context-stop-price',
+  positionSize: 'entry-context-size',
 };
 
 /** The Plan & Risk step's fields, as this draft names them. */
@@ -857,6 +880,21 @@ export function TradeAtEntryForm({
             stopWrongSide: validation.notices.includes('stop_wrong_side'),
             targetWrongSide: validation.notices.includes('target_wrong_side'),
           }}
+          /*
+            `matched` IS THIS DRAFT'S UNTOUCHED DEFAULT, not an answer. The
+            editor offers it as a reversible assumption, with "Assumed until
+            you say otherwise" beside it saying exactly that. The row has no
+            such qualifier, so it reports nothing recorded rather than a match
+            nobody stated (contract §2, §8).
+          */
+          actualRisk={
+            draft.actualRisk.mode === 'different'
+              ? { kind: 'different', amount: draft.actualRisk.amount }
+              : draft.actualRisk.mode === 'different_unknown'
+                ? { kind: 'different_unknown' }
+                : { kind: 'not_recorded' }
+          }
+          actualRiskError={errorText('actualRiskAmount')}
           riskFollowUp={
             <ActualRiskField
               draft={draft}

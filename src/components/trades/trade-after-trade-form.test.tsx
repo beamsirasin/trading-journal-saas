@@ -386,6 +386,42 @@ function fillIdentity() {
   chooseDirection('Long');
 }
 
+/**
+ * PLAN & RISK ANSWERS LIVE IN ROW EDITORS (UX Rules §20.4). The row reads the
+ * answer back; the editor it opens is where the answer is given.
+ */
+function planRow(concept: 'risk' | 'target' | 'price'): HTMLElement {
+  if (currentStep() !== 'plan') goTo('plan');
+  return document.querySelector<HTMLElement>(`[data-plan-row="${concept}"]`)!;
+}
+
+function openPlanRow(concept: 'risk' | 'target' | 'price'): HTMLElement {
+  fireEvent.click(planRow(concept));
+  return screen.getByRole('dialog');
+}
+
+/** The Exit Plan's row, and the sheet of states and actions it opens. */
+function exitPlanRow(): HTMLElement {
+  if (currentStep() !== 'plan') goTo('plan');
+  return document.querySelector<HTMLElement>('[data-exit-plan-row]')!;
+}
+
+function openExitPlan(): HTMLElement {
+  fireEvent.click(exitPlanRow());
+  return screen.getByRole('dialog');
+}
+
+function closeEditor() {
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+}
+
+/** Answer one Plan & Risk field the way a trader does: open, type, close. */
+function typeInPlan(concept: 'risk' | 'target' | 'price', label: string | RegExp, value: string) {
+  const editor = openPlanRow(concept);
+  type(label, value, editor);
+  closeEditor();
+}
+
 function type(label: string | RegExp, value: string, scope: HTMLElement = document.body) {
   fireEvent.change(within(scope).getByLabelText(label), { target: { value } });
 }
@@ -495,7 +531,7 @@ describe('After Trade — the moment and its steps', () => {
     type('Final net P&L', '120');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next: Plan' }));
-    type('Risk at entry', '60');
+    typeInPlan('risk', 'Risk at entry', '60');
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(currentStep()).toBe('trade');
@@ -561,11 +597,19 @@ describe('After Trade — the moment and its steps', () => {
       expect(screen.getByRole('radio', { name })).not.toBeChecked();
     }
     goTo('plan');
+    // The rows say nothing was answered before anything is opened.
+    expect(planRow('risk')).toHaveTextContent('Not answered');
+    expect(planRow('risk')).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
+    expect(planRow('target')).toHaveTextContent('Not answered');
+    const riskEditor = within(openPlanRow('risk'));
     for (const name of ['Matched risk at entry', 'It was different']) {
-      expect(screen.getByRole('radio', { name })).not.toBeChecked();
+      expect(riskEditor.getByRole('radio', { name })).not.toBeChecked();
     }
-    expect(screen.getByRole('radio', { name: /^Fixed target/ })).not.toBeChecked();
-    expect(screen.getByRole('radio', { name: /^No fixed target/ })).not.toBeChecked();
+    closeEditor();
+    const targetEditor = within(openPlanRow('target'));
+    expect(targetEditor.getByRole('radio', { name: /^Fixed target/ })).not.toBeChecked();
+    expect(targetEditor.getByRole('radio', { name: /^No fixed target/ })).not.toBeChecked();
+    closeEditor();
   });
 
   it('reads the final exit time on Result and the thesis on Context, saving both unchanged', async () => {
@@ -622,8 +666,7 @@ describe('After Trade — the moment and its steps', () => {
   it('says on the step itself how much needs attention, beside the field error', async () => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    type('Risk at entry', '12..5');
+    typeInPlan('risk', 'Risk at entry', '12..5');
     save();
     await waitFor(() => expect(currentStep()).toBe('plan'));
     expect(document.querySelector('[data-step-attention]')).toHaveTextContent(
@@ -638,16 +681,13 @@ describe('After Trade — the moment and its steps', () => {
   it('reads the exit plan as one line and opens the chooser only when asked', () => {
     renderForm(withStrategy);
     goTo('plan');
-    const toggle = screen.getByRole('button', { name: /^Exit plan/ });
-    expect(toggle).toHaveTextContent('Not recorded');
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(document.querySelector('[data-exit-plan-state]')).toHaveAttribute(
-      'data-exit-plan-state',
-      'not_recorded',
-    );
-    expect(screen.getByRole('button', { name: 'Choose exit plan' })).toBeInTheDocument();
+    const row = exitPlanRow();
+    expect(row).toHaveTextContent('Not recorded');
+    expect(row).toHaveAttribute('data-exit-plan-row', 'not_recorded');
+    // Nothing opens until it is asked for.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const editor = within(openExitPlan());
+    expect(editor.getByRole('button', { name: 'Choose exit plan' })).toBeInTheDocument();
   });
 
   it('asks price levels once, folded on the Plan step, never again on Save', () => {
@@ -655,34 +695,32 @@ describe('After Trade — the moment and its steps', () => {
     // Plan & Risk holds them; the last step's details no longer do. Every
     // step stays mounted, so the hidden one is searched as hidden.
     goTo('plan');
-    expect(within(stepSection('plan')).getByRole('button', { name: /^Price levels/ })).toBe(
-      document.getElementById('after-plan-price'),
+    expect(within(stepSection('plan')).getByRole('button', { name: /^Edit Price levels/ })).toBe(
+      document.getElementById('after-price-row'),
     );
     expect(
       within(stepSection('after')).queryByRole('button', {
-        name: /^Price levels/,
+        name: /^Edit Price levels/,
         hidden: true,
       }),
     ).toBeNull();
+    // The inputs exist once, inside the one editor that row opens.
+    expect(document.querySelectorAll('#after-contextEntryPrice')).toHaveLength(0);
+    openPlanRow('price');
     expect(document.querySelectorAll('#after-contextEntryPrice')).toHaveLength(1);
   });
 
   it('never folds the price levels over an error a blocked Save has to reach', async () => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    const group = screen.getByRole('button', { name: /^Price levels/ });
-    fireEvent.click(group);
-    type('Entry price', '2398.5');
-    // A group with nothing wrong in it folds away on request.
-    fireEvent.click(group);
-    expect(group).toHaveAttribute('aria-expanded', 'false');
+    typeInPlan('price', 'Entry price', '2398.5');
+    // Answered and closed, the row simply reads its values back.
+    expect(planRow('price')).toHaveTextContent('Entry price 2398.5');
+    expect(planRow('price')).not.toHaveAttribute('data-invalid');
 
-    fireEvent.click(group);
-    type('Entry price', '12..5');
-    fireEvent.click(group);
-    // This one cannot fold: the error inside it has to stay reachable.
-    expect(group).toHaveAttribute('aria-expanded', 'true');
+    typeInPlan('price', 'Entry price', '12..5');
+    // This one carries its error on the closed row: it has to stay reachable.
+    expect(planRow('price')).toHaveAttribute('data-invalid', 'true');
     // Save from elsewhere: the blocked Save brings the trader back to Plan.
     goTo('after');
     save();
@@ -692,7 +730,13 @@ describe('After Trade — the moment and its steps', () => {
       ),
     ).toBeInTheDocument();
     await waitFor(() => expect(currentStep()).toBe('plan'));
-    await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
+    // The row is the control that exists to focus, and it opens the input.
+    await waitFor(() => expect(planRow('price')).toHaveFocus());
+    expect(within(openPlanRow('price')).getByLabelText('Entry price')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    closeEditor();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 });
@@ -811,7 +855,7 @@ describe('Step 1 — read first, edit on demand', () => {
     goTo('result');
     type('Final net P&L', '400');
     goTo('plan');
-    type('Risk at entry', '100');
+    typeInPlan('risk', 'Risk at entry', '100');
     // Open and close a Step 1 editor from Step 1 — nothing else moves.
     const account = openConcept('Trading Account');
     expect(account.getByRole('button', { name: 'Main USD · USD' })).toHaveAttribute(
@@ -1882,7 +1926,7 @@ describe('Quick Save — the short way out once identity is answered', () => {
     type('Final net P&L', '400');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
     goTo('plan');
-    type('Risk at entry', '100');
+    typeInPlan('risk', 'Risk at entry', '100');
     // Back on Step 1, the quiet Save still carries the later answers.
     goTo('trade');
     fireEvent.click(quickSave()!);
@@ -1936,7 +1980,7 @@ describe('Quick Save — the short way out once identity is answered', () => {
     renderForm();
     fillIdentity();
     goTo('plan');
-    type('Risk at entry', '12..5');
+    typeInPlan('risk', 'Risk at entry', '12..5');
     goTo('context');
     fireEvent.click(quickSave()!);
     await waitFor(() => expect(currentStep()).toBe('plan'));
@@ -2040,14 +2084,15 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     type('Final net P&L', '100');
     expect(screen.getByText('Actual R needs your risk at entry.')).toBeInTheDocument();
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
-    goTo('plan');
-    type('Risk at entry', '50');
+    typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
     // Actual Risk is Risk Discipline evidence and never moves the denominator.
     goTo('plan');
-    fireEvent.click(screen.getByRole('radio', { name: 'It was different' }));
-    type('Actual risk amount', '25');
+    const risk = within(openPlanRow('risk'));
+    fireEvent.click(risk.getByRole('radio', { name: 'It was different' }));
+    type('Actual risk amount', '25', openPlanRow('risk'));
+    closeEditor();
     goTo('result');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
   });
@@ -2057,24 +2102,34 @@ describe('Actual Risk', () => {
   it('refuses Matched without a Risk at Entry to match', async () => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    fireEvent.click(screen.getByRole('radio', { name: 'Matched risk at entry' }));
+    fireEvent.click(
+      within(openPlanRow('risk')).getByRole('radio', { name: 'Matched risk at entry' }),
+    );
+    // Explicitly chosen, so the row may state it — this one IS the trader's answer.
+    closeEditor();
+    expect(planRow('risk')).toHaveAttribute('data-actual-risk-summary', 'matched');
     save();
     expect(await screen.findByText(/Matched needs a risk at entry/)).toBeInTheDocument();
+    // A blocked Save lands on the row, which carries the reason.
+    expect(planRow('risk')).toHaveAttribute('data-invalid', 'true');
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
   it('refuses a Different amount equal to Risk at Entry, never rewriting it to Matched', async () => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    type('Risk at entry', '50');
-    fireEvent.click(screen.getByRole('radio', { name: 'It was different' }));
-    type('Actual risk amount', '50');
+    typeInPlan('risk', 'Risk at entry', '50');
+    const editor = openPlanRow('risk');
+    fireEvent.click(within(editor).getByRole('radio', { name: 'It was different' }));
+    type('Actual risk amount', '50', editor);
+    closeEditor();
     save();
     expect(await screen.findByText(/This is the same as your risk at entry/)).toBeInTheDocument();
     expect(currentStep()).toBe('plan');
-    expect(screen.getByRole('radio', { name: 'It was different' })).toBeChecked();
+    expect(
+      within(openPlanRow('risk')).getByRole('radio', { name: 'It was different' }),
+    ).toBeChecked();
+    closeEditor();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
@@ -2085,13 +2140,14 @@ describe('Actual Risk', () => {
   ] as const)('sends %s as its own answer', async (label, answer, amount) => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    type('Risk at entry', '50');
+    typeInPlan('risk', 'Risk at entry', '50');
+    const editor = openPlanRow('risk');
     fireEvent.click(
-      within(screen.getByRole('group', { name: 'Actual risk' })).getByRole('radio', {
+      within(within(editor).getByRole('group', { name: 'Actual risk' })).getByRole('radio', {
         name: label,
       }),
     );
+    closeEditor();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({ plannedRiskMinor: '5000', actualRiskAnswer: answer });
@@ -2103,23 +2159,28 @@ describe('Target', () => {
   it('blocks an explicitly Fixed Target with neither Target Profit nor TP price', async () => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    fireEvent.click(screen.getByRole('radio', { name: /^Fixed target/ }));
+    fireEvent.click(within(openPlanRow('target')).getByRole('radio', { name: /^Fixed target/ }));
+    closeEditor();
     save();
     expect(
       await screen.findByText('Add a target profit or a TP price, or choose No fixed target.'),
     ).toBeInTheDocument();
     expect(currentStep()).toBe('plan');
-    expect(screen.getByRole('radio', { name: /^Fixed target/ })).toBeChecked();
+    expect(planRow('target')).toHaveAttribute('data-invalid', 'true');
+    expect(
+      within(openPlanRow('target')).getByRole('radio', { name: /^Fixed target/ }),
+    ).toBeChecked();
+    closeEditor();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
   it('sends a TP price alone as a Fixed Target, and No Fixed Target as its own answer', async () => {
     renderForm();
     fillIdentity();
-    goTo('plan');
-    fireEvent.click(screen.getByRole('radio', { name: /^Fixed target/ }));
-    type('TP price', '2410.5');
+    const target = openPlanRow('target');
+    fireEvent.click(within(target).getByRole('radio', { name: /^Fixed target/ }));
+    type('TP price', '2410.5', target);
+    closeEditor();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({
@@ -2146,14 +2207,13 @@ describe('Exit Plan and Strategy', () => {
     goTo('context');
     chooseClassification('Strategy', 'Golden Breakout');
     expect(screen.queryByText(/From Strategy/)).not.toBeInTheDocument();
-    expect(document.querySelector('[data-exit-plan-state]')).toHaveAttribute(
-      'data-exit-plan-state',
-      'not_recorded',
-    );
-    goTo('plan');
+    expect(exitPlanRow()).toHaveAttribute('data-exit-plan-row', 'not_recorded');
+    openExitPlan();
     fireEvent.click(screen.getByRole('button', { name: 'Choose exit plan' }));
     fireEvent.click(screen.getByRole('radio', { name: /Trail structure/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    // Done returns to the Exit Plan sheet; leaving it is another press.
+    closeEditor();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({

@@ -25,19 +25,13 @@ import {
   type ExitPlanEditorSession,
 } from './at-entry-draft';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import {
-  Disclosure,
-  InlineAction,
-  Notice,
-  RadioMark,
-  StateText,
-  Tag,
-} from './trade-at-entry-controls';
+import { InlineAction, Notice, RadioMark, StateText, Tag } from './trade-at-entry-controls';
 import {
   ExitPlanLibrary,
   newExitPlanLibraryForm,
   type ExitPlanLibraryForm,
 } from './trade-at-entry-exit-plan-library';
+import { TradeLauncherRow } from './trade-launcher-row';
 
 /**
  * THE EXIT PLAN — five visual states that must not collapse.
@@ -60,7 +54,10 @@ export function AtEntryExitPlan({
   onChange,
   onLibraryChanged,
   copy,
-  collapsible = false,
+  presentation = 'section',
+  rowId = 'exit-plan-row',
+  rowLabel,
+  rowEditLabel,
 }: {
   draft: AtEntryDraft;
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
@@ -69,11 +66,15 @@ export function AtEntryExitPlan({
   /** Wording for a historical reconstruction (After Trade); At Entry's own by default. */
   copy?: { readonly notRecordedHint: string; readonly editorDescription: string };
   /**
-   * Show the state as one line that opens on request, for a step that is
-   * about something else (After Trade's Plan step). Every state, snapshot and
-   * validation stays exactly as it is; only the reading of it folds away.
+   * `row` reads the state as one launcher row that opens the states and their
+   * actions in a focused sheet — Plan & Risk's reading (UX Rules §20.4).
+   * Every state, snapshot, action and validation stays exactly as it is;
+   * only where they are read changes.
    */
-  collapsible?: boolean;
+  presentation?: 'section' | 'row';
+  rowId?: string;
+  rowLabel?: string;
+  rowEditLabel?: string;
 }) {
   const t = useTranslations('trades.create.recording.contractEntry.exitPlan');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -87,8 +88,16 @@ export function AtEntryExitPlan({
   // editor never loses a plan the trader was part-way through writing.
   const [managing, setManaging] = useState(false);
   const [libraryForm, setLibraryForm] = useState<ExitPlanLibraryForm | null>(null);
-  /** Only `collapsible` reads this: the open state of the folded reading. */
-  const [open, setOpen] = useState(false);
+  /** Only the row reading uses these: its own sheet, and the row to return to. */
+  const [stateSheet, setStateSheet] = useState(false);
+  const rowRef = useRef<HTMLButtonElement>(null);
+  /*
+    THE TWO OVERLAYS NEVER STACK. Choosing a plan from inside the state sheet
+    replaces it rather than opening a second layer over it — two sheets deep on
+    a phone is a trap — and closing the chooser brings the state sheet back
+    exactly where the trader left it.
+  */
+  const reopenStateSheet = useRef(false);
 
   const { resolved, strategyDefault } = resolveExitPlan(draft, options);
   const strategyName = activeClassification(draft, options).strategy?.name ?? '';
@@ -100,6 +109,10 @@ export function AtEntryExitPlan({
     trigger: HTMLElement,
     base: TradeCreateExitPlanOption | null = null,
   ) {
+    if (stateSheet) {
+      reopenStateSheet.current = true;
+      setStateSheet(false);
+    }
     lastTrigger.current = trigger;
     setManaging(libraryForm !== null);
     setSession(setExitPlanEditorView(openExitPlanEditor(draft), view));
@@ -117,6 +130,12 @@ export function AtEntryExitPlan({
     const next = closeExitPlanEditor(session, intent);
     if (next !== draft) onChange(next);
     setSession(null);
+    if (reopenStateSheet.current) {
+      // The sheet it came from takes the focus back with it.
+      reopenStateSheet.current = false;
+      setStateSheet(true);
+      return;
+    }
     requestAnimationFrame(() => {
       const trigger = lastTrigger.current;
       if (trigger !== null && trigger.isConnected) trigger.focus();
@@ -127,7 +146,7 @@ export function AtEntryExitPlan({
   const basePlan =
     resolved.status === 'inherited' || resolved.status === 'saved' ? resolved.plan : null;
 
-  /** The state in one line, for a collapsed reading of it. */
+  /** The state in one line, for a row or a collapsed reading of it. */
   const stateSummary =
     resolved.status === 'not_recorded'
       ? t('notRecorded')
@@ -138,12 +157,21 @@ export function AtEntryExitPlan({
           : resolved.status === 'customized'
             ? t('customized')
             : resolved.plan.name;
-  // A chosen plan that went away blocks Save, so it is never folded away.
-  const showBody = !collapsible || open || resolved.status === 'unavailable';
+  /**
+   * WHERE THE PLAN CAME FROM, never a judgement on it. Inheritance and the
+   * plan a customization started from are facts the row can state; every
+   * other state says nothing here rather than inventing a second line.
+   */
+  const rowSupport =
+    resolved.status === 'inherited'
+      ? t('fromStrategy', { name: strategyName })
+      : resolved.status === 'customized' && resolved.base !== null
+        ? t('basedOn', { name: resolved.base.name })
+        : null;
 
   const headerRow = (
     <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      {collapsible ? (
+      {presentation === 'row' ? (
         <span aria-hidden="true" />
       ) : (
         <h3
@@ -156,7 +184,7 @@ export function AtEntryExitPlan({
         </h3>
       )}
       {resolved.status === 'not_recorded' ? (
-        collapsible ? null : (
+        presentation === 'row' ? null : (
           <StateText>{c('notAnswered')}</StateText>
         )
       ) : (
@@ -285,23 +313,56 @@ export function AtEntryExitPlan({
 
   return (
     <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-2">
-      {collapsible ? (
+      {presentation === 'row' ? (
         <>
           <h3 id={headingId} ref={headingRef} tabIndex={-1} className="sr-only outline-none">
             {t('title')}
           </h3>
-          <Disclosure
-            id="exit-plan-toggle"
+          <TradeLauncherRow
+            id={rowId}
+            rowRef={rowRef}
+            label={rowLabel ?? t('title')}
+            value={resolved.status === 'not_recorded' ? null : stateSummary}
+            support={rowSupport}
+            placeholder={t('notRecorded')}
+            editLabel={rowEditLabel ?? t('title')}
+            icon={Route}
+            answered={resolved.status !== 'not_recorded'}
+            onOpen={() => setStateSheet(true)}
+            buttonData={{ 'data-exit-plan-row': resolved.status }}
+          />
+          {/*
+            A chosen plan that went away blocks Save. The row says so where it
+            is read, so the reason is never hidden behind a tap.
+          */}
+          {resolved.status === 'unavailable' ? (
+            <p data-exit-plan-unavailable="" role="alert" className="text-destructive text-sm">
+              {t('unavailableHint')}
+            </p>
+          ) : null}
+          <TradeAdaptiveOverlay
+            open={stateSheet}
+            onOpenChange={(next) => {
+              if (!next) setStateSheet(false);
+            }}
             title={t('title')}
-            summary={stateSummary}
-            open={showBody}
-            onToggle={() => setOpen((current) => !current)}
+            description={copy?.editorDescription ?? t('editorDescription')}
+            closeLabel={t('close')}
+            size="focused"
+            returnFocusRef={rowRef}
+            footer={
+              <div className="flex min-w-0 justify-end">
+                <Button type="button" onClick={() => setStateSheet(false)}>
+                  {t('done')}
+                </Button>
+              </div>
+            }
           >
-            <div className="flex min-w-0 flex-col gap-2 pb-1">
+            <div className="flex min-w-0 flex-col gap-2">
               {headerRow}
               {body}
             </div>
-          </Disclosure>
+          </TradeAdaptiveOverlay>
         </>
       ) : (
         <>

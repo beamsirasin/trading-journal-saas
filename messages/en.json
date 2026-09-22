@@ -2590,6 +2590,17 @@
           "notesHint": "Anything else you noticed around entry.",
           "evidenceTitle": "Before-entry evidence",
           "evidenceHint": "A chart from before or at entry. It is context and never changes the result."
+        },
+        "planRows": {
+          "actualRisk": {
+            "notRecorded": "Actual risk not recorded",
+            "notKnown": "Actual risk not known",
+            "different": "Actual risk {amount}",
+            "differentBlank": "Actual risk was different"
+          },
+          "target": {
+            "fixed": "Fixed · {amount}"
+          }
         }
       },
       "backToTrades": "Back to Trades",

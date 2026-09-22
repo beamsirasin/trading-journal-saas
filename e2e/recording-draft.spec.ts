@@ -73,7 +73,7 @@ async function fillAtEntry(page: Page, symbol = 'XAUUSD') {
 /** What Record Open holds: Step 1 rows carry their values; Risk is Plan & Risk’s field. */
 async function expectAtEntry(page: Page, symbol: string, risk: string) {
   await expect(page.locator('#entry-row-symbol')).toHaveAttribute('data-value', symbol);
-  await expect(page.locator('#entry-risk')).toHaveValue(risk);
+  await expect(page.locator('[data-plan-row="risk"]')).toContainText(risk);
 }
 
 /** Both step flows say a recovered draft as one compact row. */
@@ -136,7 +136,7 @@ test.describe('Add Trade Recording Draft', () => {
         'data-value',
         'long',
       );
-      await expect(page.locator('#after-risk')).toHaveValue('100');
+      await expect(page.locator('[data-plan-row="risk"]')).toContainText('100');
       // At Entry's untouched "now" is not a remembered entry date or time.
       await expect(page.locator('[data-concept="enteredAt"]')).toHaveAttribute('data-value', '');
       await expect(page.locator('[data-concept="enteredAt"]')).toContainText('Not recorded');

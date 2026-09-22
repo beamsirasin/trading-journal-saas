@@ -81,8 +81,29 @@ function editor(page: Page) {
   return page.getByRole('dialog', { name: 'Exit plan' });
 }
 
+/**
+ * The Exit Plan reads as a launcher row on Plan & Risk (UX Rules §20.13), and
+ * its states, actions and chooser open from there.
+ */
+async function openExitPlan(page: Page) {
+  await recordOpenStep(page, 'plan');
+  await page.locator('[data-exit-plan-row]').click();
+  await expect(editor(page)).toBeVisible();
+}
+
+/** The chooser replaces the state sheet; closing it brings that sheet back. */
+async function chooseExitPlan(page: Page) {
+  await openExitPlan(page);
+  await page.getByRole('button', { name: 'Choose exit plan' }).click();
+}
+
+async function leaveExitPlan(page: Page) {
+  await editor(page).getByRole('button', { name: 'Done' }).click();
+  await expect(editor(page)).toHaveCount(0);
+}
+
 function exitPlanState(page: Page) {
-  return page.locator('[data-exit-plan-state]');
+  return page.locator('[data-exit-plan-row]');
 }
 
 async function saveTrade(page: Page) {
@@ -110,7 +131,7 @@ test.describe('Saved Exit Plan library', () => {
 
     // 1. Create a saved plan from an empty library.
     await startTrade(page);
-    await page.getByRole('button', { name: 'Choose exit plan' }).click();
+    await chooseExitPlan(page);
     await expect(editor(page).getByText('You have no saved exit plans yet.')).toBeVisible();
     await editor(page).getByRole('button', { name: 'Create a saved plan' }).click();
     await editor(page).getByLabel('Name').fill('Scale out');
@@ -124,7 +145,8 @@ test.describe('Saved Exit Plan library', () => {
     await editor(page).getByRole('button', { name: 'Back to exit plan choices' }).click();
     await editor(page).locator('label', { hasText: 'Scale out' }).click();
     await editor(page).getByRole('button', { name: 'Done' }).click();
-    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-state', 'saved');
+    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-row', 'saved');
+    await leaveExitPlan(page);
     await saveTrade(page);
     const first = await latestTrade(user.id);
     expect(first).toMatchObject({
@@ -136,7 +158,7 @@ test.describe('Saved Exit Plan library', () => {
 
     // 4–5. Edit the library definition; the saved Trade keeps its copy.
     await startTrade(page);
-    await page.getByRole('button', { name: 'Choose exit plan' }).click();
+    await chooseExitPlan(page);
     await editor(page).getByRole('button', { name: 'Manage saved plans' }).click();
     await editor(page).getByRole('button', { name: 'Edit Scale out' }).click();
     await editor(page).getByLabel('Instructions').fill('Close everything at 2R.');
@@ -153,10 +175,10 @@ test.describe('Saved Exit Plan library', () => {
 
     // 9. Make it the default for the Strategy this trade uses.
     await editor(page).getByRole('button', { name: 'Close' }).click();
+    await leaveExitPlan(page);
     // The Strategy is Setup & Checklist’s answer; the Exit Plan is back on Plan & Risk.
     await recordOpenClassify(page, 'Golden Breakout');
-    await recordOpenStep(page, 'plan');
-    await page.getByRole('button', { name: 'Choose exit plan' }).click();
+    await chooseExitPlan(page);
     await editor(page).getByRole('button', { name: 'Manage saved plans' }).click();
     await editor(page).getByRole('button', { name: 'Make default for Golden Breakout' }).click();
     await expect(
@@ -164,17 +186,18 @@ test.describe('Saved Exit Plan library', () => {
     ).toBeVisible();
     await editor(page).getByRole('button', { name: 'Close' }).click();
 
-    // 10. At Entry inherits it, visibly.
-    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-state', 'inherited');
-    await expect(page.getByText('From Strategy: Golden Breakout')).toBeVisible();
+    // 10. At Entry inherits it, visibly — readable on the row itself.
+    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-row', 'inherited');
+    await expect(exitPlanState(page)).toContainText('From Strategy: Golden Breakout');
 
     // 11. Declined, it stays declined.
     await page.getByRole('button', { name: 'Remove exit plan answer' }).click();
-    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-state', 'not_recorded');
+    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-row', 'not_recorded');
 
     // 12. Restored only by the explicit action.
     await page.getByRole('button', { name: 'Use strategy default' }).click();
-    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-state', 'inherited');
+    await expect(exitPlanState(page)).toHaveAttribute('data-exit-plan-row', 'inherited');
+    await leaveExitPlan(page);
     await saveTrade(page);
     expect(await latestTrade(user.id)).toMatchObject({
       exitPlanProvenance: 'strategy_default',
@@ -184,7 +207,7 @@ test.describe('Saved Exit Plan library', () => {
 
     // 6–8. Archive it: gone from active choices, both snapshots kept.
     await startTrade(page);
-    await page.getByRole('button', { name: 'Choose exit plan' }).click();
+    await chooseExitPlan(page);
     await editor(page).getByRole('button', { name: 'Manage saved plans' }).click();
     await editor(page).getByRole('button', { name: 'Archive Scale out' }).click();
     await editor(page).getByRole('button', { name: 'Archive plan' }).click();

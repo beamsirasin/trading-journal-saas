@@ -21,6 +21,12 @@ import { FieldError } from './trade-at-entry-controls';
  * accent. The value text always says the answer first. Decorative.
  *
  * A DISABLED ROW SAYS WHY in its own value line, never by colour alone.
+ *
+ * `support` IS A SECOND OBSERVATION, NOT A VERDICT ON THE FIRST. It carries a
+ * neighbouring answer the row is the natural home for — Plan & Risk's Actual
+ * Risk beside Risk at Entry — and it states only what was actually recorded. A
+ * row never fills it by inferring one answer from another: an unanswered
+ * observation has no support line at all (Add Trade contract §2, §8).
  */
 export function TradeLauncherRow({
   id,
@@ -28,6 +34,7 @@ export function TradeLauncherRow({
   label,
   marker = null,
   value,
+  support = null,
   placeholder,
   error,
   editLabel,
@@ -43,6 +50,8 @@ export function TradeLauncherRow({
   marker?: ReactNode;
   /** What is recorded, or null when nothing is. */
   value: string | null;
+  /** A second recorded answer read under the value, or null when there is none. */
+  support?: string | null;
   /** The neutral word for nothing recorded — never a negative (UX Rules §4.3). */
   placeholder: string;
   error?: string | undefined;
@@ -102,6 +111,14 @@ export function TradeLauncherRow({
           >
             {value ?? placeholder}
           </span>
+          {support === null ? null : (
+            <span
+              data-launcher-support=""
+              className="text-muted-foreground mt-0.5 block truncate text-[0.8125rem] leading-5"
+            >
+              {support}
+            </span>
+          )}
         </span>
         {disabled ? null : (
           <ChevronRight className="text-subtle-foreground size-5 shrink-0" aria-hidden="true" />

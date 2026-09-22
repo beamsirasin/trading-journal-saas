@@ -14,6 +14,7 @@ import {
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+import { closePlanEditor, openPlanRow } from './support/plan-rows';
 import { provisionVerifiedUser } from './support/provision-user';
 
 /**
@@ -106,16 +107,20 @@ test.describe('After Trade step-flow captures', () => {
 
         // A blocked Save from the last step lands on the control that needs it.
         await goTo(page, 'plan');
-        await page.locator('#after-risk').fill('12..5');
+        const blocked = await openPlanRow(page, 'risk');
+        await blocked.locator('#after-risk').fill('12..5');
+        await closePlanEditor(page);
         await goTo(page, 'save');
         await page.getByRole('button', { name: 'Save closed trade' }).click();
         await expect(page.locator('[data-after-trade-form]')).toHaveAttribute(
           'data-after-trade-step',
           'plan',
         );
-        await expect(page.locator('#after-risk')).toBeFocused();
+        await expect(page.locator('[data-plan-row="risk"]')).toBeFocused();
         await capture(page, `${width}-${theme}-blocked-save`);
-        await page.locator('#after-risk').fill('100');
+        const repaired = await openPlanRow(page, 'risk');
+        await repaired.locator('#after-risk').fill('100');
+        await closePlanEditor(page);
         await discardDraft(page);
       }
     }
@@ -169,7 +174,7 @@ test.describe('After Trade step-flow captures', () => {
       await cancelConcept(page);
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       await expect(page.locator('#after-finalPnl')).toHaveValue('400');
-      await expect(page.locator('#after-risk')).toHaveValue('100');
+      await expect(page.locator('[data-plan-row="risk"]')).toContainText('100');
       await discardDraft(page);
     }
   });
@@ -293,18 +298,21 @@ async function fillEverything(page: Page) {
   await exit.locator('input[id$="-closedPercent"]').fill('50');
   await exit.locator('input[id$="-reason"]').fill('Partial at 1R');
 
+  // Plan & Risk reads as launcher rows; each answer is given in its editor.
   await goTo(page, 'plan');
-  await page.locator('#after-risk').fill('100');
+  const riskEditor = await openPlanRow(page, 'risk');
+  await riskEditor.locator('#after-risk').fill('100');
   await clickChoice(page, 'It was different');
-  await page.locator('#after-actual-risk-amount').fill('120');
+  await riskEditor.locator('#after-actual-risk-amount').fill('120');
+  await closePlanEditor(page);
+  const targetEditor = await openPlanRow(page, 'target');
   await clickChoice(page, /^Fixed target/);
-  await page.locator('#after-targetProfit').fill('300');
-  // Price levels are Plan & Risk context, folded on the Plan step.
-  const prices = page.locator('#after-plan-price');
-  await prices.click();
-  await page.getByLabel('Entry price').fill('2398.5');
-  await page.getByLabel('SL price').fill('2394.5');
-  await prices.click();
+  await targetEditor.locator('#after-targetProfit').fill('300');
+  await closePlanEditor(page);
+  const priceEditor = await openPlanRow(page, 'price');
+  await priceEditor.getByLabel('Entry price').fill('2398.5');
+  await priceEditor.getByLabel('SL price').fill('2394.5');
+  await closePlanEditor(page);
 
   await goTo(page, 'context');
   // Setup & Checklist: each row opens one editor, and the choice is the answer.

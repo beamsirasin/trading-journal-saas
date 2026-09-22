@@ -289,7 +289,9 @@ test.describe('Stage 6 — After-Trade Context', () => {
       await page.locator('#after-finalPnl').fill('120');
       // Stage 2 — Plan.
       await step('plan');
-      await page.locator('#after-risk').fill('60');
+      await page.locator('[data-plan-row="risk"]').click();
+      await page.getByRole('dialog').locator('#after-risk').fill('60');
+      await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
       // Stages 3–4 — Setup and Entry Context; Post-Trade Emotion is not here.
       await step('context');
       await expect(page.locator('[data-emotions-phase="postTradeEmotions"]')).toHaveCount(0);

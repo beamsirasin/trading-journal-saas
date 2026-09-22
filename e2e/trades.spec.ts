@@ -1403,10 +1403,9 @@ test.describe('real Trade Journal creation', () => {
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
         await expect(page.locator('#entry-row-enteredAt')).not.toHaveAttribute('data-value', '');
         await recordOpenStep(page, 'plan');
-        await expect(entryForm.locator('#entry-risk')).toBeVisible();
-        await expect(entryForm.locator('#entry-target-fixed')).toHaveCount(1);
-        await expect(entryForm.locator('#entry-target-no_fixed')).toHaveCount(1);
-        await expect(entryForm.locator('[data-exit-plan-state]')).toHaveCount(1);
+        await expect(entryForm.locator('[data-plan-row="risk"]')).toBeVisible();
+        await expect(entryForm.locator('[data-plan-row="target"]')).toHaveCount(1);
+        await expect(entryForm.locator('[data-exit-plan-row]')).toHaveCount(1);
         await expect(entryForm.locator('[data-journal-area]')).toHaveCount(0);
         await recordOpenStep(page, 'setup');
         await expect(page.locator('#entry-strategy')).toBeVisible();
@@ -1451,8 +1450,8 @@ test.describe('real Trade Journal creation', () => {
         await expect(afterForm.locator('#after-finalPnl')).toBeVisible();
         await expect(afterForm.locator('[data-actual-r="unavailable"]')).toBeVisible();
         await afterTradeStep(page, 'plan');
-        await expect(afterForm.locator('#after-risk')).toBeVisible();
-        await expect(afterForm.locator('[data-exit-plan-state]')).toHaveCount(1);
+        await expect(afterForm.locator('[data-plan-row="risk"]')).toBeVisible();
+        await expect(afterForm.locator('[data-exit-plan-row]')).toHaveCount(1);
         await expect(afterForm.locator('[data-journal-area]')).toHaveCount(0);
         await afterTradeStep(page, 'context');
         await expect(page.locator('#after-strategy')).toBeVisible();
@@ -1677,7 +1676,7 @@ test.describe('real Trade Journal creation', () => {
       // beside it — neither is an overlay at any width.
       await chooseChoice(page, /Fixed target/);
       await expect(page.getByLabel('Target profit')).toBeVisible();
-      await expect(form.locator('[data-exit-plan-state]')).toHaveCount(1);
+      await expect(form.locator('[data-exit-plan-row]')).toHaveCount(1);
 
       /*
         Every analytical question is reachable at this width without an
@@ -2133,7 +2132,7 @@ test.describe('real Trade Journal creation', () => {
     await recordOpenStep(page, 'setup');
     await expect(page.locator('#entry-strategy')).toHaveAttribute('data-answer', 'unanswered');
     await recordOpenStep(page, 'plan');
-    await expect(page.locator('#entry-risk')).toHaveValue('');
+    await expect(page.locator('[data-plan-row="risk"]')).toContainText('Not answered');
     await recordOpenMinimum(page, { symbol: 'GBPUSD', direction: 'Long', risk: '125.00' });
     await recordOpenSave(page);
     // Nothing is confirmed on the way out: an unanswered question is not a
