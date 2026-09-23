@@ -214,6 +214,8 @@ describe('recordAfterTradeContextAction', () => {
       afterTradeNote: 'Held too long.',
       afterTradeTradingviewUrl: null,
       postTradeEmotions: { answer: 'none' },
+      planOutcome: null,
+      planOutcomeMinor: null,
     });
   });
 
@@ -233,6 +235,55 @@ describe('recordAfterTradeContextAction', () => {
       afterTradeTradingviewUrl: null,
       postTradeEmotionKeys: [],
     });
+  });
+
+  it('passes a Plan Outcome patch — an answer, its stated amount, or a clear — and returns the amount as text', async () => {
+    mocks.recordAfterTradeContext.mockResolvedValueOnce({
+      ok: true,
+      tradeId: TRADE_ID,
+      alreadyRecorded: false,
+      afterTradeNote: null,
+      afterTradeTradingviewUrl: null,
+      postTradeEmotions: { answer: 'unanswered' },
+      planOutcome: 'exit_plan_result',
+      planOutcomeMinor: 30_000n,
+    });
+    const result = await recordAfterTradeContextAction({
+      tradeId: TRADE_ID,
+      mutationKey: KEY,
+      planOutcome: { outcome: 'exit_plan_result', amountMinor: '30000' },
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      data: { planOutcome: 'exit_plan_result', planOutcomeMinor: '30000' },
+    });
+    expect(mocks.recordAfterTradeContext).toHaveBeenCalledWith('workspace-1', 'user-1', TRADE_ID, {
+      mutationKey: KEY,
+      planOutcome: { outcome: 'exit_plan_result', amountMinor: 30_000n },
+    });
+
+    await recordAfterTradeContextAction({ tradeId: TRADE_ID, mutationKey: KEY, planOutcome: null });
+    expect(mocks.recordAfterTradeContext).toHaveBeenLastCalledWith(
+      'workspace-1',
+      'user-1',
+      TRADE_ID,
+      { mutationKey: KEY, planOutcome: null },
+    );
+  });
+
+  it('refuses a malformed Plan Outcome before it reaches the service', async () => {
+    for (const planOutcome of [
+      { outcome: 'guessed', amountMinor: null },
+      { outcome: 'planned_target_first' },
+      { outcome: 'exit_plan_result', amountMinor: 300 },
+      { outcome: 'exit_plan_result', amountMinor: '3.5' },
+      { outcome: 'cannot_determine', amountMinor: null, system: 'net' },
+    ]) {
+      expect(
+        await recordAfterTradeContextAction({ tradeId: TRADE_ID, mutationKey: KEY, planOutcome }),
+      ).toMatchObject({ ok: false, error: { code: 'validation_error' } });
+    }
+    expect(mocks.recordAfterTradeContext).not.toHaveBeenCalled();
   });
 
   it('refuses a blank note, a non-TradingView link, an empty patch and result fields', async () => {

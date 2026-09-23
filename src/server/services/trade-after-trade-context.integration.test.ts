@@ -16,6 +16,7 @@ import {
   tradeAfterTradeContextSaves,
   tradeEmotions,
   trades,
+  tradeSystemAssessments,
   tradingAccounts,
   users,
   workspaceEntitlements,
@@ -33,7 +34,7 @@ import {
   type RecordAfterTradeContextInput,
 } from './trade-after-trade-context';
 import { recordContractExit } from './trade-exit-contract';
-import { createTrade, openTrade } from './trade-management';
+import { createTrade, openTrade, type CreateTradeInput } from './trade-management';
 
 type Db = ReturnType<typeof getTestDb>;
 
@@ -479,6 +480,154 @@ describe('Stage 6 After-Trade Context (real database)', () => {
   // -------------------------------------------------------------------------
   // Idempotency and concurrency
   // -------------------------------------------------------------------------
+
+  describe('Plan Outcome (decision 55)', () => {
+    /** A Trade closed canonically on a plan the test chooses. */
+    async function closedWithPlan(plan: Partial<CreateTradeInput>): Promise<string> {
+      const created = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: accountId,
+        symbol: 'XAUUSD',
+        direction: 'long',
+        recordingTiming: 'at_entry',
+        recordingContract: 'add_trade_v1',
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 5_000n,
+        plannedRiskState: 'defined',
+        enteredAt: ENTERED_AT,
+        enteredAtSource: 'trader',
+        ...plan,
+      });
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+      const closed = await recordContractExit(workspaceId, actorUserId, created.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: 2_000n,
+        finalExitedAt: new Date(ENTERED_AT.getTime() + HOUR),
+      });
+      if (!closed.ok) throw new Error(`close failed: ${closed.code}`);
+      return created.tradeId;
+    }
+
+    const BOUNDED = { targetState: 'fixed' as const, plannedRewardMinor: 10_000n };
+    const RULE_BASED = {
+      targetState: 'no_fixed' as const,
+      exitPlan: {
+        state: 'customized' as const,
+        baseExitPlanId: null,
+        instructions: 'Trail behind the 20 EMA; exit on a close below it.',
+      },
+    };
+
+    it('records target first and risk first as facts — the amount stays the plan’s', async () => {
+      const tradeId = await closedWithPlan(BOUNDED);
+      const first = await save(tradeId, {
+        planOutcome: { outcome: 'planned_target_first', amountMinor: null },
+      });
+      expect(first).toMatchObject({
+        ok: true,
+        planOutcome: 'planned_target_first',
+        planOutcomeMinor: null,
+      });
+      const row = await readTrade(tradeId);
+      expect(row).toMatchObject({ planOutcome: 'planned_target_first', planOutcomeMinor: null });
+      expect(row.planOutcomeRecordedAt).not.toBeNull();
+
+      await save(tradeId, { planOutcome: { outcome: 'planned_risk_first', amountMinor: null } });
+      expect(await readTrade(tradeId)).toMatchObject({
+        planOutcome: 'planned_risk_first',
+        planOutcomeMinor: null,
+      });
+    });
+
+    it('records an Exit Plan result as the stated amount', async () => {
+      const tradeId = await closedWithPlan(RULE_BASED);
+      await save(tradeId, { planOutcome: { outcome: 'exit_plan_result', amountMinor: 30_000n } });
+      expect(await readTrade(tradeId)).toMatchObject({
+        planOutcome: 'exit_plan_result',
+        planOutcomeMinor: 30_000n,
+      });
+    });
+
+    it('keeps Cannot Determine and Unanswered apart, and clears back to Unanswered', async () => {
+      const tradeId = await closedWithPlan(BOUNDED);
+      await save(tradeId, { planOutcome: { outcome: 'cannot_determine', amountMinor: null } });
+      expect(await readTrade(tradeId)).toMatchObject({ planOutcome: 'cannot_determine' });
+      // Another Stage 6 field left out leaves the Plan Outcome untouched.
+      await save(tradeId, { afterTradeNote: 'Price ran straight to target.' });
+      expect(await readTrade(tradeId)).toMatchObject({ planOutcome: 'cannot_determine' });
+      await save(tradeId, { planOutcome: null });
+      expect(await readTrade(tradeId)).toMatchObject({
+        planOutcome: null,
+        planOutcomeMinor: null,
+        planOutcomeRecordedAt: null,
+      });
+    });
+
+    it('refuses an answer the recorded plan does not offer, and writes nothing', async () => {
+      const bounded = await closedWithPlan(BOUNDED);
+      const rule = await closedWithPlan(RULE_BASED);
+      const noRisk = await closedWithPlan({
+        plannedRiskMinor: null,
+        plannedRiskState: 'no_defined',
+        ...BOUNDED,
+      });
+      const bare = await closedWithPlan({});
+      for (const [tradeId, outcome, amountMinor] of [
+        [bounded, 'exit_plan_result', 30_000n],
+        [bounded, 'planned_target_first', 10_000n], // derivable — never restated
+        [rule, 'planned_risk_first', null],
+        [rule, 'exit_plan_result', null], // the amount is the answer
+        [noRisk, 'cannot_determine', null], // No Defined Risk asks nothing
+        [bare, 'cannot_determine', null], // no target, no Exit Plan
+      ] as const) {
+        expect(await save(tradeId, { planOutcome: { outcome, amountMinor } })).toEqual({
+          ok: false,
+          code: 'invalid_plan_outcome',
+        });
+        expect((await readTrade(tradeId)).planOutcome).toBeNull();
+      }
+    });
+
+    it('never writes a System Assessment, the result or the Trader Outcome', async () => {
+      const tradeId = await closedWithPlan(BOUNDED);
+      const before = await readTrade(tradeId);
+      await save(tradeId, { planOutcome: { outcome: 'planned_target_first', amountMinor: null } });
+      const after = await readTrade(tradeId);
+      expect(resultAndEvidence(after)).toEqual(resultAndEvidence(before));
+      expect(
+        await db
+          .select()
+          .from(tradeSystemAssessments)
+          .where(eq(tradeSystemAssessments.tradeId, tradeId)),
+      ).toHaveLength(0);
+    });
+
+    it('the database holds it to Closed contract Trades and its own shapes', async () => {
+      const open = await openContractTrade();
+      await expect(
+        db
+          .update(trades)
+          .set({ planOutcome: 'cannot_determine', planOutcomeRecordedAt: new Date() })
+          .where(eq(trades.id, open)),
+      ).rejects.toThrow();
+      const closed = await closedWithPlan(BOUNDED);
+      for (const shape of [
+        { planOutcome: 'planned_risk_first', planOutcomeMinor: -5_000n },
+        { planOutcome: 'exit_plan_result', planOutcomeMinor: null },
+        { planOutcome: 'planned_target_first', planOutcomeMinor: 0n },
+        { planOutcome: 'guessed', planOutcomeMinor: null },
+        { planOutcome: 'cannot_determine', planOutcomeMinor: null, planOutcomeRecordedAt: null },
+      ]) {
+        await expect(
+          db
+            .update(trades)
+            .set({ planOutcomeRecordedAt: new Date(), ...shape })
+            .where(eq(trades.id, closed)),
+        ).rejects.toThrow();
+      }
+    });
+  });
 
   describe('retries and concurrency', () => {
     it('an exact retry returns the recorded context and writes nothing more', async () => {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { OUTCOME_VALUES } from '@/lib/trades/constants';
+import { PLAN_OUTCOMES, type PlanOutcome } from '@/lib/trades/plan-outcome';
 
 import type { CloseScope, CloseTradeDraft } from './close-trade-draft';
 
@@ -85,6 +86,11 @@ export interface AfterTradeContextAnswers {
   readonly note: string;
   readonly tradingviewUrl: string;
   readonly postTradeEmotionKeys: readonly string[] | null;
+  /**
+   * The System Result as typed (decision 55): `outcome: null` is Unanswered.
+   * A draft written before it has none and reads as Unanswered.
+   */
+  readonly planOutcome: { readonly outcome: PlanOutcome | null; readonly amount: string };
 }
 
 export interface AfterTradeContextTask {
@@ -133,6 +139,9 @@ const AfterTradeContextSchema = z.object({
     note: z.string().max(4_000),
     tradingviewUrl: z.string().max(2_000),
     postTradeEmotionKeys: z.array(z.string().max(64)).max(40).nullable(),
+    planOutcome: z
+      .object({ outcome: z.enum(PLAN_OUTCOMES).nullable(), amount: z.string().max(64) })
+      .default({ outcome: null, amount: '' }),
   }),
   submission: submissionSchema,
 });

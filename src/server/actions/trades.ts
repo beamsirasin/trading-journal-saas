@@ -796,13 +796,15 @@ export type RecordAfterTradeContextData = {
   readonly tradeId: string;
   /** `true`: this exact Save (same key, same content) was already recorded; nothing was written. */
   readonly alreadyRecorded: boolean;
-} & AfterTradeContextView;
+  /** A stated plan-outcome amount, as an exact integer string. */
+  readonly planOutcomeMinor: string | null;
+} & Omit<AfterTradeContextView, 'planOutcomeMinor'>;
 
 export type RecordAfterTradeContextActionResult = TradeActionResult<RecordAfterTradeContextData>;
 
 /**
- * Stage 6 for a Closed contract Trade: the after-trade note, the after-trade
- * chart link and Post-Trade Emotion, each a three-way patch (absent =
+ * Stage 6 for a Closed contract Trade: the Plan Outcome, the after-trade note,
+ * the after-trade chart link and Post-Trade Emotion, each a three-way patch (absent =
  * unchanged, `null` = cleared, a value = set). Never the result, the outcome,
  * the entry evidence or Review / System Assessment.
  */
@@ -839,6 +841,9 @@ export async function recordAfterTradeContextAction(
         afterTradeNote: result.afterTradeNote,
         afterTradeTradingviewUrl: result.afterTradeTradingviewUrl,
         postTradeEmotions: result.postTradeEmotions,
+        planOutcome: result.planOutcome,
+        planOutcomeMinor:
+          result.planOutcomeMinor === null ? null : result.planOutcomeMinor.toString(),
       },
     };
   } catch {

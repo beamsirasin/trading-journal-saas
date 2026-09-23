@@ -83,6 +83,8 @@ function trade(overrides: Partial<TradeDetail> = {}): TradeDetail {
     reviewNotes: null,
     afterTradeNote: null,
     afterTradeTradingviewUrl: null,
+    planOutcome: null,
+    planOutcomeMinor: null,
     emotionsRecordedAt: null,
     hasChartAttachment: false,
     chartAttachmentUploadedAt: null,

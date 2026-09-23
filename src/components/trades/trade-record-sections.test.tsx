@@ -81,6 +81,8 @@ const base: TradeDetailModel = {
   reviewNotes: null,
   afterTradeNote: null,
   afterTradeTradingviewUrl: null,
+  planOutcome: null,
+  planOutcomeMinor: null,
   emotionsRecordedAt: null,
   hasChartAttachment: false,
   chartAttachmentUploadedAt: null,

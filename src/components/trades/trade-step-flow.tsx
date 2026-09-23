@@ -457,8 +457,18 @@ export function TradeStepFlow({
                   {copy.back}
                 </Button>
               )}
+              {/*
+                TWO BUTTONS, NEVER ONE BUTTON RETYPED. Next opens the last step,
+                and in the same click the last step's Save replaces it here.
+                Without distinct keys React reuses the pressed element and turns
+                it into \`type="submit"\` before the browser runs the click's
+                default action — so pressing Next submitted the form, saving the
+                trade before its last step was ever seen. Keyed apart, the
+                pressed Next is removed instead, and nothing is submitted.
+              */}
               {onLastStep || next === undefined ? (
                 <Button
+                  key="save"
                   type="submit"
                   size="lg"
                   className={cn('min-h-12 min-w-0 shrink', noBack && 'w-full lg:w-auto')}
@@ -468,6 +478,7 @@ export function TradeStepFlow({
                 </Button>
               ) : (
                 <Button
+                  key="next"
                   type="button"
                   size="lg"
                   className={cn('min-h-12 min-w-0 shrink', noBack && 'w-full lg:w-auto')}

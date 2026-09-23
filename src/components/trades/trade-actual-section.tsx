@@ -32,8 +32,9 @@ export function ActualSection({
   const w = useTranslations('trades.workspace.details');
   const s = useTranslations('trades.stage5');
   const s6 = useTranslations('trades.stage6');
-  // Stage 6 already answered, in any of its three parts.
+  // Stage 6 already answered, in any of its parts — its System Result included.
   const hasAfterTradeContext =
+    trade.planOutcome !== null ||
     trade.afterTradeNote !== null ||
     trade.afterTradeTradingviewUrl !== null ||
     trade.postTradeEmotionsRecordedAt !== null;

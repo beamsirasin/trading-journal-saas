@@ -456,7 +456,7 @@ describe('Recording Draft — a Save key never reports a Save that did not happe
     mount('after_trade');
     fillIdentity('eurusd');
     // Save lives on the After Trade flow's last step.
-    fireEvent.click(screen.getByRole('button', { name: /^Step 5 of 5: / }));
+    fireEvent.click(screen.getByRole('button', { name: /^Step 6 of 6: / }));
     fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
     await screen.findAllByText(replay.conflictTitle);
     expect(screen.queryByRole('heading', { name: 'Trade saved' })).toBeNull();

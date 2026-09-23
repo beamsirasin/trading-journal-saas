@@ -26,6 +26,7 @@ import { isCanonicalEmotionKey, type EmotionKey } from '@/config/emotions';
 import { actualR } from '@/lib/calc/trade';
 import { reconcileExitHistory, traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
 import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constants';
+import type { PlanOutcome, PlanOutcomePlan } from '@/lib/trades/plan-outcome';
 import { HISTORICAL_EXIT_LIMIT, type CreateCompletedTradeSchema } from '@/lib/trades/schemas';
 import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
@@ -43,6 +44,14 @@ import type {
   StopMethodDraft,
   TargetDraft,
 } from './at-entry-draft';
+import {
+  choosePlanOutcome,
+  resolvePlanOutcomeDraft,
+  setPlanOutcomeAmount,
+  UNANSWERED_PLAN_OUTCOME,
+  type PlanOutcomeDraft,
+  type PlanOutcomeDraftError,
+} from './plan-outcome-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 
@@ -124,6 +133,11 @@ export interface AfterTradeDraft {
   /** Stage 6 After-Trade Context: never the entry notes or link. '' is Unanswered. */
   readonly afterTradeNote: string;
   readonly afterTradeTradingviewUrl: string;
+  /**
+   * Stage 6 System Result: what the original plan would have produced
+   * (decision 55). `outcome: null` is Unanswered; never Can't determine.
+   */
+  readonly planOutcome: PlanOutcomeDraft;
 }
 
 export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft {
@@ -159,6 +173,7 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
     },
     afterTradeNote: '',
     afterTradeTradingviewUrl: '',
+    planOutcome: UNANSWERED_PLAN_OUTCOME,
   };
 }
 
@@ -570,6 +585,7 @@ export const AFTER_TRADE_STATIC_FIELDS = [
   'contextStopPrice',
   'contextPositionSize',
   'tradingviewUrl',
+  'planOutcome',
   'afterTradeNote',
   'afterTradeTradingviewUrl',
 ] as const;
@@ -595,6 +611,7 @@ export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSectio
     case 'contextPositionSize':
     case 'tradingviewUrl':
       return 'context';
+    case 'planOutcome':
     case 'afterTradeNote':
     case 'afterTradeTradingviewUrl':
       return 'after';
@@ -634,7 +651,9 @@ export type AfterTradeErrorCode =
   /** The server's own chart-link rule, checked before Save rather than after it. */
   | 'invalid_tradingview_url'
   /** Server-side only: a field the server refused that no specific code describes. */
-  | 'not_accepted';
+  | 'not_accepted'
+  /** Stage 6 System Result (decision 55): see `PlanOutcomeDraftError`. */
+  | PlanOutcomeDraftError;
 
 export type AfterTradeErrors = Partial<Record<AfterTradeField, AfterTradeErrorCode>>;
 
@@ -846,6 +865,13 @@ export function validateAfterTradeDraft(
   ) {
     errors.afterTradeTradingviewUrl = 'invalid_tradingview_url';
   }
+  // Stage 6 System Result: only what the plan as recorded now can answer.
+  const planOutcome = resolvePlanOutcomeDraft(
+    draft.planOutcome,
+    afterTradePlanOutcomePlan(draft, riskMinor, context.currency),
+    context.currency,
+  );
+  if (!planOutcome.ok) errors.planOutcome = planOutcome.error;
 
   const reconciliation = reconcileExitHistory({
     completeness: draft.completeness === 'unanswered' ? null : draft.completeness,
@@ -946,7 +972,9 @@ export function orderedAfterTradeErrorFields(
     'contextStopPrice',
     'contextPositionSize',
     'tradingviewUrl',
-    // Stage 6 comes last in the reading order, as it does in the flow.
+    // Stage 6 comes last in the reading order, as it does in the flow:
+    // its System Result, then its context.
+    'planOutcome',
     'afterTradeNote',
     'afterTradeTradingviewUrl',
   ];
@@ -1056,6 +1084,73 @@ export function hasAfterTradeWork(draft: AfterTradeDraft, pristine: AfterTradeDr
 }
 
 // ---------------------------------------------------------------------------
+// Stage 6 System Result (decision 55)
+// ---------------------------------------------------------------------------
+
+/**
+ * The plan this Save would record, as the Plan Outcome rule reads it — the
+ * same facts the payload sends, so the question asked is the question the
+ * server will check. A saved Exit Plan counts as recorded; one that is no
+ * longer offered already stops the Save on its own.
+ */
+export function afterTradePlanOutcomePlan(
+  draft: AfterTradeDraft,
+  riskMinor: string | null,
+  currency: string,
+): PlanOutcomePlan {
+  const profit =
+    draft.target.state === 'fixed' && draft.target.profit.trim() !== ''
+      ? parseTradeMoneyInput(draft.target.profit, currency)
+      : null;
+  const { choice } = draft.exitPlan;
+  return {
+    plannedRiskMinor:
+      draft.riskState === 'no_defined' || riskMinor === null ? null : BigInt(riskMinor),
+    plannedRiskState: draft.riskState === 'unanswered' ? null : draft.riskState,
+    targetState: draft.target.state === 'unanswered' ? null : draft.target.state,
+    plannedRewardMinor: profit?.ok === true ? BigInt(profit.value) : null,
+    exitPlanState:
+      choice.kind === 'saved'
+        ? 'saved'
+        : choice.kind === 'customized' && draft.exitPlan.customText.trim() !== ''
+          ? 'customized'
+          : choice.kind === 'no_rule'
+            ? 'no_rule'
+            : null,
+  };
+}
+
+function planOutcomePayload(
+  draft: AfterTradeDraft,
+  riskMinor: string | null,
+  currency: string,
+): Pick<CreateCompletedTradePayload, 'planOutcome' | 'planOutcomeMinor'> {
+  const resolved = resolvePlanOutcomeDraft(
+    draft.planOutcome,
+    afterTradePlanOutcomePlan(draft, riskMinor, currency),
+    currency,
+  );
+  if (!resolved.ok || resolved.value === null) return {};
+  return {
+    planOutcome: resolved.value.outcome,
+    ...(resolved.value.amountMinor === null
+      ? {}
+      : { planOutcomeMinor: resolved.value.amountMinor }),
+  };
+}
+
+export function setPlanOutcomeAnswer(
+  draft: AfterTradeDraft,
+  outcome: PlanOutcome | null,
+): AfterTradeDraft {
+  return { ...draft, planOutcome: choosePlanOutcome(draft.planOutcome, outcome) };
+}
+
+export function setPlanOutcomeAmountText(draft: AfterTradeDraft, amount: string): AfterTradeDraft {
+  return { ...draft, planOutcome: setPlanOutcomeAmount(draft.planOutcome, amount) };
+}
+
+// ---------------------------------------------------------------------------
 // The Save payload
 // ---------------------------------------------------------------------------
 
@@ -1160,6 +1255,7 @@ export function buildAfterTradePayload(
     // Stage 6, saved with the Closed Trade it describes.
     afterTradeNote: draft.afterTradeNote,
     afterTradeTradingviewUrl: draft.afterTradeTradingviewUrl,
+    ...planOutcomePayload(draft, validation.riskMinor, context.currency),
     chartAttachmentStorageKey: null,
     ...(draft.confidence === null ? {} : { confidence: draft.confidence }),
   };

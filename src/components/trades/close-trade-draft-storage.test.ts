@@ -123,7 +123,12 @@ describe('the Close Trade draft', () => {
 describe('Stage 6 in the same close-flow draft (version 2)', () => {
   const STAGE6 = {
     basis: { status: 'closed' },
-    answers: { note: 'Exited on fear.', tradingviewUrl: '', postTradeEmotionKeys: [] },
+    answers: {
+      note: 'Exited on fear.',
+      tradingviewUrl: '',
+      postTradeEmotionKeys: [],
+      planOutcome: { outcome: 'exit_plan_result' as const, amount: '300' },
+    },
     submission: { key: '018f0000-0000-7000-8000-0000000000bb', body: '{"note":1}' },
   };
 
@@ -168,5 +173,29 @@ describe('Stage 6 in the same close-flow draft (version 2)', () => {
     expect(CLOSE_DRAFT_VERSION).toBe(2);
     expect(loadCloseTask(SCOPE, 'part', NOW)?.exitResult.leg.pnl).toBe('50');
     expect(loadAfterTradeContextTask(SCOPE, NOW)).toBeNull();
+  });
+
+  it('reads Stage 6 answers saved before the System Result as Unanswered there — never an answer', () => {
+    window.localStorage.setItem(
+      closeDraftStorageKey(SCOPE),
+      JSON.stringify({
+        kind: 'tradechemist.close-draft',
+        version: 2,
+        savedAt: NOW.toISOString(),
+        symbol: 'XAUUSD',
+        tasks: {},
+        afterTradeContext: {
+          basis: { status: 'closed' },
+          answers: { note: 'Exited on fear.', tradingviewUrl: '', postTradeEmotionKeys: null },
+          submission: null,
+        },
+      }),
+    );
+    expect(loadAfterTradeContextTask(SCOPE, NOW)?.answers).toEqual({
+      note: 'Exited on fear.',
+      tradingviewUrl: '',
+      postTradeEmotionKeys: null,
+      planOutcome: { outcome: null, amount: '' },
+    });
   });
 });

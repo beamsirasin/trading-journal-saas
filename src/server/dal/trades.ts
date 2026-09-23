@@ -40,6 +40,7 @@ import {
   deriveHistoricalExecutionSnapshot,
   type HistoricalReconciliationStatus,
 } from '@/lib/trades/historical-execution';
+import { isPlanOutcome, type PlanOutcome } from '@/lib/trades/plan-outcome';
 import { isRecordedRetrospectively } from '@/lib/trades/recording-model';
 import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
@@ -689,6 +690,10 @@ export interface TradeDetail {
   /** Stage 6 After-Trade Context (migration 0028): null = Unanswered. Never the entry notes or link. */
   readonly afterTradeNote: string | null;
   readonly afterTradeTradingviewUrl: string | null;
+  /** Stage 6 Plan Outcome (migration 0032, decision 55): null = Unanswered. Not a System Assessment. */
+  readonly planOutcome: PlanOutcome | null;
+  /** A stated plan-outcome amount (exact integer string); null where the plan derives it. */
+  readonly planOutcomeMinor: string | null;
   /** Null means the historical Trade predates explicit emotion capture. */
   readonly emotionsRecordedAt: string | null;
   /** Post-Trade Emotion: null = Unanswered; a timestamp with no emotions = None of these. */
@@ -1024,6 +1029,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       reviewNotes: trade.reviewNotes,
       afterTradeNote: trade.afterTradeNote,
       afterTradeTradingviewUrl: trade.afterTradeTradingviewUrl,
+      planOutcome: isPlanOutcome(trade.planOutcome) ? trade.planOutcome : null,
+      planOutcomeMinor: trade.planOutcomeMinor === null ? null : trade.planOutcomeMinor.toString(),
       emotionsRecordedAt: dateToIso(trade.emotionsRecordedAt),
       postTradeEmotionsRecordedAt: dateToIso(trade.postTradeEmotionsRecordedAt),
       hasChartAttachment: trade.chartAttachmentStorageKey !== null,

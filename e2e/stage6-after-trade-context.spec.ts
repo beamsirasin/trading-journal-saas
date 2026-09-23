@@ -285,22 +285,49 @@ test.describe('Stage 6 — After-Trade Context', () => {
       await symbolSheet.getByRole('option', { name: /^NAS100/i }).click();
       await page.getByRole('button', { name: 'Edit Direction' }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Long', exact: true }).click();
-      // Stage 5 — Result.
-      await step('result');
-      await page.locator('#after-finalPnl').fill('120');
-      // Stage 2 — Plan.
-      await step('plan');
+      /*
+        THE CANONICAL ORDER, WALKED BY ITS OWN NEXT BUTTONS (decision 55): the
+        four stages Record Open asks, then Trader Result, then After Trade.
+      */
+      const next = (label: string) =>
+        page.getByRole('button', { name: `Next: ${label}`, exact: true }).click();
+      // Stage 2 — Risk & Target.
+      await next('Risk & target');
+      await expect(form).toHaveAttribute('data-after-trade-step', 'plan');
       await page.locator('[data-plan-row="risk"]').click();
       await chooseInEditor(page.getByRole('dialog'), /^Defined risk/);
       await page.getByRole('dialog').locator('#after-risk').fill('60');
       await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
-      // Stages 3–4 — Setup and Entry Context; Post-Trade Emotion is not here.
-      await step('context');
+      await page.locator('[data-plan-row="target"]').click();
+      await chooseInEditor(page.getByRole('dialog'), /^Fixed target/);
+      await page.getByRole('dialog').locator('#after-targetProfit').fill('120');
+      await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+      // Stage 3 — Strategy & Setup.
+      await next('Strategy & setup');
+      await expect(form).toHaveAttribute('data-after-trade-step', 'setup');
+      await expect(page.locator('[data-setup-checklist-step="after_trade"]')).toBeVisible();
+      // Stage 4 — Entry Context; Post-Trade Emotion is not here.
+      await next('Entry context');
+      await expect(form).toHaveAttribute('data-after-trade-step', 'context');
       await expect(page.locator('[data-emotions-phase="postTradeEmotions"]')).toHaveCount(0);
       await page.getByLabel('Why this trade').fill('Breakout retest.');
-      // Stage 6 — After-Trade Context, then Save.
-      await step('after');
-      await expect(page.getByRole('heading', { level: 2 })).toContainText('After-trade context');
+      // Stage 5 — Trader Result.
+      await next('Trader result');
+      await expect(form).toHaveAttribute('data-after-trade-step', 'result');
+      await page.locator('#after-finalPnl').fill('120');
+      // Stage 6 — After Trade: System Result first, then context, then Save.
+      await next('After trade');
+      await expect(form).toHaveAttribute('data-after-trade-step', 'after');
+      // Next opened the last step and nothing more: no Save was sent. (The
+      // last step's Save once replaced the pressed Next in place, and the
+      // browser submitted it — saving the trade before Stage 6 was seen.)
+      await page.waitForTimeout(1_000);
+      expect(await latestTrade(workspaceId)).toBeUndefined();
+      await expect(page.getByRole('heading', { level: 2 })).toContainText('After trade');
+      const systemResult = page.locator('[data-plan-outcome]');
+      await expect(systemResult).toHaveAttribute('data-plan-outcome', 'bounded');
+      await chooseInEditor(systemResult, /^Planned target/);
+      await expect(systemResult.locator('[data-plan-outcome-result]')).toContainText('+2.00R');
       await chooseEmotion(page, 'Calm');
       await page.getByLabel('After-trade note').fill('Let it run to target.');
       await page.getByLabel('TradingView link').fill('https://example.com/not-tv');
@@ -321,6 +348,7 @@ test.describe('Stage 6 — After-Trade Context', () => {
       await step('after');
       await expect(page.getByLabel('After-trade note')).toHaveValue('Let it run to target.');
       await expect(page.getByLabel('TradingView link')).toHaveValue('https://example.com/not-tv');
+      await expect(systemResult.getByRole('radio', { name: /^Planned target/ })).toBeChecked();
 
       // A blocked Save lands on the after-trade link itself.
       await step('trade');
@@ -341,6 +369,8 @@ test.describe('Stage 6 — After-Trade Context', () => {
         netPnlMinor: 12000n,
         afterTradeNote: 'Let it run to target.',
         afterTradeTradingviewUrl: CHART,
+        planOutcome: 'planned_target_first',
+        planOutcomeMinor: null,
         confirmationNotes: 'Breakout retest.',
         tradingviewUrl: null,
       });

@@ -52,11 +52,18 @@ stages; it adds no new state, value, result or requirement, and it changes none:
 3. **Setup & Checklist** — Strategy, Setup and setup conditions (§7–§8).
 4. **Entry Context & Evidence** — Confidence and Entry Emotion (§9), and optional entry context:
    trade idea / reason, timeframe, session, chart and the Trade's notes (§6).
-5. **Exit & Result** — exit events and exit-history completeness (§10–§11), final exit time, Final
-   Net P&L and Trader Outcome (§11–§12). A Part exit stays within this stage and asks no
-   whole-Trade Final Net P&L or Trader Outcome.
-6. **After-Trade Context** — capture-only context about the close, such as Post-Trade Emotion
-   (§9). It is reached only when the Trade becomes Closed.
+5. **Exit & Result (Trader Result)** — what the trader actually did: exit events and
+   exit-history completeness (§10–§11), final exit time, Final Net P&L and Trader Outcome
+   (§11–§12), and Trader R (Final Net P&L ÷ Risk at Entry) only when a Defined Risk exists. A Part
+   exit stays within this stage and asks no whole-Trade Final Net P&L or Trader Outcome.
+6. **After Trade** — two sections, in this order (decision 55). **System Result**: the factual
+   Plan Outcome — what the original plan would have produced. **After-Trade Context**:
+   capture-only context about the close, such as Post-Trade Emotion (§9), an after-trade note and
+   after-trade evidence. It is reached only when the Trade becomes Closed, and every answer in it
+   is optional.
+
+The step labels are the same in every flow (decision 55): **Trade**, **Risk & target**,
+**Strategy & setup**, **Entry context**, **Trader result**, **After trade**.
 
 Actual Risk is an **entry-time fact** — the risk the executed position actually carried, compared
 with the intended Risk at Entry — so it belongs to Plan & Risk in every flow: Record Open Trade
@@ -71,7 +78,9 @@ Three task flows use the lifecycle. They are the recording routes of §1 plus th
   reaching Closed only through the explicit confirmation of §11. A Part exit ends within stage 5
   (Partially Closed); stage 6 follows only when All Remaining makes the Trade Closed. Stages 1–4
   are the Trade's existing, preserved context and are not re-entered.
-- **Record Closed Trade** (After Trade): every stage, presented in the task's own order (§13).
+- **Record Closed Trade** (After Trade): every stage, in canonical order 1 → 2 → 3 → 4 → 5 → 6
+  (decision 55). Stages 1–4 are the same components, semantics, labels and order Record Open
+  Trade uses; only the recording mode differs.
 
 The canonical stage decides **what a question means and where it belongs**; a task flow may
 **present** stages in a different order. Semantics, requirements, defaults and provenance stay
@@ -81,7 +90,9 @@ inheritance and After Trade never inherits (§5); Money stays the result authori
 context (§3); setup conditions stay multi-state (§8).
 
 **Review and System Assessment are not a stage.** They stay post-save, for Closed Trades only, and
-entered only by the trader's choice (§14, §20–§21).
+entered only by the trader's choice (§14, §20–§21). Stage 6's System Result is not System
+Assessment: it records a factual Plan Outcome, and never writes, confirms or implies a System
+Assessment (decision 55).
 
 Interaction rules for the lifecycle and the task flows are in
 [UX Rules §20](../UX_RULES.md#20-recording-lifecycle-and-task-flows).
@@ -1672,3 +1683,57 @@ Planned Risk simplification, 2026-09-23 (item 54):
     this decision carries only the amount the trader typed, and is read from exactly that: an
     amount means Defined, a blank means Unanswered, and No Defined Risk is never invented for it.
     Amends §2, §4 and §5; refines §23. (§2, §4, §5, §23)
+
+Recording order and the Plan Outcome, 2026-09-24 (item 55):
+
+55. **One capture order, and a factual Plan Outcome in After Trade** — Record Open Trade and Record
+    Closed Trade now share one canonical order for the stages they have in common: Trade, Risk &
+    target, Strategy & setup, Entry context. Record Closed continues with Trader result and After
+    trade; the earlier Result-first order is retired. Close Existing Open Trade still begins at
+    Trader result, with stages 1–4 as read-only context. Step labels are those six words in every
+    flow.
+
+    **Trader Result** is what the trader actually did: final exit time, Final Net P&L, Trader
+    Outcome, exit history, and Trader R = Final Net P&L ÷ Risk at Entry only when a Defined Risk
+    exists. With No Defined Risk or Unanswered risk the P&L stands and no R is fabricated.
+
+    **After Trade begins with a System Result: the Plan Outcome** — what the original plan would
+    have produced. The recorded plan decides the question; only the trader's answer decides the
+    outcome:
+
+    - **Defined Risk + Fixed Target (bounded).** "What happened first under the original plan?" —
+      Planned target / Planned risk / Can't determine. Planned target first is the Target Profit
+      and Target Profit ÷ Risk at Entry; planned risk first is −Risk at Entry and exactly −1R. The
+      trader is not asked for a number the plan already gives. A Fixed Target recorded only as a
+      TP price has no money figure, and Price never calculates a result (§3), so target-first
+      states its amount.
+    - **Defined Risk + a rule-based Exit Plan, without a Fixed Target.** The Exit Plan is shown
+      read-only; "If you followed this Exit Plan, what result would it have produced?" takes a
+      stated amount (System R = amount ÷ Risk at Entry) or Can't determine.
+    - **No Defined Risk**, or no Risk at Entry on record: no R comparison exists and nothing is
+      asked; the reason is said plainly. No denominator is ever invented.
+    - **Defined Risk with neither a Fixed Target nor a usable Exit Plan:** no plan outcome exists
+      to establish, and none is fabricated.
+
+    Every answer is optional, and Unanswered is not Can't determine. A Trade closed now may not be
+    able to answer yet, so After Trade may be skipped and revisited from the Trade; Closed never
+    depends on it.
+
+    **A Plan Outcome is capture evidence, not a System Assessment.** It is stored on the Trade
+    (`plan_outcome`, migration 0032) with its provenance — target first, risk first, an Exit Plan
+    result, or Can't determine — and never in `trade_system_assessments`. It carries no Net / Gross
+    claim; Review's System Assessment may read it later and keeps its own confirmation,
+    comparability, provenance and staleness semantics (Review & System Assessment contract, not
+    amended). Target-first and risk-first amounts are derived from the plan when read, so a later
+    correction of Risk at Entry or Target never leaves a stale copy; only a stated amount is
+    stored. An answer the plan no longer offers after such a correction is shown as needing the
+    trader's answer again, never silently dropped or re-derived. Never inferred from Final Net P&L,
+    the Trader Outcome, exit legs or price.
+
+    **Review stays separate.** Mistakes, rule checks, Exit Plan Adherence, reflection and System
+    Assessment remain post-save Review; none moves into After Trade.
+
+    **Nothing historical changes.** Every existing Trade's Plan Outcome is Unanswered; nothing is
+    backfilled. Drafts written before this decision hold no Plan Outcome and load with it
+    Unanswered. Amends the Recording lifecycle and §13; adds to §9. (§9, §13, Recording
+    lifecycle)

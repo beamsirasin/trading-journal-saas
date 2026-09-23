@@ -981,8 +981,12 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    | **2 — Plan & Risk**              | The plan only: the Planned Risk decision — Unanswered / Defined Risk (with its 1R) / No Defined Risk (decision 54); Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — as context; and one read-only Planned summary of them |
    | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                                                                                                                                       |
    | **4 — Entry Context & Evidence** | Actual Risk — the risk execution actually carried at entry, in the mode's own form (§3.4, §12.4, decision 53); Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, the Trade's notes                                             |
-   | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                                                                                                                          |
-   | **6 — After-Trade Context**      | Capture-only context about the close, such as Post-Trade Emotion                                                                                                                                                                                        |
+   | **5 — Exit & Result**            | Trader Result: exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Trader R only when a Defined Risk exists                                                                                                  |
+   | **6 — After Trade**              | System Result — the factual Plan Outcome (contract decision 55) — then After-Trade Context: Post-Trade Emotion, an after-trade note, after-trade evidence                                                                                               |
+
+   The step labels are the same in every flow (contract decision 55): **Trade**, **Risk &
+   target**, **Strategy & setup**, **Entry context**, **Trader result**, **After trade** — sentence
+   case, as every label in the product.
 
    Actual Risk is an entry-time **execution** fact, asked in Entry Context & Evidence in every
    flow since contract decision 53 — never in Plan & Risk, which describes the plan, and never in
@@ -1034,13 +1038,24 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
      whole-Trade result belong to that close.
    - A close that reaches Closed shows Trade Saved → Review Trade / Done (§5.9). Work survives
      routine dismissal; durable reload recovery is not claimed (§5.4).
-6. **Record Closed Trade — Trade → Result → Plan → Setup → Entry Context → After-Trade Context**,
-   that is stages 1, 5, 2, 3, 4, 6. Result comes early because it answers the moment's question
-   (§2.3, §12.1). Save Closed Trade needs only the minimum Trade identity and stays available from
-   every step once it is valid (§6.1, §12.2).
+6. **Record Closed Trade — Trade → Risk & target → Strategy & setup → Entry context → Trader
+   result → After trade**, stages 1 to 6 in canonical order (contract decision 55, replacing the
+   earlier Result-first order). Its first four steps are the same components, labels and order as
+   Record Open Trade's; only the recording mode's semantics differ. Save Closed Trade needs only
+   the minimum Trade identity and stays available from every step once it is valid (§6.1,
+   §12.2). Pressing Next into the last step only shows it — it never submits.
 7. **Review and System Assessment are not a stage.** No flow contains Reflection, rule checks,
    mistakes, Exit Plan Adherence or System Assessment as a step. Formal Review stays post-save, for
    Closed Trades only, entered by the trader's choice (§10, §14).
+   - **After Trade's System Result is not System Assessment** (contract decision 55). It asks one
+     factual question — what the original plan would have produced — shaped by the recorded plan:
+     "What happened first?" for a Defined Risk with a Fixed Target, showing each answer's money and
+     R so nothing derivable is typed; the Exit Plan read-only and its stated result for a
+     rule-based plan; one quiet line saying why for No Defined Risk, no recorded risk, or a plan
+     with neither target nor Exit Plan. It comes before After-Trade Context, is optional, keeps
+     Unanswered apart from Can't determine, may be answered later from the Trade, and never blocks
+     Closed. An answer a later plan change no longer fits says so and offers Remove answer; it is
+     never silently dropped.
 8. **Exit Plan inheritance across stages** follows §11.6 and §12.6 unchanged:
    - **Record Open Trade:** while the Exit Plan is still in its inherited state, the selected
      Strategy's default is inherited automatically and visibly, and changing the Strategy may

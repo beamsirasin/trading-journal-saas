@@ -312,6 +312,28 @@ describe('round trips', () => {
 describe('persisted shape', () => {
   const envelope = () => switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
 
+  it('keeps a typed System Result through a reload, and reads an older draft as Unanswered', () => {
+    const answered: AfterTradeDraft = {
+      ...createAfterTradeDraft(ACCOUNT),
+      planOutcome: { outcome: 'exit_plan_result', amount: '300' },
+    };
+    const stored = afterTradeEnvelope(answered);
+    const parsed = parseRecordingDraft(serializeRecordingDraft(stored), NOW);
+    expect(parsed).toEqual({ status: 'recovered', envelope: stored });
+
+    // Written before decision 55: no System Result at all — never an answer.
+    const older = JSON.parse(serializeRecordingDraft(stored)) as {
+      afterTrade: Record<string, unknown>;
+    };
+    delete older.afterTrade.planOutcome;
+    const reread = parseRecordingDraft(JSON.stringify(older), NOW);
+    expect(reread.status).toBe('recovered');
+    expect(reread.status === 'recovered' && reread.envelope.afterTrade?.planOutcome).toEqual({
+      outcome: null,
+      amount: '',
+    });
+  });
+
   it('round-trips exactly', () => {
     expect(parseRecordingDraft(serializeRecordingDraft(envelope()), NOW)).toEqual({
       status: 'recovered',

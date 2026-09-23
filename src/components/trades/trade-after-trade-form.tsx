@@ -27,6 +27,7 @@ import {
   adoptExitSubtotal,
   afterTradeAnalysisSummary,
   afterTradeFieldSection,
+  afterTradePlanOutcomePlan,
   afterTradeReadiness,
   answerCondition,
   answerNoEmotions,
@@ -55,6 +56,8 @@ import {
   setEntryTime,
   setFinalPnl,
   setOutcome,
+  setPlanOutcomeAmountText,
+  setPlanOutcomeAnswer,
   setRiskState,
   setTargetState,
   setTargetValue,
@@ -67,6 +70,7 @@ import {
   type AfterTradeExitDraft,
   type AfterTradeField,
 } from './after-trade-draft';
+import type { PlanOutcomeDraftError } from './plan-outcome-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
 import {
@@ -87,6 +91,7 @@ import {
 } from './trade-exit-result-step';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
+import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import type { RecordingSaveControls } from './trade-recording-form';
 import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
@@ -97,27 +102,30 @@ import { TradeStepFlow, TradeStepSection } from './trade-step-flow';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 /**
- * THE FIVE STEPS OF A CLOSED-TRADE RECORDING — Record Closed's task order over
- * the canonical stages: Trade (1), Result (5), Plan (2), Setup and Entry
- * Context (3–4), then After-Trade Context (6), which ends with Save. Save is
- * the last step's action, not a stage of its own. Only Step 1 holds anything
- * Save needs; every other step can be left unanswered and still advanced.
+ * THE SIX STEPS OF A CLOSED-TRADE RECORDING — the canonical stages in their
+ * canonical order (contract decision 55): Trade (1), Risk & Target (2),
+ * Strategy & Setup (3) and Entry Context (4) — the same four Record Open
+ * asks, with the same components — then Trader Result (5) and After Trade
+ * (6), which ends with Save. Save is the last step's action, not a stage of
+ * its own. Only Step 1 holds anything Save needs; every other step can be left
+ * unanswered and still advanced.
  */
-const STEPS = ['trade', 'result', 'plan', 'context', 'after'] as const;
+const STEPS = ['trade', 'plan', 'setup', 'context', 'result', 'after'] as const;
 type StepKey = (typeof STEPS)[number];
 const STEP_INDEX: Readonly<Record<StepKey, number>> = {
   trade: 0,
-  result: 1,
-  plan: 2,
+  plan: 1,
+  setup: 2,
   context: 3,
-  after: 4,
+  result: 4,
+  after: 5,
 };
 const LAST_STEP = STEPS.length - 1;
 
 /** The step that shows a field — where a failed Save goes to reach it. */
 function fieldStep(field: AfterTradeField): number {
   /*
-    The final exit time is read on the Result step: it says how the trade
+    The final exit time is read on the Trader Result step: it says how the trade
     ended, not which trade it was. `afterTradeFieldSection` still groups it
     with the trade — that grouping belongs to the draft module and to Save's
     own disclosure handling, and is not this step map.
@@ -154,6 +162,7 @@ function fieldStep(field: AfterTradeField): number {
 /** Stage 6's control ids on this form (`fieldTargetId` focuses them). */
 const AFTER_CONTEXT_PREFIX = 'after-stage6';
 const AFTER_CONTEXT_IDS = afterTradeContextIds(AFTER_CONTEXT_PREFIX);
+const PLAN_OUTCOME_IDS = planOutcomeIds(AFTER_CONTEXT_PREFIX);
 
 /** One Save in the document at a time — see `trade-at-entry-form.tsx`. */
 const WIDE_VIEWPORT_QUERY = '(min-width: 64rem)';
@@ -207,6 +216,8 @@ function fieldTargetId(field: AfterTradeField): string {
       return PLAN_ROW_ID.price;
     case 'tradingviewUrl':
       return 'after-context-chart';
+    case 'planOutcome':
+      return PLAN_OUTCOME_IDS.amount;
     case 'afterTradeNote':
       return AFTER_CONTEXT_IDS.note;
     case 'afterTradeTradingviewUrl':
@@ -276,7 +287,19 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   tradingviewUrl: 'tradingviewUrl',
   afterTradeNote: 'afterTradeNote',
   afterTradeTradingviewUrl: 'afterTradeTradingviewUrl',
+  planOutcome: 'planOutcome',
+  planOutcomeMinor: 'planOutcome',
 };
+
+/**
+ * The control a blocked Save lands on. The System Result's amount exists only
+ * while its answer needs one; otherwise the answer group itself takes focus.
+ */
+function fieldTarget(field: AfterTradeField): HTMLElement | null {
+  const target = document.getElementById(fieldTargetId(field));
+  if (target !== null || field !== 'planOutcome') return target;
+  return document.getElementById(PLAN_OUTCOME_IDS.choice);
+}
 
 /** Inside the step being shown, rather than one kept mounted but hidden. */
 function isShown(element: Element): boolean {
@@ -610,9 +633,7 @@ export function TradeAfterTradeForm({
     const index = Math.min(...fields.map(fieldStep));
     showStep(
       index,
-      fields
-        .filter((field) => fieldStep(field) === index)
-        .map((field) => () => document.getElementById(fieldTargetId(field))),
+      fields.filter((field) => fieldStep(field) === index).map((field) => () => fieldTarget(field)),
     );
   }
 
@@ -646,7 +667,7 @@ export function TradeAfterTradeForm({
           () => document.querySelector<HTMLElement>('[data-exit-plan-unavailable]'),
         ]);
       } else {
-        showStep(STEP_INDEX.context, [() => document.getElementById(target)]);
+        showStep(STEP_INDEX.setup, [() => document.getElementById(target)]);
       }
       return;
     }
@@ -797,8 +818,9 @@ export function TradeAfterTradeForm({
         .length,
   );
 
+  const setupLines: string[] = [];
   const analysisLines: string[] = [];
-  if (summary.strategy.answer === 'none') analysisLines.push(c('summary.noStrategy'));
+  if (summary.strategy.answer === 'none') setupLines.push(c('summary.noStrategy'));
   if (summary.strategy.answer === 'selected' && summary.strategy.name !== null) {
     const setupPart =
       summary.setup.answer === 'none'
@@ -806,9 +828,9 @@ export function TradeAfterTradeForm({
         : summary.setup.answer === 'selected'
           ? summary.setup.name
           : null;
-    analysisLines.push([summary.strategy.name, setupPart].filter(Boolean).join(' · '));
+    setupLines.push([summary.strategy.name, setupPart].filter(Boolean).join(' · '));
     if (summary.conditions !== null) {
-      analysisLines.push(
+      setupLines.push(
         c('summary.conditions', {
           answered: summary.conditions.answered,
           total: summary.conditions.total,
@@ -834,6 +856,40 @@ export function TradeAfterTradeForm({
   }
   if (draft.afterTradeNote.trim() !== '') afterTradeLines.push(s6('note.title'));
   if (draft.afterTradeTradingviewUrl.trim() !== '') afterTradeLines.push(s6('evidence.title'));
+
+  /*
+    STAGE 6 SYSTEM RESULT, asked of the plan this Save records — the same
+    facts the payload sends, so the question is the one the server checks.
+  */
+  const planOutcomePlan = afterTradePlanOutcomePlan(draft, validation.riskMinor, currency);
+  const planOutcomeCode = visibleErrors.planOutcome;
+  const planOutcomeError: PlanOutcomeDraftError | null =
+    planOutcomeCode === 'plan_outcome_stale' ||
+    planOutcomeCode === 'plan_outcome_amount_required' ||
+    planOutcomeCode === 'plan_outcome_invalid_money' ||
+    planOutcomeCode === 'plan_outcome_amount_positive'
+      ? planOutcomeCode
+      : // A stale answer is said at once, not only after a Save attempt.
+        validation.errors.planOutcome === 'plan_outcome_stale'
+        ? 'plan_outcome_stale'
+        : null;
+  const recordedExitPlan = (() => {
+    const { choice } = draft.exitPlan;
+    if (choice.kind === 'saved') {
+      const plan = options.exitPlans.find((item) => item.exitPlanId === choice.exitPlanId);
+      return plan === undefined ? null : { name: plan.name, instructions: plan.instructions };
+    }
+    if (choice.kind === 'customized' && draft.exitPlan.customText.trim() !== '') {
+      return { name: null, instructions: draft.exitPlan.customText.trim() };
+    }
+    return null;
+  })();
+  const planOutcomeSummary =
+    draft.planOutcome.outcome === null
+      ? null
+      : draft.planOutcome.outcome === 'cannot_determine'
+        ? `${s6('planOutcome.title')}: ${s6('planOutcome.cannotDetermine')}`
+        : s6('planOutcome.title');
 
   // The latest recorded exit time, offered — never applied — as the final exit time.
   const latestExitLocal = (() => {
@@ -921,11 +977,12 @@ export function TradeAfterTradeForm({
           : null,
       priceLevelsRecorded ? a('steps.groups.price') : null,
     ]),
+    setup: joinParts(setupLines),
     context: joinParts([
       ...analysisLines,
       contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
     ]),
-    after: joinParts(afterTradeLines),
+    after: joinParts([planOutcomeSummary, ...afterTradeLines]),
   };
   const missingRequirements = requirements.filter(
     (item) => !item.done || visibleErrors[item.field] !== undefined,
@@ -1088,7 +1145,176 @@ export function TradeAfterTradeForm({
         />,
       )}
 
-      {/* 2 — WHAT HAPPENED: the moment's question, and the strongest step */}
+      {/* 2 — RISK & TARGET: the plan at entry, as remembered (canonical Stage 2) */}
+      {section(
+        'plan',
+        'gap-4',
+        <>
+          {/*
+                CANONICAL PLAN & RISK — the same component and order Record
+                Open uses. Actual Risk is not here: it is an entry-time
+                execution fact, asked in Entry Context (decision 53).
+              */}
+          <TradePlanRiskStep
+            mode="after_trade"
+            ids={PLAN_STEP_IDS}
+            currency={currency}
+            risk={draft.risk}
+            target={draft.target}
+            exitPlan={draft.exitPlan}
+            priceContext={draft.context}
+            options={options}
+            errorText={(field) => errorText(PLAN_STEP_FIELD[field])}
+            notices={{
+              stopWrongSide: validation.notices.some((notice) => notice.kind === 'stop_wrong_side'),
+              targetWrongSide: validation.notices.some(
+                (notice) => notice.kind === 'target_wrong_side',
+              ),
+            }}
+            onRiskChange={(risk) => apply((current) => ({ ...current, risk }))}
+            onTargetStateChange={(state) => apply((current) => setTargetState(current, state))}
+            onTargetValueChange={(field, value) =>
+              apply((current) => setTargetValue(current, field, value))
+            }
+            onExitPlanChange={(exitPlan) => apply((current) => ({ ...current, exitPlan }))}
+            onPriceContextChange={(patch) =>
+              apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+            }
+            onLibraryChanged={setAdoptedExitPlans}
+            riskState={draft.riskState}
+            onRiskStateChange={(next) => apply((current) => setRiskState(current, next))}
+          />
+        </>,
+      )}
+
+      {/* 3 — STRATEGY & SETUP (canonical Stage 3) */}
+      {section(
+        'setup',
+        'gap-4',
+        <>
+          {/*
+                CANONICAL SETUP & CHECKLIST — the same component Record Open
+                uses. Record Closed mode: conditions may be Don't remember, and
+                no Strategy default ever reaches the Exit Plan.
+              */}
+          <TradeSetupChecklistStep
+            mode="after_trade"
+            idPrefix="after"
+            strategies={options.strategies}
+            classification={{
+              strategyAnswer: activeRead.strategyAnswer,
+              strategy: activeRead.strategy,
+              setupAnswer: activeRead.setupAnswer,
+              setup: activeRead.setup,
+              stale: staleRead,
+            }}
+            conditionAnswers={activeRead.conditionAnswers}
+            onSelectStrategy={(id) => apply((current) => selectStrategy(current, id))}
+            onNoStrategy={() => apply(answerNoStrategy)}
+            onRemoveStrategy={() => apply(removeStrategyAnswer)}
+            onSelectSetup={(id) => apply((current) => selectSetup(current, id))}
+            onNoSetup={() => apply(answerNoSetup)}
+            onRemoveSetup={() => apply(removeSetupAnswer)}
+            onCondition={(key, status) => apply((current) => answerCondition(current, key, status))}
+          />
+        </>,
+      )}
+
+      {/* 4 — ENTRY CONTEXT (canonical Stage 4) */}
+      {section(
+        'context',
+        'gap-4',
+        <>
+          {/*
+                CANONICAL ENTRY CONTEXT & EVIDENCE — the same component Record
+                Open uses: what the trader knew, thought and felt at entry, as
+                remembered, with Actual Risk as its entry-time execution fact.
+              */}
+          <TradeEntryContextStep
+            mode="after_trade"
+            idPrefix="after"
+            currency={currency}
+            plannedRiskState={draft.riskState}
+            /*
+              EVERY ANSWER HERE IS THE TRADER'S OWN. This draft starts at
+              `unanswered` and only a selection moves it, so `matched` reaching
+              the row really does mean they said it matched.
+            */
+            actualRisk={
+              draft.actualRisk.answer === 'matched'
+                ? { kind: 'matched' }
+                : draft.actualRisk.answer === 'different'
+                  ? { kind: 'different', amount: draft.actualRisk.amount }
+                  : draft.actualRisk.answer === 'unknown'
+                    ? { kind: 'unknown' }
+                    : { kind: 'not_recorded' }
+            }
+            actualRiskError={errorText('actualRisk')}
+            actualRiskEditor={
+              <div className="flex min-w-0 flex-col gap-3">
+                <ChoiceGroup
+                  idPrefix="after-actual-risk"
+                  legend={a('actualRisk.legend')}
+                  value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
+                  status={c('notAnswered')}
+                  columns={3}
+                  compact
+                  fit="split"
+                  error={
+                    draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
+                  }
+                  aside={
+                    <InlineAction
+                      ariaLabel={a('actualRisk.removeAria')}
+                      onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
+                  options={[
+                    { value: 'matched', label: a('actualRisk.matched') },
+                    { value: 'different', label: a('actualRisk.different') },
+                    { value: 'unknown', label: a('actualRisk.unknown') },
+                  ]}
+                />
+                {draft.actualRisk.answer === 'different' ? (
+                  <div className="border-control-border border-l-2 pl-4">
+                    <TextField
+                      id="after-actual-risk-amount"
+                      label={a('actualRisk.amount')}
+                      value={draft.actualRisk.amount}
+                      onChange={(amount) =>
+                        apply((current) => setActualRiskAmount(current, amount))
+                      }
+                      suffix={currency}
+                      inputMode="decimal"
+                      figure
+                      hint={a('actualRisk.amountHint')}
+                      error={errorText('actualRisk')}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            }
+            confidence={draft.confidence}
+            emotions={draft.emotions}
+            catalog={options.emotionCatalog}
+            values={draft.context}
+            errors={{ tradingviewUrl: errorText('tradingviewUrl') }}
+            canDeselectEmotion={(key) => canDeselectEmotion(draft.emotions, key)}
+            onConfidence={(value) => apply((current) => setConfidence(current, value))}
+            onToggleEmotion={(key) => apply((current) => toggleEmotion(current, 'emotions', key))}
+            onNoEmotions={() => apply((current) => answerNoEmotions(current, 'emotions'))}
+            onRemoveEmotions={() => apply((current) => removeEmotionsAnswer(current, 'emotions'))}
+            onChange={(patch) =>
+              apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+            }
+          />
+        </>,
+      )}
+
+      {/* 5 — TRADER RESULT: what the trader actually did (canonical Stage 5) */}
       {section(
         'result',
         'gap-4',
@@ -1096,9 +1322,9 @@ export function TradeAfterTradeForm({
           <GroupCard filled data-result-panel="">
             {/*
                   CANONICAL STAGE 5 — the same final exit time, Final Net P&L,
-                  Actual R and outcome controls Close Trade uses. Record Closed
-                  keeps its own order and never asks for a Part / All Remaining
-                  scope here: it reconstructs a trade that is already closed.
+                  Trader R and outcome controls Close Trade uses. Record Closed
+                  never asks for a Part / All Remaining scope here: it
+                  reconstructs a trade that is already closed.
                 */}
             <ExitTimeField
               id="after-exitedAt"
@@ -1202,177 +1428,25 @@ export function TradeAfterTradeForm({
         </>,
       )}
 
-      {/* 3 — RISK AND PLAN AT ENTRY, as remembered */}
-      {section(
-        'plan',
-        'gap-4',
-        <>
-          {/*
-                CANONICAL PLAN & RISK, shown as this task's third step. Actual
-                Risk is After Trade's own question, not the canonical step's:
-                it stays beside Risk at Entry — intended risk and what was
-                really at risk read as one idea — passed in as the follow-up.
-              */}
-          <TradePlanRiskStep
-            mode="after_trade"
-            ids={PLAN_STEP_IDS}
-            currency={currency}
-            risk={draft.risk}
-            target={draft.target}
-            exitPlan={draft.exitPlan}
-            priceContext={draft.context}
-            options={options}
-            errorText={(field) => errorText(PLAN_STEP_FIELD[field])}
-            notices={{
-              stopWrongSide: validation.notices.some((notice) => notice.kind === 'stop_wrong_side'),
-              targetWrongSide: validation.notices.some(
-                (notice) => notice.kind === 'target_wrong_side',
-              ),
-            }}
-            onRiskChange={(risk) => apply((current) => ({ ...current, risk }))}
-            onTargetStateChange={(state) => apply((current) => setTargetState(current, state))}
-            onTargetValueChange={(field, value) =>
-              apply((current) => setTargetValue(current, field, value))
-            }
-            onExitPlanChange={(exitPlan) => apply((current) => ({ ...current, exitPlan }))}
-            onPriceContextChange={(patch) =>
-              apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
-            }
-            onLibraryChanged={setAdoptedExitPlans}
-            riskState={draft.riskState}
-            onRiskStateChange={(next) => apply((current) => setRiskState(current, next))}
-          />
-        </>,
-      )}
-
-      {/* 4 — THE TRADER'S READ: optional analysis, grouped by when it happened */}
-      {section(
-        'context',
-        'gap-4',
-        <>
-          {/*
-                CANONICAL SETUP & CHECKLIST, shown at the head of this task's
-                fourth step. Record Closed mode: conditions may be Don't
-                remember, and no Strategy default ever reaches the Exit Plan.
-              */}
-          <TradeSetupChecklistStep
-            mode="after_trade"
-            idPrefix="after"
-            strategies={options.strategies}
-            classification={{
-              strategyAnswer: activeRead.strategyAnswer,
-              strategy: activeRead.strategy,
-              setupAnswer: activeRead.setupAnswer,
-              setup: activeRead.setup,
-              stale: staleRead,
-            }}
-            conditionAnswers={activeRead.conditionAnswers}
-            onSelectStrategy={(id) => apply((current) => selectStrategy(current, id))}
-            onNoStrategy={() => apply(answerNoStrategy)}
-            onRemoveStrategy={() => apply(removeStrategyAnswer)}
-            onSelectSetup={(id) => apply((current) => selectSetup(current, id))}
-            onNoSetup={() => apply(answerNoSetup)}
-            onRemoveSetup={() => apply(removeSetupAnswer)}
-            onCondition={(key, status) => apply((current) => answerCondition(current, key, status))}
-          />
-
-          {/*
-                CANONICAL ENTRY CONTEXT & EVIDENCE, next in this task's fourth
-                step: what the trader knew, thought and felt at entry, as
-                remembered. Timeframe, session, notes and the chart link moved
-                here from the Save step — they are entry-time context.
-              */}
-          <TradeEntryContextStep
-            mode="after_trade"
-            idPrefix="after"
-            currency={currency}
-            plannedRiskState={draft.riskState}
-            /*
-              EVERY ANSWER HERE IS THE TRADER'S OWN. This draft starts at
-              `unanswered` and only a selection moves it, so `matched` reaching
-              the row really does mean they said it matched.
-            */
-            actualRisk={
-              draft.actualRisk.answer === 'matched'
-                ? { kind: 'matched' }
-                : draft.actualRisk.answer === 'different'
-                  ? { kind: 'different', amount: draft.actualRisk.amount }
-                  : draft.actualRisk.answer === 'unknown'
-                    ? { kind: 'unknown' }
-                    : { kind: 'not_recorded' }
-            }
-            actualRiskError={errorText('actualRisk')}
-            actualRiskEditor={
-              <div className="flex min-w-0 flex-col gap-3">
-                <ChoiceGroup
-                  idPrefix="after-actual-risk"
-                  legend={a('actualRisk.legend')}
-                  value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
-                  status={c('notAnswered')}
-                  columns={3}
-                  compact
-                  fit="split"
-                  error={
-                    draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
-                  }
-                  aside={
-                    <InlineAction
-                      ariaLabel={a('actualRisk.removeAria')}
-                      onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
-                  options={[
-                    { value: 'matched', label: a('actualRisk.matched') },
-                    { value: 'different', label: a('actualRisk.different') },
-                    { value: 'unknown', label: a('actualRisk.unknown') },
-                  ]}
-                />
-                {draft.actualRisk.answer === 'different' ? (
-                  <div className="border-control-border border-l-2 pl-4">
-                    <TextField
-                      id="after-actual-risk-amount"
-                      label={a('actualRisk.amount')}
-                      value={draft.actualRisk.amount}
-                      onChange={(amount) =>
-                        apply((current) => setActualRiskAmount(current, amount))
-                      }
-                      suffix={currency}
-                      inputMode="decimal"
-                      figure
-                      hint={a('actualRisk.amountHint')}
-                      error={errorText('actualRisk')}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            }
-            confidence={draft.confidence}
-            emotions={draft.emotions}
-            catalog={options.emotionCatalog}
-            values={draft.context}
-            errors={{ tradingviewUrl: errorText('tradingviewUrl') }}
-            canDeselectEmotion={(key) => canDeselectEmotion(draft.emotions, key)}
-            onConfidence={(value) => apply((current) => setConfidence(current, value))}
-            onToggleEmotion={(key) => apply((current) => toggleEmotion(current, 'emotions', key))}
-            onNoEmotions={() => apply((current) => answerNoEmotions(current, 'emotions'))}
-            onRemoveEmotions={() => apply((current) => removeEmotionsAnswer(current, 'emotions'))}
-            onChange={(patch) =>
-              apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
-            }
-          />
-        </>,
-      )}
-
-      {/* 5 — AFTER-TRADE CONTEXT (canonical Stage 6), THEN THE READ-BACK AND SAVE */}
+      {/* 6 — AFTER TRADE (canonical Stage 6): System Result, then context; then the read-back and Save */}
       {section(
         'after',
         'gap-6',
         <>
           <TradeAfterTradeContextStep
             idPrefix={AFTER_CONTEXT_PREFIX}
+            systemResult={
+              <TradePlanOutcomeSection
+                idPrefix={AFTER_CONTEXT_PREFIX}
+                plan={planOutcomePlan}
+                currency={currency}
+                exitPlan={recordedExitPlan}
+                value={draft.planOutcome}
+                error={planOutcomeError}
+                onOutcome={(outcome) => apply((current) => setPlanOutcomeAnswer(current, outcome))}
+                onAmount={(amount) => apply((current) => setPlanOutcomeAmountText(current, amount))}
+              />
+            }
             emotions={draft.postTradeEmotions}
             catalog={options.emotionCatalog}
             note={draft.afterTradeNote}
@@ -1438,7 +1512,8 @@ export function TradeAfterTradeForm({
             >
               <p className="text-foreground text-sm font-semibold">{a('steps.summaryTitle')}</p>
               <dl className="divide-border flex min-w-0 flex-col divide-y">
-                {(['trade', 'result', 'plan', 'context'] as const).map((key) => {
+                {/* The steps before this one, in the task's own canonical order. */}
+                {(['trade', 'plan', 'setup', 'context', 'result'] as const).map((key) => {
                   const errors = stepErrorCounts[STEP_INDEX[key]] ?? 0;
                   /*
                         THE ENTRY TIMESTAMP SAYS HOW MUCH OF IT IS RECORDED.

@@ -2317,17 +2317,17 @@
               "description": "Identify the trade you are entering."
             },
             "plan": {
-              "label": "Plan & risk",
-              "title": "Plan and risk",
+              "label": "Risk & target",
+              "title": "Risk and target",
               "description": "Your 1R, your target and how you plan to exit."
             },
             "setup": {
-              "label": "Setup",
-              "title": "Setup and checklist",
+              "label": "Strategy & setup",
+              "title": "Strategy and setup",
               "description": "Your strategy, setup, and entry checklist."
             },
             "context": {
-              "label": "Context",
+              "label": "Entry context",
               "title": "Entry context",
               "description": "Your read on the trade as you enter."
             }
@@ -2512,19 +2512,24 @@
               "description": "Identify the trade."
             },
             "result": {
-              "label": "Result",
-              "title": "Result",
-              "description": "Record what you know about how the trade ended."
+              "label": "Trader result",
+              "title": "Trader result",
+              "description": "What you actually did: how the trade ended and what it made."
             },
             "plan": {
-              "label": "Plan",
-              "title": "Plan at entry",
-              "description": "Add what you remember from before the trade."
+              "label": "Risk & target",
+              "title": "Risk and target",
+              "description": "Your 1R, your target and your exit plan, as you remember them."
+            },
+            "setup": {
+              "label": "Strategy & setup",
+              "title": "Strategy and setup",
+              "description": "Your strategy, setup, and entry checklist."
             },
             "context": {
-              "label": "Context",
-              "title": "Context",
-              "description": "Optional details that help you spot patterns later."
+              "label": "Entry context",
+              "title": "Entry context",
+              "description": "What you knew and felt at entry, as you remember it."
             },
             "attention": "{count, plural, one {# item needs attention} other {# items need attention}}",
             "modeShort": "After trade",
@@ -2546,9 +2551,9 @@
               "thesis": "Why you took it"
             },
             "after": {
-              "label": "After-trade",
-              "title": "After-trade context",
-              "description": "Optional context from after the trade, then save."
+              "label": "After trade",
+              "title": "After trade",
+              "description": "What your plan would have produced, and context from after the trade. Then save."
             }
           },
           "trade": {
@@ -2832,6 +2837,7 @@
       "invalid_storage_key": "This image could not be identified. Please upload it again.",
       "unexpected_error": "Something went wrong. Please try again.",
       "invalid_exit_plan": "That exit plan is no longer available. Choose another plan and try again.",
+      "invalid_plan_outcome": "That plan outcome no longer fits this trade's plan. Check the answer and try again.",
       "contract_close_required": "This trade closes through Record partial exit or Close trade."
     },
     "workspace": {
@@ -3146,7 +3152,7 @@
         "sections": {
           "exit": "This exit",
           "finalTime": "When it closed",
-          "result": "Result",
+          "result": "Trader result",
           "outcome": "Your outcome",
           "history": "Exit history"
         },
@@ -3206,11 +3212,39 @@
       }
     },
     "stage6": {
-      "title": "After-trade context",
+      "title": "After trade",
       "optional": "Optional",
       "description": "Optional. Add anything useful while it is fresh. The trade is already saved.",
       "close": "Close",
       "done": "Done",
+      "planOutcome": {
+        "title": "System result",
+        "question": "What would the original plan have produced?",
+        "later": "Optional. You can answer later from the trade.",
+        "boundedLegend": "What happened first under the original plan?",
+        "targetFirst": "Planned target",
+        "riskFirst": "Planned risk / stop",
+        "cannotDetermine": "Can't determine",
+        "exitPlanHeading": "Your exit plan",
+        "exitPlanLegend": "If you followed this exit plan, what result would it have produced?",
+        "exitPlanResult": "State the result",
+        "amountLabel": "Result under the plan",
+        "amountHint": "In the account currency. Use a minus sign for a loss.",
+        "targetAmountLabel": "What the target would have paid",
+        "targetAmountHint": "Your target was recorded as a price, so state the amount.",
+        "result": "System result",
+        "resultValue": "{money} · {r}",
+        "noDefinedRisk": "R comparison isn't available because this trade had no defined planned risk.",
+        "riskNotRecorded": "R comparison isn't available because no planned risk was recorded for this trade.",
+        "unavailable": "There's no fixed target or exit plan on record, so there's no plan result to compare.",
+        "stale": "The plan changed after you answered. Answer again, or remove the answer.",
+        "removeAria": "Remove system result answer",
+        "errors": {
+          "amountRequired": "Enter the result, or choose Can't determine.",
+          "invalidMoney": "Enter an amount like 150 or -75.50.",
+          "amountPositive": "A target reached first is a profit. Enter an amount above zero."
+        }
+      },
       "emotion": {
         "title": "After the trade",
         "label": "Post-trade emotion",
@@ -3236,7 +3270,7 @@
       "page": {
         "closedTitle": "Trade closed",
         "closedDescription": "{symbol} is closed and its result is saved. Nothing below changes that.",
-        "title": "After-trade context",
+        "title": "After trade",
         "backToTrade": "Back to trade",
         "save": "Save context",
         "saving": "Saving…",

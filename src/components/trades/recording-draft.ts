@@ -37,6 +37,7 @@
 import { z } from 'zod';
 
 import { PLANNED_RISK_STATES, PLANNED_STOP_METHODS } from '@/lib/trades/add-trade-contract';
+import { PLAN_OUTCOMES } from '@/lib/trades/plan-outcome';
 
 import {
   createAfterTradeDraft,
@@ -838,6 +839,10 @@ const afterTradeSchema = z.object({
   stopMethod,
   afterTradeNote: text.default(''),
   afterTradeTradingviewUrl: text.default(''),
+  // Stage 6 System Result (decision 55). Absent from an earlier draft: Unanswered.
+  planOutcome: z
+    .object({ outcome: z.enum(PLAN_OUTCOMES).nullable(), amount: text })
+    .default({ outcome: null, amount: '' }),
 }) satisfies z.ZodType<AfterTradeDraft>;
 
 const sharedSchema = z.object({

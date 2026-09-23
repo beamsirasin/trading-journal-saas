@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { generateId } from '@/lib/identifiers';
+import type { PlanOutcomePlan } from '@/lib/trades/plan-outcome';
 import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import { recordAfterTradeContextAction } from '@/server/actions/trades';
 import type { TradeDetail } from '@/server/dal/trades';
@@ -21,20 +22,47 @@ import {
   type CloseDraftScope,
   type CloseDraftSubmission,
 } from './close-trade-draft-storage';
+import {
+  choosePlanOutcome,
+  resolvePlanOutcomeDraft,
+  setPlanOutcomeAmount,
+  type PlanOutcomeDraft,
+  type PlanOutcomeDraftError,
+} from './plan-outcome-draft';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
 import { InlineAction, Notice } from './trade-at-entry-controls';
+import { tradeMoneyInputValue } from './trade-form-values';
+import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
 
 const ID_PREFIX = 'stage6';
 const IDS = afterTradeContextIds(ID_PREFIX);
+const PLAN_OUTCOME_IDS = planOutcomeIds(ID_PREFIX);
 
 interface Answers {
   readonly note: string;
   readonly tradingviewUrl: string;
   readonly emotions: EmotionsDraft;
+  /** The System Result (decision 55): what the original plan would have produced. */
+  readonly planOutcome: PlanOutcomeDraft;
+}
+
+/** The Trade's recorded plan, as the System Result question reads it. */
+function planOf(trade: TradeDetail): PlanOutcomePlan {
+  return {
+    plannedRiskMinor: trade.plannedRiskMinor === null ? null : BigInt(trade.plannedRiskMinor),
+    plannedRiskState: trade.plannedRiskState,
+    targetState: trade.targetState,
+    plannedRewardMinor: trade.plannedRewardMinor === null ? null : BigInt(trade.plannedRewardMinor),
+    exitPlanState: trade.exitPlanState,
+  };
 }
 
 function answersOf(trade: TradeDetail): Answers {
   return {
+    planOutcome: {
+      outcome: trade.planOutcome,
+      amount: tradeMoneyInputValue(trade.planOutcomeMinor, trade.tradingAccountBaseCurrency),
+    },
     note: trade.afterTradeNote ?? '',
     tradingviewUrl: trade.afterTradeTradingviewUrl ?? '',
     emotions:
@@ -56,12 +84,14 @@ function toStored(answers: Answers): AfterTradeContextAnswers {
     note: answers.note,
     tradingviewUrl: answers.tradingviewUrl,
     postTradeEmotionKeys: emotionKeysOf(answers.emotions),
+    planOutcome: answers.planOutcome,
   };
 }
 
 function fromStored(stored: AfterTradeContextAnswers): Answers {
   const keys = stored.postTradeEmotionKeys;
   return {
+    planOutcome: stored.planOutcome,
     note: stored.note,
     tradingviewUrl: stored.tradingviewUrl,
     emotions:
@@ -76,14 +106,29 @@ function fromStored(stored: AfterTradeContextAnswers): Answers {
 /**
  * The three-way patch against what is saved: a field the trader left as it
  * was is left out (unchanged); emptied, it is cleared (`null`); otherwise it
- * is set. An empty patch is never sent — there is nothing to save.
+ * is set. An empty patch is never sent — there is nothing to save. The System
+ * Result is compared as what it would save, so retyping the same amount is no
+ * change; an answer that does not resolve yet is a change, never dropped.
  */
-function patchOf(answers: Answers, saved: Answers) {
+function patchOf(answers: Answers, saved: Answers, plan: PlanOutcomePlan, currency: string) {
   const patch: {
     afterTradeNote?: string | null;
     afterTradeTradingviewUrl?: string | null;
     postTradeEmotionKeys?: readonly string[] | null;
+    planOutcome?: {
+      outcome: PlanOutcomeDraft['outcome'] & string;
+      amountMinor: string | null;
+    } | null;
   } = {};
+  const current = resolvePlanOutcomeDraft(answers.planOutcome, plan, currency);
+  const before = resolvePlanOutcomeDraft(saved.planOutcome, plan, currency);
+  const same =
+    current.ok && before.ok && JSON.stringify(current.value) === JSON.stringify(before.value);
+  if (!same) {
+    if (current.ok) patch.planOutcome = current.value;
+    // Not yet resolvable: marked changed so the draft keeps it; Save checks it first.
+    else patch.planOutcome = null;
+  }
   const note = answers.note.trim();
   if (note !== saved.note.trim()) patch.afterTradeNote = note === '' ? null : note;
   const url = answers.tradingviewUrl.trim();
@@ -123,8 +168,11 @@ export function TradeAfterTradeContextForm({
   const tErrors = useTranslations('trades.errors');
   const router = useRouter();
   const saved = answersOf(trade);
+  const plan = planOf(trade);
+  const currency = trade.tradingAccountBaseCurrency;
   const [answers, setAnswers] = useState<Answers>(saved);
   const [urlError, setUrlError] = useState<string | null>(null);
+  const [planOutcomeError, setPlanOutcomeError] = useState<PlanOutcomeDraftError | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<'none' | 'restored' | 'stale'>('none');
   const [outcome, setOutcome] = useState<'saved' | 'skipped' | null>(null);
@@ -153,7 +201,7 @@ export function TradeAfterTradeContextForm({
   function persist(next: Answers, submission: CloseDraftSubmission | null) {
     if (draftScope === null) return;
     const now = new Date();
-    if (Object.keys(patchOf(next, saved)).length === 0 && submission === null) {
+    if (Object.keys(patchOf(next, saved, plan, currency)).length === 0 && submission === null) {
       removeAfterTradeContextTask(draftScope, now);
       return;
     }
@@ -178,6 +226,7 @@ export function TradeAfterTradeContextForm({
   function change(update: (current: Answers) => Answers) {
     setAnswers(update);
     setFormMessage(null);
+    setPlanOutcomeError(null);
   }
 
   function save() {
@@ -186,18 +235,33 @@ export function TradeAfterTradeContextForm({
       setFormMessage(s('page.stale'));
       return;
     }
+    // The System Result comes first on the page, so it is checked first.
+    const outcome = resolvePlanOutcomeDraft(answers.planOutcome, plan, currency);
+    if (!outcome.ok) {
+      setPlanOutcomeError(outcome.error);
+      requestAnimationFrame(() =>
+        (
+          document.getElementById(PLAN_OUTCOME_IDS.amount) ??
+          document.getElementById(PLAN_OUTCOME_IDS.choice)
+        )?.focus(),
+      );
+      return;
+    }
     const url = answers.tradingviewUrl.trim();
     if (url !== '' && !isValidTradingViewUrl(url)) {
       setUrlError(s('errors.invalidTradingViewUrl'));
       requestAnimationFrame(() => document.getElementById(IDS.tradingviewUrl)?.focus());
       return;
     }
-    const patch = patchOf(answers, saved);
+    const patch = patchOf(answers, saved, plan, currency);
     // Nothing changed: there is nothing to save, and no empty patch is sent.
     if (Object.keys(patch).length === 0) {
       if (draftScope !== null) removeAfterTradeContextTask(draftScope, new Date());
       const anyRecorded =
-        saved.note !== '' || saved.tradingviewUrl !== '' || saved.emotions.answer !== 'unanswered';
+        saved.note !== '' ||
+        saved.tradingviewUrl !== '' ||
+        saved.emotions.answer !== 'unanswered' ||
+        saved.planOutcome.outcome !== null;
       setOutcome(anyRecorded ? 'saved' : 'skipped');
       return;
     }
@@ -332,6 +396,41 @@ export function TradeAfterTradeContextForm({
 
       <TradeAfterTradeContextStep
         idPrefix={ID_PREFIX}
+        systemResult={
+          <TradePlanOutcomeSection
+            idPrefix={ID_PREFIX}
+            plan={plan}
+            currency={currency}
+            exitPlan={
+              trade.exitPlanState === 'saved' || trade.exitPlanState === 'customized'
+                ? { name: trade.exitPlanName, instructions: trade.exitPlanInstructions }
+                : null
+            }
+            value={answers.planOutcome}
+            error={
+              planOutcomeError ??
+              // A stale answer is said at once, not only after a Save attempt.
+              (() => {
+                const resolved = resolvePlanOutcomeDraft(answers.planOutcome, plan, currency);
+                return !resolved.ok && resolved.error === 'plan_outcome_stale'
+                  ? resolved.error
+                  : null;
+              })()
+            }
+            onOutcome={(outcome) =>
+              change((current) => ({
+                ...current,
+                planOutcome: choosePlanOutcome(current.planOutcome, outcome),
+              }))
+            }
+            onAmount={(amount) =>
+              change((current) => ({
+                ...current,
+                planOutcome: setPlanOutcomeAmount(current.planOutcome, amount),
+              }))
+            }
+          />
+        }
         emotions={answers.emotions}
         catalog={trade.emotionCatalog}
         note={answers.note}
@@ -370,7 +469,7 @@ export function TradeAfterTradeContextForm({
               <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
               {formMessage}
             </span>
-          ) : urlError !== null ? (
+          ) : urlError !== null || planOutcomeError !== null ? (
             <span className="text-destructive inline-flex items-center gap-1.5">
               <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
               {s('page.attention', { count: 1 })}

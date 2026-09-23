@@ -137,7 +137,7 @@ describe('TradeCreateGate', () => {
       // Strategy is optional: Setup & Checklist asks it, behind no gate.
       expect(document.getElementById('entry-strategy')).not.toBeNull();
       // Save Open Trade is reachable from Plan & Risk on, whatever the Strategy.
-      fireEvent.click(screen.getByRole('button', { name: 'Next: Plan & risk' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Next: Risk & target' }));
       expect(screen.getByRole('button', { name: 'Save open trade' })).toBeEnabled();
     },
   );

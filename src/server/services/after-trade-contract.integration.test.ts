@@ -623,6 +623,71 @@ describe('Add Trade contract After Trade (real database)', () => {
     });
   });
 
+  describe('Plan Outcome (decision 55)', () => {
+    const BOUNDED = {
+      plannedRiskMinor: 5_000n,
+      plannedRiskState: 'defined' as const,
+      targetState: 'fixed' as const,
+      plannedRewardMinor: 10_000n,
+    };
+
+    it('saves the answer with the Closed Trade, in the same Save', async () => {
+      const fw = await freshFramework();
+      const saved = await save(fw, { ...BOUNDED, planOutcome: 'planned_risk_first' });
+      const row = await readTrade(saved.tradeId);
+      expect(row).toMatchObject({
+        status: 'closed',
+        planOutcome: 'planned_risk_first',
+        planOutcomeMinor: null,
+      });
+      expect(row.planOutcomeRecordedAt).not.toBeNull();
+    });
+
+    it('stores an amount only where the plan cannot derive it', async () => {
+      const fw = await freshFramework();
+      const tpOnly = await save(fw, {
+        ...BOUNDED,
+        plannedRewardMinor: null,
+        targetPrice: '2410',
+        planOutcome: 'planned_target_first',
+        planOutcomeMinor: 9_000n,
+      });
+      expect(await readTrade(tpOnly.tradeId)).toMatchObject({
+        planOutcome: 'planned_target_first',
+        planOutcomeMinor: 9_000n,
+      });
+    });
+
+    it('leaves it Unanswered when the trader did not answer', async () => {
+      const fw = await freshFramework();
+      const saved = await save(fw, BOUNDED);
+      expect(await readTrade(saved.tradeId)).toMatchObject({
+        planOutcome: null,
+        planOutcomeMinor: null,
+        planOutcomeRecordedAt: null,
+      });
+    });
+
+    it('refuses an answer the recorded plan does not offer, and creates nothing', async () => {
+      const fw = await freshFramework();
+      for (const overrides of [
+        { ...BOUNDED, planOutcome: 'exit_plan_result' as const, planOutcomeMinor: 1_000n },
+        { ...BOUNDED, planOutcome: 'planned_target_first' as const, planOutcomeMinor: 10_000n },
+        {
+          plannedRiskState: 'no_defined' as const,
+          targetState: 'fixed' as const,
+          plannedRewardMinor: 10_000n,
+          planOutcome: 'cannot_determine' as const,
+        },
+        { planOutcome: 'cannot_determine' as const },
+        { ...BOUNDED, planOutcomeMinor: 500n },
+      ]) {
+        const result = await createCompletedTrade(workspaceId, actorUserId, input(fw, overrides));
+        expect(result).toEqual({ ok: false, code: 'invalid_plan_outcome' });
+      }
+    });
+  });
+
   describe('Exit Plan', () => {
     it('snapshots a plan chosen during reconstruction as recalled, not as the entry-time rule', async () => {
       const fw = await freshFramework();

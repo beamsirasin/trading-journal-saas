@@ -20,6 +20,7 @@ import {
   RECORDING_CONTRACT_ADD_TRADE_V1,
   TARGET_STATES,
 } from '@/lib/trades/add-trade-contract';
+import { PLAN_OUTCOMES } from '@/lib/trades/plan-outcome';
 import {
   RECORDING_TIMINGS,
   SYSTEM_PLAN_BASES,
@@ -1139,6 +1140,10 @@ const CompletedTradeObjectSchema = z
      */
     afterTradeNote: optionalTextField(NOTES_MAX_LENGTH),
     afterTradeTradingviewUrl: tradingViewUrlField(),
+    /** Stage 6 Plan Outcome (decision 55). Absent = Unanswered; the service checks it against the plan. */
+    planOutcome: z.enum(PLAN_OUTCOMES).optional(),
+    /** A stated plan-outcome amount — only where the plan cannot derive one. */
+    planOutcomeMinor: nullableSignedMinorField(),
   })
   .strict();
 
@@ -1592,13 +1597,29 @@ export const RecordAfterTradeContextSchema = z
     afterTradeNote: afterTradeNoteField(),
     afterTradeTradingviewUrl: patchableTradingViewUrlField(),
     postTradeEmotionKeys: emotionKeysField().nullable().optional(),
+    /**
+     * Plan Outcome (decision 55): absent = unchanged, `null` = back to
+     * Unanswered, an answer = set. Its amount is present only where stated.
+     */
+    planOutcome: z
+      .object({
+        outcome: z.enum(PLAN_OUTCOMES),
+        amountMinor: z.preprocess(
+          (value) => (value === '' ? null : value),
+          signedMinorField().nullable(),
+        ),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict()
   .refine(
     (input) =>
       input.afterTradeNote !== undefined ||
       input.afterTradeTradingviewUrl !== undefined ||
-      input.postTradeEmotionKeys !== undefined,
+      input.postTradeEmotionKeys !== undefined ||
+      input.planOutcome !== undefined,
     { message: 'empty_patch' },
   );
 export type RecordAfterTradeContextActionInput = z.input<typeof RecordAfterTradeContextSchema>;

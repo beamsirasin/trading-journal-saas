@@ -261,7 +261,7 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
       await recordOpenDirection(page, 'Long');
 
       // 2 — Plan & Risk.
-      await page.getByRole('button', { name: 'Next: Plan & risk' }).click();
+      await page.getByRole('button', { name: 'Next: Risk & target' }).click();
       await expectStep(page, 'plan');
       await expect(page.locator('[data-step-progress]:visible').first()).toHaveText('Step 2 of 4');
       const riskEditor = await openPlanRow(page, 'risk');
@@ -407,7 +407,7 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
     }
     await expectStep(page, 'trade');
     await expect(recordOpenConcept(page, 'symbol')).toHaveAttribute('data-value', 'GBPJPY');
-    for (const next of ['Next: Plan & risk', 'Next: Setup', 'Next: Context']) {
+    for (const next of ['Next: Risk & target', 'Next: Strategy & setup', 'Next: Entry context']) {
       await page.getByRole('button', { name: next }).click();
     }
     await expectStep(page, 'context');

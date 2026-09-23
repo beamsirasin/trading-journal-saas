@@ -215,21 +215,30 @@ function renderForm(formOptions: TradeCreateOptions = options) {
 
 const STEP_LABEL = {
   trade: 'Trade',
-  result: 'Result',
-  plan: 'Plan',
-  context: 'Context',
-  after: 'After-trade',
+  plan: 'Risk & target',
+  setup: 'Strategy & setup',
+  context: 'Entry context',
+  result: 'Trader result',
+  after: 'After trade',
 } as const;
+/** The Next buttons, in the task's canonical order (decision 55). */
+const NEXTS = [
+  'Next: Risk & target',
+  'Next: Strategy & setup',
+  'Next: Entry context',
+  'Next: Trader result',
+  'Next: After trade',
+] as const;
 
 /** Open a step from the step list — the same control a trader taps. */
 function goTo(step: keyof typeof STEP_LABEL) {
   fireEvent.click(
-    screen.getByRole('button', { name: new RegExp(`^Step \\d of 5: ${STEP_LABEL[step]}$`) }),
+    screen.getByRole('button', { name: new RegExp(`^Step \\d of 6: ${STEP_LABEL[step]}$`) }),
   );
 }
 
 /** One step's own section, mounted whether or not it is the step being shown. */
-function stepSection(step: 'trade' | 'result' | 'plan' | 'context' | 'after'): HTMLElement {
+function stepSection(step: keyof typeof STEP_LABEL): HTMLElement {
   return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
 }
 
@@ -513,19 +522,22 @@ describe('After Trade — the moment and its steps', () => {
   it('asks one topic at a time, in reading order, with no Money/Price result basis', () => {
     renderForm();
     const seen: string[] = [];
-    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: After-trade']) {
+    for (const next of NEXTS) {
       seen.push(screen.getByRole('heading', { level: 2 }).textContent ?? '');
       fireEvent.click(screen.getByRole('button', { name: next }));
     }
     seen.push(screen.getByRole('heading', { level: 2 }).textContent ?? '');
+    // The same four stages Record Open asks, in the same order, then the result
+    // and what came after it (decision 55).
     expect(seen).toEqual([
       'Trade details',
-      'Result',
-      'Plan at entry',
-      'Context',
-      'After-trade context',
+      'Risk and target',
+      'Strategy and setup',
+      'Entry context',
+      'Trader result',
+      'After trade',
     ]);
-    expect(screen.getByText('Step 5 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Step 6 of 6')).toBeInTheDocument();
     expect(screen.queryByText(/price levels instead/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/amount instead/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'Price' })).not.toBeInTheDocument();
@@ -534,8 +546,8 @@ describe('After Trade — the moment and its steps', () => {
   it('offers Save only on the last step, and advances past unanswered optional steps', () => {
     renderForm();
     expect(screen.queryByRole('button', { name: 'Save closed trade' })).not.toBeInTheDocument();
-    expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
-    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: After-trade']) {
+    expect(screen.getByText('Step 1 of 6')).toBeInTheDocument();
+    for (const next of NEXTS) {
       fireEvent.click(screen.getByRole('button', { name: next }));
     }
     expect(currentStep()).toBe('after');
@@ -546,12 +558,14 @@ describe('After Trade — the moment and its steps', () => {
   it('keeps every answer through Back and Next', () => {
     renderForm();
     fillIdentity();
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Risk & target' }));
+    typeInPlan('risk', 'Risk at entry', '60');
     goTo('result');
     type('Final net P&L', '120');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Next: Plan' }));
-    typeInPlan('risk', 'Risk at entry', '60');
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(currentStep()).toBe('context');
+    goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(currentStep()).toBe('trade');
     /*
@@ -677,8 +691,16 @@ describe('After Trade — the moment and its steps', () => {
     goTo('after');
     const review = document.querySelector('[data-trade-summary]')!;
     expect(review).toHaveTextContent(/XAUUSD · Long/);
-    // Result, Plan and Context are untouched — and that is a complete answer.
-    expect(within(review as HTMLElement).getAllByText('Optional')).toHaveLength(3);
+    // Every later step is untouched — and that is a complete answer.
+    expect(within(review as HTMLElement).getAllByText('Optional')).toHaveLength(4);
+    // Read back in the task's own canonical order (decision 55).
+    expect(Array.from(review.querySelectorAll('dt'), (term) => term.textContent)).toEqual([
+      'Trade',
+      'Risk & target',
+      'Strategy & setup',
+      'Entry context',
+      'Trader result',
+    ]);
     expect(review).not.toHaveTextContent('needs attention');
   });
 
@@ -1883,7 +1905,7 @@ describe('Step 1 — proportion and the step action bar', () => {
       'single',
     );
     expect(within(bar as HTMLElement).queryByRole('button', { name: 'Back' })).toBeNull();
-    const next = within(bar as HTMLElement).getByRole('button', { name: /^Next: Result/ });
+    const next = within(bar as HTMLElement).getByRole('button', { name: /^Next: Risk & target/ });
     // Full width on a phone, its natural size once the card has room.
     expect(next.getAttribute('class')).toContain('w-full');
     expect(next.getAttribute('class')).toContain('lg:w-auto');
@@ -1891,14 +1913,16 @@ describe('Step 1 — proportion and the step action bar', () => {
 
   it('pairs Back and Next again from the second step on', () => {
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: /^Next: Result/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Next: Risk & target/ }));
     const bar = document.querySelector('[data-step-actions]')!;
     expect(bar.querySelector('[data-step-actions-layout]')).toHaveAttribute(
       'data-step-actions-layout',
       'paired',
     );
     expect(within(bar as HTMLElement).getByRole('button', { name: 'Back' })).toBeInTheDocument();
-    const next = within(bar as HTMLElement).getByRole('button', { name: /^Next: Plan/ });
+    const next = within(bar as HTMLElement).getByRole('button', {
+      name: /^Next: Strategy & setup/,
+    });
     expect(next.getAttribute('class')).not.toContain('w-full');
   });
 
@@ -1919,7 +1943,7 @@ describe('Step 1 — proportion and the step action bar', () => {
     // One mode statement, one progress statement, one step heading.
     expect(document.querySelectorAll('[data-recording-mode="after_trade"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-step-progress]')).toHaveLength(1);
-    expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 6')).toBeInTheDocument();
     expect(document.querySelectorAll('[data-recording-mode-change]')).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Trade details');
   });
@@ -2170,6 +2194,141 @@ describe('Actual Risk', () => {
   });
 });
 
+describe('Step 6 — System Result (decision 55)', () => {
+  /** Defined Risk 50 and a Fixed Target of 100: the bounded plan. */
+  function boundedPlan() {
+    typeInPlan('risk', 'Risk at entry', '50');
+    const target = openPlanRow('target');
+    fireEvent.click(within(target).getByRole('radio', { name: /^Fixed target/ }));
+    type('Target profit', '100', target);
+    closeEditor();
+  }
+
+  function systemResult(): HTMLElement {
+    if (currentStep() !== 'after') goTo('after');
+    return document.querySelector<HTMLElement>('[data-plan-outcome]')!;
+  }
+
+  it('asks what happened first, shows what each answer comes to, and sends only the answer', async () => {
+    renderForm();
+    fillIdentity();
+    boundedPlan();
+    const section = systemResult();
+    expect(section).toHaveAttribute('data-plan-outcome', 'bounded');
+    // System Result comes before the after-trade context fields.
+    const emotionRow = document.querySelector('[data-post-trade-emotions]')!;
+    expect(section.compareDocumentPosition(emotionRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    // The plan's own figures are shown on the answers — nothing to type.
+    const target = within(section).getByRole('radio', { name: /^Planned target/ });
+    const risk = within(section).getByRole('radio', { name: /^Planned risk/ });
+    expect(target.closest('div')!.parentElement).toHaveTextContent('+2.00R');
+    expect(risk.closest('div')!.parentElement).toHaveTextContent('-1.00R');
+    expect(within(section).queryByRole('textbox')).toBeNull();
+    // Unanswered until chosen: nothing selected, nothing derived.
+    expect(target).not.toBeChecked();
+    expect(section.querySelector('[data-plan-outcome-result]')).toBeNull();
+
+    fireEvent.click(risk);
+    expect(section.querySelector('[data-plan-outcome-result]')).toHaveTextContent('-1.00R');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ planOutcome: 'planned_risk_first' });
+    expect(payload()).not.toHaveProperty('planOutcomeMinor');
+  });
+
+  it('sends nothing while Unanswered, and asks nothing of a No Defined Risk trade', async () => {
+    renderForm();
+    fillIdentity();
+    chooseRisk(openPlanRow('risk'), 'No defined risk');
+    closeEditor();
+    const section = systemResult();
+    expect(section).toHaveAttribute('data-plan-outcome', 'no_defined_risk');
+    expect(section).toHaveTextContent(
+      "R comparison isn't available because this trade had no defined planned risk.",
+    );
+    expect(within(section).queryByRole('radio')).toBeNull();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).not.toHaveProperty('planOutcome');
+  });
+
+  it('asks a rule-based Exit Plan for its result, and derives R from it', async () => {
+    renderForm(withStrategy);
+    fillIdentity();
+    typeInPlan('risk', 'Risk at entry', '50');
+    const target = openPlanRow('target');
+    fireEvent.click(within(target).getByRole('radio', { name: /^No fixed target/ }));
+    closeEditor();
+    openExitPlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose exit plan' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Trail structure/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    closeEditor();
+
+    const section = systemResult();
+    expect(section).toHaveAttribute('data-plan-outcome', 'exit_plan');
+    // The plan is shown read-only, so the trader answers against it.
+    expect(section.querySelector('[data-plan-outcome-exit-plan]')).toHaveTextContent(
+      'Trail structure',
+    );
+    fireEvent.click(within(section).getByRole('radio', { name: 'State the result' }));
+
+    // Blank is not an answer: Save stops on the amount and says why.
+    fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
+    expect(
+      await screen.findByText("Enter the result, or choose Can't determine."),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.getElementById('after-stage6-plan-outcome-amount')).toHaveFocus(),
+    );
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+
+    type('Result under the plan', '300', section);
+    expect(section.querySelector('[data-plan-outcome-result]')).toHaveTextContent('+6.00R');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({
+      planOutcome: 'exit_plan_result',
+      planOutcomeMinor: '30000',
+    });
+  });
+
+  it('keeps Can’t determine as an answer, distinct from Unanswered', async () => {
+    renderForm();
+    fillIdentity();
+    boundedPlan();
+    fireEvent.click(within(systemResult()).getByRole('radio', { name: "Can't determine" }));
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ planOutcome: 'cannot_determine' });
+  });
+
+  it('never drops an answer the plan no longer offers: it waits for the trader', async () => {
+    renderForm();
+    fillIdentity();
+    boundedPlan();
+    fireEvent.click(within(systemResult()).getByRole('radio', { name: /^Planned target/ }));
+    // The plan changes after the answer: no fixed target now, and no Exit Plan.
+    const target = openPlanRow('target');
+    fireEvent.click(within(target).getByRole('radio', { name: /^No fixed target/ }));
+    closeEditor();
+    const section = systemResult();
+    expect(section).toHaveAttribute('data-plan-outcome', 'unavailable');
+    expect(section.querySelector('[data-plan-outcome-stale]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
+    await waitFor(() => expect(currentStep()).toBe('after'));
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+
+    // Removing the answer is the trader's choice, and then Save goes ahead.
+    fireEvent.click(within(section).getByRole('button', { name: 'Remove system result answer' }));
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).not.toHaveProperty('planOutcome');
+  });
+});
+
 describe('Target', () => {
   it('blocks an explicitly Fixed Target with neither Target Profit nor TP price', async () => {
     renderForm();
@@ -2219,7 +2378,7 @@ describe('Exit Plan and Strategy', () => {
   it('never inherits the Strategy default, and records a chosen plan as selected', async () => {
     renderForm(withStrategy);
     fillIdentity();
-    goTo('context');
+    goTo('setup');
     chooseClassification('Strategy', 'Golden Breakout');
     expect(screen.queryByText(/From Strategy/)).not.toBeInTheDocument();
     expect(exitPlanRow()).toHaveAttribute('data-exit-plan-row', 'not_recorded');
@@ -2241,7 +2400,7 @@ describe('Exit Plan and Strategy', () => {
   it('keeps Unanswered, No Strategy and a selected Strategy distinct', async () => {
     renderForm(withStrategy);
     fillIdentity();
-    goTo('context');
+    goTo('setup');
     chooseClassification('Strategy', 'No strategy');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -2252,7 +2411,7 @@ describe('Exit Plan and Strategy', () => {
   it('offers Don’t remember, sends only answered conditions, and never Not Met by omission', async () => {
     renderForm(withStrategy);
     fillIdentity();
-    goTo('context');
+    goTo('setup');
     chooseClassification('Strategy', 'Golden Breakout');
     chooseClassification('Setup', 'Clean Retest');
     fireEvent.click(

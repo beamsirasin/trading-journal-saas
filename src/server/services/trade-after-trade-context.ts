@@ -4,6 +4,12 @@ import { and, eq } from 'drizzle-orm';
 
 import { systemClock, type Clock } from '@/lib/time';
 import { isContractRow } from '@/lib/trades/add-trade-contract';
+import {
+  isPlanOutcome,
+  validatePlanOutcomeAnswer,
+  type PlanOutcome,
+  type PlanOutcomePlan,
+} from '@/lib/trades/plan-outcome';
 import { getDb } from '@/server/db/client';
 import {
   emotionTypes,
@@ -30,11 +36,13 @@ import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
  * after-trade chart link, and Post-Trade Emotion. The Trade is already Closed
  * — Stage 6 is never what closes it and never required for Closed.
  *
- * WHAT IT WRITES, AND NOTHING ELSE: `after_trade_note`,
- * `after_trade_tradingview_url`, the `post_trade` `trade_emotions` rows and
- * `post_trade_emotions_recorded_at`. It never touches status, Final Net P&L,
+ * WHAT IT WRITES, AND NOTHING ELSE: the Plan Outcome (`plan_outcome`,
+ * `plan_outcome_minor`, `plan_outcome_recorded_at` — decision 55),
+ * `after_trade_note`, `after_trade_tradingview_url`, the `post_trade`
+ * `trade_emotions` rows and `post_trade_emotions_recorded_at`. It never touches status, Final Net P&L,
  * its source, Actual R, the Trader Outcome, the entry notes, the before-entry
- * chart link, or any Review / System Assessment column.
+ * chart link, or any Review / System Assessment column — the Plan Outcome is
+ * capture evidence, never `trade_system_assessments`.
  *
  * WHICH TRADES. A Closed contract Trade — including one closed through the
  * legacy close before it was retired. That row's result keeps its legacy
@@ -62,6 +70,14 @@ export interface RecordAfterTradeContextInput {
   readonly afterTradeNote?: string | null;
   readonly afterTradeTradingviewUrl?: string | null;
   readonly postTradeEmotionKeys?: readonly string[] | null;
+  /**
+   * What the original plan would have produced: absent = unchanged, `null` =
+   * back to Unanswered. Checked against the Trade's recorded plan.
+   */
+  readonly planOutcome?: {
+    readonly outcome: PlanOutcome;
+    readonly amountMinor: bigint | null;
+  } | null;
 }
 
 export type PostTradeEmotionState =
@@ -73,6 +89,8 @@ export interface AfterTradeContextView {
   readonly afterTradeNote: string | null;
   readonly afterTradeTradingviewUrl: string | null;
   readonly postTradeEmotions: PostTradeEmotionState;
+  readonly planOutcome: PlanOutcome | null;
+  readonly planOutcomeMinor: bigint | null;
 }
 
 export type RecordAfterTradeContextErrorCode =
@@ -83,6 +101,7 @@ export type RecordAfterTradeContextErrorCode =
   | 'duplicate_emotion_key'
   | 'unknown_emotion_key'
   | 'emotion_type_not_usable'
+  | 'invalid_plan_outcome'
   | 'mutation_replay_conflict';
 
 export type RecordAfterTradeContextResult =
@@ -136,6 +155,28 @@ async function readContext(
     afterTradeNote: trade.afterTradeNote,
     afterTradeTradingviewUrl: trade.afterTradeTradingviewUrl,
     postTradeEmotions,
+    planOutcome: isPlanOutcome(trade.planOutcome) ? trade.planOutcome : null,
+    planOutcomeMinor: trade.planOutcomeMinor,
+  };
+}
+
+/** The Trade's recorded plan, as the Plan Outcome rule reads it. */
+export function planOutcomePlanOfTrade(trade: typeof trades.$inferSelect): PlanOutcomePlan {
+  return {
+    plannedRiskMinor: trade.plannedRiskMinor,
+    plannedRiskState:
+      trade.plannedRiskState === 'defined' || trade.plannedRiskState === 'no_defined'
+        ? trade.plannedRiskState
+        : null,
+    targetState:
+      trade.targetState === 'fixed' || trade.targetState === 'no_fixed' ? trade.targetState : null,
+    plannedRewardMinor: trade.plannedRewardMinor,
+    exitPlanState:
+      trade.exitPlanState === 'saved' ||
+      trade.exitPlanState === 'customized' ||
+      trade.exitPlanState === 'no_rule'
+        ? trade.exitPlanState
+        : null,
   };
 }
 
@@ -186,6 +227,18 @@ export async function recordAfterTradeContextInTx(
   // After-Trade Context follows the Final Close; it never closes a Trade.
   if (trade.status !== 'closed') return { ok: false, code: 'invalid_status_transition' };
 
+  // Only an answer the recorded plan offers, with an amount exactly where needed.
+  if (
+    input.planOutcome != null &&
+    validatePlanOutcomeAnswer(
+      input.planOutcome.outcome,
+      input.planOutcome.amountMinor,
+      planOutcomePlanOfTrade(trade),
+    ) !== null
+  ) {
+    return { ok: false, code: 'invalid_plan_outcome' };
+  }
+
   let emotionIds: readonly { readonly id: string }[] | null = null;
   if (input.postTradeEmotionKeys !== undefined && input.postTradeEmotionKeys !== null) {
     const resolved = await resolveEmotionTypesInTx(tx, input.postTradeEmotionKeys);
@@ -196,6 +249,12 @@ export async function recordAfterTradeContextInTx(
   const now = clock.now();
   const changedFields: string[] = [];
   const patch: Partial<typeof trades.$inferInsert> = { updatedAt: now };
+  if (input.planOutcome !== undefined) {
+    patch.planOutcome = input.planOutcome?.outcome ?? null;
+    patch.planOutcomeMinor = input.planOutcome?.amountMinor ?? null;
+    patch.planOutcomeRecordedAt = input.planOutcome === null ? null : now;
+    changedFields.push('planOutcome');
+  }
   if (input.afterTradeNote !== undefined) {
     patch.afterTradeNote = input.afterTradeNote;
     changedFields.push('afterTradeNote');

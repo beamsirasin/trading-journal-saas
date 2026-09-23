@@ -175,6 +175,21 @@ export const trades = pgTable(
      */
     afterTradeNote: text('after_trade_note'),
     afterTradeTradingviewUrl: text('after_trade_tradingview_url'),
+    /**
+     * Stage 6 Plan Outcome (migration 0032, contract decision 55): what the
+     * trader's original plan would have produced — a factual observation, not
+     * a System Assessment (that is `trade_system_assessments`, written only by
+     * Review's Confirm). NULL is Unanswered. See `src/lib/trades/plan-outcome.ts`.
+     *
+     * `plan_outcome_minor` holds only an amount the trader STATED: an Exit Plan
+     * result, or a target reached first whose Fixed Target had no Target Profit.
+     * Target first and risk first otherwise derive their amount from the plan
+     * when read, so a later plan correction never leaves a stale copy. It is
+     * never a Net / Gross claim and never derived from Final Net P&L or price.
+     */
+    planOutcome: text('plan_outcome'),
+    planOutcomeMinor: bigint('plan_outcome_minor', { mode: 'bigint' }),
+    planOutcomeRecordedAt: timestamp('plan_outcome_recorded_at', { withTimezone: true }),
 
     // -------------------------------------------------------------------
     // Chart attachment — Image upload (migration 0010). Distinct from
@@ -664,6 +679,29 @@ export const trades = pgTable(
       'trades_after_trade_context_check',
       sql`(${table.afterTradeNote} IS NULL AND ${table.afterTradeTradingviewUrl} IS NULL)
         OR (${table.recordingContract} IS NOT NULL AND ${table.status} = 'closed')`,
+    ),
+    // Plan Outcome (migration 0032): a Closed contract Trade only, like the
+    // rest of Stage 6. Unanswered is all three NULL. A stated amount belongs to
+    // an Exit Plan result (always) or a target reached first (only where the
+    // Target Profit was unknown — enforced by the service, which reads the
+    // plan); risk first and Cannot Determine never carry one.
+    check(
+      'trades_plan_outcome_check',
+      sql`(
+        ${table.planOutcome} IS NULL
+        AND ${table.planOutcomeMinor} IS NULL
+        AND ${table.planOutcomeRecordedAt} IS NULL
+      ) OR (
+        ${table.recordingContract} IS NOT NULL
+        AND ${table.status} = 'closed'
+        AND ${table.planOutcomeRecordedAt} IS NOT NULL
+        AND (
+          (${table.planOutcome} = 'planned_target_first' AND (${table.planOutcomeMinor} IS NULL OR ${table.planOutcomeMinor} > 0))
+          OR (${table.planOutcome} = 'planned_risk_first' AND ${table.planOutcomeMinor} IS NULL)
+          OR (${table.planOutcome} = 'exit_plan_result' AND ${table.planOutcomeMinor} IS NOT NULL)
+          OR (${table.planOutcome} = 'cannot_determine' AND ${table.planOutcomeMinor} IS NULL)
+        )
+      )`,
     ),
     check(
       'trades_post_trade_emotions_check',

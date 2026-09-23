@@ -30,6 +30,17 @@ function trade(overrides: Partial<TradeDetail> = {}): TradeDetail {
     symbol: 'XAUUSD',
     status: 'closed',
     recordingContract: 'add_trade_v1',
+    tradingAccountBaseCurrency: 'USD',
+    // No plan on record unless a test gives one: the System Result asks nothing.
+    plannedRiskMinor: null,
+    plannedRiskState: null,
+    targetState: null,
+    plannedRewardMinor: null,
+    exitPlanState: null,
+    exitPlanName: null,
+    exitPlanInstructions: null,
+    planOutcome: null,
+    planOutcomeMinor: null,
     afterTradeNote: null,
     afterTradeTradingviewUrl: null,
     postTradeEmotionsRecordedAt: null,
@@ -236,5 +247,124 @@ describe('the Stage 6 draft', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
     await waitFor(() => expect(actionMock).toHaveBeenCalledTimes(2));
     expect((actionMock.mock.calls[1]![0] as { mutationKey: string }).mutationKey).toBe(key);
+  });
+});
+
+describe('Stage 6 System Result on a closed trade (decision 55)', () => {
+  const BOUNDED = {
+    plannedRiskMinor: '5000',
+    plannedRiskState: 'defined',
+    targetState: 'fixed',
+    plannedRewardMinor: '10000',
+  } as const;
+  const RULE_BASED = {
+    plannedRiskMinor: '5000',
+    plannedRiskState: 'defined',
+    targetState: 'no_fixed',
+    exitPlanState: 'customized',
+    exitPlanInstructions: 'Trail behind the 20 EMA.',
+  } as const;
+
+  it('comes first, before the after-trade context, and may be left for later', async () => {
+    renderForm(trade(BOUNDED));
+    const section = document.querySelector('[data-plan-outcome]')!;
+    expect(section).toHaveAttribute('data-plan-outcome', 'bounded');
+    const emotion = document.getElementById('stage6-post-emotions')!;
+    expect(
+      section.compareDocumentPosition(emotion) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(section).toHaveTextContent('You can answer later from the trade.');
+    // Nothing answered, nothing sent.
+    fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
+    expect(await screen.findByRole('heading', { name: 'Trade saved' })).toBeVisible();
+    expect(actionMock).not.toHaveBeenCalled();
+  });
+
+  it('sends a target reached first as the answer alone — the plan supplies the figure', async () => {
+    renderForm(trade(BOUNDED));
+    const section = document.querySelector<HTMLElement>('[data-plan-outcome]')!;
+    fireEvent.click(within(section).getByRole('radio', { name: /^Planned target/ }));
+    expect(section.querySelector('[data-plan-outcome-result]')).toHaveTextContent('+2.00R');
+    fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
+    await waitFor(() => expect(actionMock).toHaveBeenCalledTimes(1));
+    expect(actionMock.mock.calls[0]![0]).toEqual({
+      tradeId: TRADE_ID,
+      mutationKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      planOutcome: { outcome: 'planned_target_first', amountMinor: null },
+    });
+  });
+
+  it('shows a rule-based Exit Plan read-only, and blocks a result without its amount', async () => {
+    renderForm(trade(RULE_BASED));
+    const section = document.querySelector<HTMLElement>('[data-plan-outcome]')!;
+    expect(section.querySelector('[data-plan-outcome-exit-plan]')).toHaveTextContent(
+      'Trail behind the 20 EMA.',
+    );
+    fireEvent.click(within(section).getByRole('radio', { name: 'State the result' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
+    expect(
+      await screen.findByText("Enter the result, or choose Can't determine."),
+    ).toBeInTheDocument();
+    expect(actionMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Result under the plan'), { target: { value: '300' } });
+    expect(section.querySelector('[data-plan-outcome-result]')).toHaveTextContent('+6.00R');
+    fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
+    await waitFor(() => expect(actionMock).toHaveBeenCalledTimes(1));
+    expect(actionMock.mock.calls[0]![0]).toMatchObject({
+      planOutcome: { outcome: 'exit_plan_result', amountMinor: '30000' },
+    });
+  });
+
+  it('starts from the saved answer, sends nothing when unchanged, and clears as null', async () => {
+    renderForm(
+      trade({ ...RULE_BASED, planOutcome: 'exit_plan_result', planOutcomeMinor: '30000' }),
+    );
+    expect(screen.getByLabelText('Result under the plan')).toHaveValue('300.00');
+    fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
+    expect(await screen.findByRole('heading', { name: 'Trade saved' })).toBeVisible();
+    expect(actionMock).not.toHaveBeenCalled();
+    cleanup();
+
+    renderForm(
+      trade({ ...RULE_BASED, planOutcome: 'exit_plan_result', planOutcomeMinor: '30000' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove system result answer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
+    await waitFor(() => expect(actionMock).toHaveBeenCalledTimes(1));
+    expect(actionMock.mock.calls[0]![0]).toMatchObject({ planOutcome: null });
+  });
+
+  it('says why nothing is asked when the trade had no defined planned risk', () => {
+    renderForm(trade({ plannedRiskState: 'no_defined', targetState: 'fixed' }));
+    const section = document.querySelector('[data-plan-outcome]')!;
+    expect(section).toHaveAttribute('data-plan-outcome', 'no_defined_risk');
+    expect(section).toHaveTextContent(
+      "R comparison isn't available because this trade had no defined planned risk.",
+    );
+    expect(within(section as HTMLElement).queryByRole('radio')).toBeNull();
+  });
+
+  it('keeps a typed answer through a reload', async () => {
+    const { unmount } = renderForm(trade(BOUNDED));
+    fireEvent.click(
+      within(document.querySelector<HTMLElement>('[data-plan-outcome]')!).getByRole('radio', {
+        name: "Can't determine",
+      }),
+    );
+    await waitFor(() =>
+      expect(stored()?.afterTradeContext?.answers?.planOutcome).toEqual({
+        outcome: 'cannot_determine',
+        amount: '',
+      }),
+    );
+    unmount();
+    renderForm(trade(BOUNDED));
+    await waitFor(() =>
+      expect(
+        within(document.querySelector<HTMLElement>('[data-plan-outcome]')!).getByRole('radio', {
+          name: "Can't determine",
+        }),
+      ).toBeChecked(),
+    );
   });
 });

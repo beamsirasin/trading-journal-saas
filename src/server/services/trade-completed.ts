@@ -22,6 +22,11 @@ import type {
   SystemStatus,
 } from '@/lib/trades/constants';
 import {
+  validatePlanOutcomeAnswer,
+  type PlanOutcome,
+  type PlanOutcomePlan,
+} from '@/lib/trades/plan-outcome';
+import {
   isRecordedRetrospectively,
   validateCompletedTradeTimestamps,
 } from '@/lib/trades/recording-model';
@@ -116,6 +121,24 @@ export interface CreateCompletedTradeInput {
   /** Stage 6 After-Trade Context, saved atomically with the Closed Trade. */
   readonly afterTradeNote?: string | null;
   readonly afterTradeTradingviewUrl?: string | null;
+  /**
+   * Stage 6 Plan Outcome (decision 55): absent is Unanswered. Checked against
+   * the plan this same Save records, never trusted from the client.
+   */
+  readonly planOutcome?: PlanOutcome | undefined;
+  /** An amount the trader stated for it — only where the plan cannot derive one. */
+  readonly planOutcomeMinor?: bigint | null;
+}
+
+/** The plan this Save records, as the Plan Outcome rule reads it. */
+function planOutcomePlanOf(input: CreateCompletedTradeInput): PlanOutcomePlan {
+  return {
+    plannedRiskMinor: input.plannedRiskMinor ?? null,
+    plannedRiskState: input.plannedRiskState ?? null,
+    targetState: input.targetState ?? null,
+    plannedRewardMinor: input.plannedRewardMinor ?? null,
+    exitPlanState: input.exitPlan?.state ?? null,
+  };
 }
 
 export type CreateCompletedTradeErrorCode =
@@ -124,7 +147,8 @@ export type CreateCompletedTradeErrorCode =
   | 'invalid_completed_trade_time'
   | 'invalid_completed_exit_coverage'
   | 'invalid_exit_shape'
-  | 'invalid_exit_time';
+  | 'invalid_exit_time'
+  | 'invalid_plan_outcome';
 
 export type CreateCompletedTradeResult =
   | {
@@ -180,6 +204,19 @@ function preflightCompletedInput(
   const exitedAt = input.exitedAt ?? null;
   if (!validateCompletedTradeTimestamps({ enteredAt, exitedAt, now }).ok) {
     return { ok: false, code: 'invalid_completed_trade_time' };
+  }
+
+  // A Plan Outcome only where the plan being recorded offers it (decision 55).
+  if (input.planOutcome === undefined) {
+    if (input.planOutcomeMinor != null) return { ok: false, code: 'invalid_plan_outcome' };
+  } else if (
+    validatePlanOutcomeAnswer(
+      input.planOutcome,
+      input.planOutcomeMinor ?? null,
+      planOutcomePlanOf(input),
+    ) !== null
+  ) {
+    return { ok: false, code: 'invalid_plan_outcome' };
   }
 
   const exits = input.exits ?? [];
@@ -415,10 +452,18 @@ export async function createCompletedTrade(
       // After-Trade Context can be written before anything commits.
       const afterTradeNote = normalizeOptionalText(input.afterTradeNote);
       const afterTradeTradingviewUrl = normalizeOptionalText(input.afterTradeTradingviewUrl);
-      if (afterTradeNote !== null || afterTradeTradingviewUrl !== null) {
+      const planOutcome =
+        input.planOutcome === undefined
+          ? null
+          : {
+              planOutcome: input.planOutcome,
+              planOutcomeMinor: input.planOutcomeMinor ?? null,
+              planOutcomeRecordedAt: now,
+            };
+      if (afterTradeNote !== null || afterTradeTradingviewUrl !== null || planOutcome !== null) {
         await tx
           .update(trades)
-          .set({ afterTradeNote, afterTradeTradingviewUrl })
+          .set({ afterTradeNote, afterTradeTradingviewUrl, ...(planOutcome ?? {}) })
           .where(and(eq(trades.id, created.tradeId), eq(trades.workspaceId, workspaceId)));
       }
 

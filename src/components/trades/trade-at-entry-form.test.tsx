@@ -144,13 +144,18 @@ function renderForm(
   );
 }
 
-const STEP = { trade: 'Trade', plan: 'Plan & risk', setup: 'Setup', context: 'Context' } as const;
+const STEP = {
+  trade: 'Trade',
+  plan: 'Risk & target',
+  setup: 'Strategy & setup',
+  context: 'Entry context',
+} as const;
 type Step = keyof typeof STEP;
 const STEP_NUMBER: Readonly<Record<Step, number>> = { trade: 1, plan: 2, setup: 3, context: 4 };
 
 /**
  * Open a step from the step list — the same control a trader taps: the phone's
- * progress rail ("Step 2 of 4: Plan & risk"), or the list beside a wide form.
+ * progress rail ("Step 2 of 4: Risk & target"), or the list beside a wide form.
  */
 function goTo(step: Step) {
   const rail = screen.queryByRole('button', {
@@ -298,13 +303,13 @@ describe('Record Open — the canonical stages', () => {
     expect(within(stepSection('trade')).getAllByRole('button', { name: /^Edit / })).toHaveLength(4);
     expect(within(stepSection('trade')).queryByRole('textbox')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next: Plan & risk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Risk & target' }));
     expect(currentStep()).toBe('plan');
     expect(document.querySelector('[data-plan-risk-step="at_entry"]')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Next: Setup' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Strategy & setup' }));
     expect(currentStep()).toBe('setup');
     expect(document.querySelector('[data-setup-checklist-step="at_entry"]')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Next: Context' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Entry context' }));
     expect(currentStep()).toBe('context');
     expect(document.querySelector('[data-entry-context-step="at_entry"]')).not.toBeNull();
     // No Exit & Result, no After-Trade Context, no Review in Record Open.

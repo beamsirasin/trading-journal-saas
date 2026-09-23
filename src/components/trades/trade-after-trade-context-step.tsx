@@ -2,7 +2,7 @@
 
 import { HeartPulse } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 
 import { NOTES_MAX_LENGTH } from '@/lib/trades/constants';
 import type { TradeCreateOptions } from '@/server/dal/trades';
@@ -25,14 +25,16 @@ export function afterTradeContextIds(idPrefix: string) {
 }
 
 /**
- * CANONICAL STAGE 6 — AFTER-TRADE CONTEXT (Add Trade contract §9; UX Rules
- * §20.5). Shared by Close Existing Open Trade and Record Closed.
+ * CANONICAL STAGE 6 — AFTER TRADE (Add Trade contract §9, decision 55; UX
+ * Rules §20.5). Shared by Close Existing Open Trade and Record Closed.
  *
- * Optional, factual context from after the trade: how it felt afterwards, a
- * note, and after-trade evidence. It is not Review — no reflection, mistakes,
- * rules, Exit Plan Adherence or System Assessment — and it never closes a
- * Trade. Its note and chart link are their own fields, never the entry notes
- * or the before-entry link.
+ * Two sections, in this order. SYSTEM RESULT (`systemResult`, the host's
+ * `TradePlanOutcomeSection`): what the original plan would have produced.
+ * Then AFTER-TRADE CONTEXT: how it felt afterwards, a note, and after-trade
+ * evidence. Both are optional and factual. Neither is Review — no reflection,
+ * mistakes, rules, Exit Plan Adherence or System Assessment — and Stage 6
+ * never closes a Trade. Its note and chart link are their own fields, never
+ * the entry notes or the before-entry link.
  *
  * Post-Trade Emotion is a launcher into one focused editor (the Step 4 Entry
  * Emotion pattern): Unanswered, None of these, or the emotions chosen, and
@@ -54,8 +56,11 @@ export function TradeAfterTradeContextStep({
   onRemoveEmotions,
   onNote,
   onTradingviewUrl,
+  systemResult = null,
 }: {
   idPrefix: string;
+  /** Section A, the System Result — rendered first, before the context fields. */
+  systemResult?: ReactNode;
   emotions: EmotionsDraft;
   catalog: TradeCreateOptions['emotionCatalog'];
   note: string;
@@ -87,6 +92,8 @@ export function TradeAfterTradeContextStep({
   return (
     <div data-after-trade-context-step="" className="flex min-w-0 flex-col gap-4">
       <p className="text-muted-foreground text-sm">{s('description')}</p>
+
+      {systemResult}
 
       {/* 1 — POST-TRADE EMOTION: how it felt afterwards, apart from Entry Emotion. */}
       <GroupCard title={s('emotion.title')}>
