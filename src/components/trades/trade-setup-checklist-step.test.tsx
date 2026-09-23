@@ -193,7 +193,10 @@ describe('Setup & Checklist — what the step holds', () => {
     // A Setup belongs to a Strategy, so it waits for one — and says so.
     expect(row('setup')).toBeDisabled();
     expect(row('setup')).toHaveTextContent('Choose a strategy first');
-    expect(checklistMessage()).toBe('Choose a strategy, then a setup, to answer its checklist.');
+    // The Setup row already says it; the checklist adds no second line saying the same.
+    expect(document.querySelector('[data-checklist-state]')).toBeNull();
+    // One subtitle introduces the step (the host's); the step repeats no "optional" note.
+    expect(screen.queryByText(/Not needed to save/)).toBeNull();
     // Other stages' questions are not here.
     for (const absent of [
       /confidence/i,

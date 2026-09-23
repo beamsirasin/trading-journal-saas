@@ -156,8 +156,6 @@ export function TradeSetupChecklistStep(
 
   return (
     <div data-setup-checklist-step={props.mode} className="flex min-w-0 flex-col gap-3">
-      <p className="text-muted-foreground mb-1 text-sm">{s('description')}</p>
-
       {/* STRATEGY, THEN SETUP — one column, read top to bottom as Step 2 is. */}
       <TradeLauncherRow
         id={`${idPrefix}-strategy`}
@@ -373,7 +371,7 @@ function Checklist(
       : strategy === null
         ? strategies.length === 0
           ? s('checklistNoStrategies')
-          : s('checklistNeedsStrategy')
+          : null
         : setupAnswer === 'none'
           ? s('checklistNoSetup')
           : setup === null
@@ -383,6 +381,12 @@ function Checklist(
             : conditions.length === 0
               ? s('checklistEmpty')
               : null;
+
+  /*
+    NOTHING CHOSEN YET SAYS NOTHING HERE. The disabled Setup row already says
+    "Choose a strategy first"; a second line repeating it is noise.
+  */
+  if (state === null && setup === null) return null;
 
   if (state !== null) {
     return (

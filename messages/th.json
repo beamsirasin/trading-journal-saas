@@ -2324,7 +2324,7 @@
             "setup": {
               "label": "Setup",
               "title": "Setup และเช็กลิสต์",
-              "description": "กลยุทธ์และ Setup ของเทรดนี้ พร้อมเช็กลิสต์"
+              "description": "กลยุทธ์ Setup และเช็กลิสต์ตอนเข้าเทรด"
             },
             "context": {
               "label": "บริบท",
@@ -2573,7 +2573,6 @@
           }
         },
         "setupStep": {
-          "description": "ไม่จำเป็นสำหรับการบันทึก กลยุทธ์ Setup และเช็กลิสต์ของคุณใช้สร้างข้อมูลเชิงลึกของกลยุทธ์และ Setup",
           "strategyEditor": "เลือกกลยุทธ์ที่ใช้เทรด หรือระบุว่าเทรดนี้ไม่มีกลยุทธ์",
           "setupEditor": "เลือก Setup ของ {strategy} ที่ใช้เทรด หรือระบุว่าเทรดนี้ไม่มี Setup",
           "noStrategiesYet": "ยังไม่มีกลยุทธ์ เพิ่มได้ที่หน้ากลยุทธ์",
@@ -2581,7 +2580,6 @@
           "noStrategiesRow": "พื้นที่ทำงานนี้ยังไม่มีกลยุทธ์",
           "exitPlanFromStrategy": "แผนการออกจากกลยุทธ์: {plan}",
           "setupNotApplicable": "ไม่ต้องตอบเมื่อไม่มีกลยุทธ์",
-          "checklistNeedsStrategy": "เลือกกลยุทธ์และ Setup ก่อน จึงจะตอบเช็กลิสต์ได้",
           "checklistNoStrategies": "ยังไม่มีกลยุทธ์ จึงไม่มีเช็กลิสต์ให้ตอบ",
           "checklistNoStrategy": "เทรดนี้ไม่มีกลยุทธ์ จึงไม่มีเช็กลิสต์ให้ตอบ",
           "checklistNeedsSetup": "เลือก Setup เพื่อตอบเงื่อนไขของ Setup นั้น",
