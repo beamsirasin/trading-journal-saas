@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { CreateTradeSchema } from '@/lib/trades/schemas';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 
 import {
@@ -154,6 +155,27 @@ describe('At Entry draft — minimum Save and readiness', () => {
     // Nothing to compare against, so Actual Risk is not carried either.
     expect(payload).not.toHaveProperty('actualRiskAnswer');
     expect(payload).not.toHaveProperty('actualInitialRiskMinor');
+  });
+
+  /*
+    THE PAYLOAD THIS BUILDER PRODUCES MUST PASS THE REAL BOUNDARY. A No
+    Defined Risk Save was refused in the browser while every service test
+    passed, because the builder declared `systemPlanBasis: 'money'` over a
+    plan that had no figures at all. Parsing what it builds is what catches
+    that class of defect; asserting the schema alone never could.
+  */
+  it.each([
+    ['defined risk', () => minimum()],
+    ['no defined risk', () => setRiskState(minimum(), 'no_defined')],
+    [
+      'no defined risk with a fixed target',
+      () => setTargetValue(setRiskState(minimum(), 'no_defined'), 'profit', '300'),
+    ],
+  ])('builds a payload the create schema accepts (%s)', (_label, build) => {
+    const payload = buildAtEntryPayload(build(), { ...context, mutationKey: ACCOUNT, options });
+    expect(payload).not.toBeNull();
+    const parsed = CreateTradeSchema.safeParse(payload);
+    expect(parsed.success ? [] : parsed.error.issues.map((issue) => issue.message)).toEqual([]);
   });
 
   it('sends a Defined Risk as the decision plus its amount', () => {

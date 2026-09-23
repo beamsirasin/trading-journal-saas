@@ -957,7 +957,15 @@ export function buildAtEntryPayload(
     tradingAccountId: draft.tradingAccountId,
     recordingTiming: 'at_entry',
     recordingContract: 'add_trade_v1',
-    systemPlanBasis: 'money',
+    /*
+      THE BASIS EXISTS ONLY WHERE A PLAN FIGURE DOES. Money is this contract's
+      authority, but a Trade with No Defined Risk and no Target Profit carries
+      no planned money at all — declaring a basis for a plan that has no
+      figures is what `system_plan_basis_without_plan` refuses, and rightly.
+    */
+    ...(validation.riskMinor !== null || targetProfit?.ok === true
+      ? { systemPlanBasis: 'money' as const }
+      : {}),
     symbol: draft.symbol.trim().toUpperCase(),
     direction: draft.direction,
     plannedRiskState: draft.riskState,

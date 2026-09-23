@@ -380,6 +380,7 @@ function applyPlanShapeRefinements<
     readonly plannedTarget?: string | null | undefined;
     readonly plannedRiskMinor?: bigint | null | undefined;
     readonly plannedRewardMinor?: bigint | null | undefined;
+    readonly recordingContract?: string | undefined;
   }>,
 >(schema: T) {
   return schema
@@ -392,8 +393,18 @@ function applyPlanShapeRefinements<
       { message: 'incomplete_price_plan', path: ['plannedTarget'] },
     )
     .refine(
+      /*
+        A TARGET WITHOUT A RISK IS A REAL PLAN ON A CONTRACT ROW. The trader
+        may remember what they aimed at without a 1R (§5, §13), and since
+        decision 54 they may say outright that no 1R was defined while still
+        recording a Fixed Target. `trades_planned_money_check` has always
+        allowed that shape for a contract row; this refinement now agrees
+        instead of being stricter than the database and the contract.
+      */
       (data) =>
-        (data.plannedRewardMinor ?? null) === null || (data.plannedRiskMinor ?? null) !== null,
+        (data.plannedRewardMinor ?? null) === null ||
+        (data.plannedRiskMinor ?? null) !== null ||
+        data.recordingContract !== undefined,
       { message: 'incomplete_money_plan', path: ['plannedRewardMinor'] },
     );
 }

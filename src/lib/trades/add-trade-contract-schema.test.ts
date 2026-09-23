@@ -34,6 +34,26 @@ describe('CreateTradeSchema — Add Trade contract v1', () => {
     expect(issueMessages(contractInput())).toEqual([]);
   });
 
+  /*
+    NO DEFINED RISK IS A COMPLETE SAVE (contract decision 54). It carries no
+    planned money at all, so it declares no plan basis either — a basis
+    without a plan is what `system_plan_basis_without_plan` exists to refuse.
+    This is the boundary the service tests cannot see, and where a No Defined
+    Risk Save was refused in the browser before this check existed.
+  */
+  it('accepts No Defined Risk with no amount and no plan basis', () => {
+    const { plannedRiskMinor: _risk, systemPlanBasis: _basis, ...rest } = contractInput();
+    expect(issueMessages({ ...rest, plannedRiskState: 'no_defined' })).toEqual([]);
+    // A basis declared over no plan figures is still refused.
+    expect(
+      issueMessages({ ...rest, plannedRiskState: 'no_defined', systemPlanBasis: 'money' }),
+    ).toContain('system_plan_basis_without_plan');
+    // And an amount beside it contradicts the answer it was saved with.
+    expect(
+      issueMessages({ ...rest, plannedRiskState: 'no_defined', plannedRiskMinor: '5000' }),
+    ).toContain('no_defined_risk_has_no_amount');
+  });
+
   it('requires a positive Risk at Entry, and leaves Actual Risk to the trader', () => {
     const { plannedRiskMinor: _risk, ...withoutRisk } = contractInput();
     expect(issueMessages(withoutRisk)).toContain('contract_requires_risk_at_entry');
