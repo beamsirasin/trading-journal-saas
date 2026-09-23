@@ -37,7 +37,7 @@ import {
   setActualRiskMode,
   setConfidence,
   setExitPlanEditorView,
-  setStopMethod,
+  setRiskState,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -87,17 +87,19 @@ const options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'> = {
 
 const context = { currency: 'USD', timezone: 'Asia/Bangkok' };
 
+/** Save Open Trade's minimum since decision 54: identity and a risk DECISION. */
 function minimum(): AtEntryDraft {
   return {
     ...createAtEntryDraft(ACCOUNT),
     symbol: 'xauusd',
     direction: 'long',
+    riskState: 'defined',
     risk: '100',
   };
 }
 
 describe('At Entry draft — minimum Save and readiness', () => {
-  it('is ready with Account, Symbol, Direction and a positive Risk at Entry alone', () => {
+  it('is ready with Account, Symbol, Direction and a Defined Risk alone', () => {
     const validation = validateAtEntryDraft(minimum(), context);
     expect(atEntryReadiness(validation)).toEqual({ status: 'ready' });
     expect(
@@ -115,46 +117,75 @@ describe('At Entry draft — minimum Save and readiness', () => {
   });
 
   /*
-    STOP METHOD IS A PLAN ANSWER, NEVER AN INFERENCE (contract decision 53).
-    An untouched draft says nothing about the stop, and a recorded SL price —
-    which is Price Context — never answers the question for the trader.
+    RECORD OPEN REQUIRES A DECISION, NOT A NUMBER (contract decision 54).
+    Unanswered blocks Save; Defined needs its amount; No Defined Risk is a
+    complete answer that carries none. A trader is never forced to invent a
+    monetary risk to get past this step.
   */
-  it('sends no Stop Method until one is chosen, and never infers it from an SL price', () => {
-    const untouched = buildAtEntryPayload(minimum(), {
-      ...context,
-      mutationKey: ACCOUNT,
-      options,
-    });
-    expect(untouched).not.toHaveProperty('plannedStopMethod');
-
-    const withStopPrice = {
-      ...minimum(),
-      context: { ...minimum().context, stopPrice: '2395' },
-    };
-    const priced = buildAtEntryPayload(withStopPrice, {
-      ...context,
-      mutationKey: ACCOUNT,
-      options,
-    });
-    expect(priced).not.toBeNull();
-    expect(priced?.contextStopPrice).toBe('2395');
-    expect(priced).not.toHaveProperty('plannedStopMethod');
-  });
-
-  it.each(['broker', 'mental', 'no_stop'] as const)('sends %s as its own answer', (method) => {
-    const draft = setStopMethod(minimum(), method);
-    expect(buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options })).toMatchObject(
-      { plannedStopMethod: method },
-    );
-  });
-
-  it('returns to Unanswered, and then sends nothing again', () => {
-    const answered = setStopMethod(minimum(), 'mental');
-    const withdrawn = setStopMethod(answered, 'unanswered');
-    expect(withdrawn.stopMethod).toBe('unanswered');
+  it('refuses to save while the risk decision is unanswered', () => {
+    const undecided = { ...minimum(), riskState: 'unanswered' as const, risk: '' };
+    const validation = validateAtEntryDraft(undecided, context);
+    expect(validation.errors.risk).toBe('risk_decision_required');
+    expect(atEntryReadiness(validation).status).toBe('blocked');
     expect(
-      buildAtEntryPayload(withdrawn, { ...context, mutationKey: ACCOUNT, options }),
-    ).not.toHaveProperty('plannedStopMethod');
+      buildAtEntryPayload(undecided, { ...context, mutationKey: ACCOUNT, options }),
+    ).toBeNull();
+  });
+
+  it('requires an amount greater than zero once risk is Defined', () => {
+    const blank = { ...minimum(), risk: '' };
+    expect(validateAtEntryDraft(blank, context).errors.risk).toBe('required');
+    const zero = { ...minimum(), risk: '0' };
+    expect(validateAtEntryDraft(zero, context).errors.risk).toBe('must_be_positive');
+    expect(buildAtEntryPayload(zero, { ...context, mutationKey: ACCOUNT, options })).toBeNull();
+  });
+
+  it('saves No Defined Risk with no amount at all, and no R can follow', () => {
+    const none = setRiskState(minimum(), 'no_defined');
+    // The transition clears the amount it contradicts rather than hiding it.
+    expect(none.risk).toBe('');
+    const validation = validateAtEntryDraft(none, context);
+    expect(validation.errors.risk).toBeUndefined();
+    expect(validation.riskMinor).toBeNull();
+    expect(atEntryReadiness(validation)).toEqual({ status: 'ready' });
+    const payload = buildAtEntryPayload(none, { ...context, mutationKey: ACCOUNT, options });
+    expect(payload).toMatchObject({ plannedRiskState: 'no_defined' });
+    expect(payload).not.toHaveProperty('plannedRiskMinor');
+    // Nothing to compare against, so Actual Risk is not carried either.
+    expect(payload).not.toHaveProperty('actualRiskAnswer');
+    expect(payload).not.toHaveProperty('actualInitialRiskMinor');
+  });
+
+  it('sends a Defined Risk as the decision plus its amount', () => {
+    const payload = buildAtEntryPayload(minimum(), { ...context, mutationKey: ACCOUNT, options });
+    expect(payload).toMatchObject({ plannedRiskState: 'defined', plannedRiskMinor: '10000' });
+  });
+
+  /*
+    PRICE DECIDES NOTHING (contract §3, decision 54). An SL price says where a
+    stop would sit; it never creates a Defined Risk, and its absence never
+    proves there was none.
+  */
+  it('never reads a risk decision out of an SL price', () => {
+    const priced = {
+      ...createAtEntryDraft(ACCOUNT),
+      symbol: 'xauusd',
+      direction: 'long' as const,
+      context: { ...createAtEntryDraft(ACCOUNT).context, stopPrice: '2395' },
+    };
+    const validation = validateAtEntryDraft(priced, context);
+    expect(priced.riskState).toBe('unanswered');
+    expect(validation.errors.risk).toBe('risk_decision_required');
+    expect(buildAtEntryPayload(priced, { ...context, mutationKey: ACCOUNT, options })).toBeNull();
+  });
+
+  /* Stop Method is retired from capture: no Save writes one (decision 54). */
+  it('never writes a Stop Method again', () => {
+    for (const draft of [minimum(), setRiskState(minimum(), 'no_defined')]) {
+      expect(
+        buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options }),
+      ).not.toHaveProperty('plannedStopMethod');
+    }
   });
 
   it('never reports Ready while any blocking error exists, including hidden ones', () => {

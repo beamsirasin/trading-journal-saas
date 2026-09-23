@@ -8,7 +8,7 @@ import type { TradeCreateOptions } from '@/server/dal/trades';
 import en from '../../../messages/en.json';
 import * as afterTrade from './after-trade-draft';
 import * as atEntry from './at-entry-draft';
-import type { StopMethodDraft } from './at-entry-draft';
+import type { RiskStateDraft } from './at-entry-draft';
 import {
   TradePlanRiskStep,
   type PlanRiskField,
@@ -39,7 +39,7 @@ const options = {
 } as const satisfies Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
 
 const IDS: Readonly<Record<PlanStepId, string>> = {
-  stopMethod: 'plan-stop-method',
+  riskState: 'plan-risk-state',
   riskRow: 'plan-risk-row',
   targetRow: 'plan-target-row',
   exitPlanRow: 'plan-exit-plan-row',
@@ -65,12 +65,14 @@ function Host({
   errors = {},
   notices = { stopWrongSide: false, targetWrongSide: false },
   targetR,
+  plannedRR,
 }: {
   mode: PlanRiskMode;
   withStrategy?: boolean;
   errors?: Errors;
   notices?: { stopWrongSide: boolean; targetWrongSide: boolean };
   targetR?: string | null;
+  plannedRR?: string | null;
 }) {
   const [entry, setEntry] = useState(() => {
     const draft = atEntry.createAtEntryDraft(ACCOUNT_ID);
@@ -88,6 +90,7 @@ function Host({
     errorText: (field: PlanRiskField) => errors[field],
     notices,
     targetR: targetR ?? null,
+    plannedRR: plannedRR ?? null,
     onLibraryChanged: () => {},
   };
   return mode === 'at_entry' ? (
@@ -95,9 +98,9 @@ function Host({
       {...shared}
       mode="at_entry"
       risk={entry.risk}
-      stopMethod={entry.stopMethod}
-      onStopMethodChange={(next: StopMethodDraft) =>
-        setEntry((current) => atEntry.setStopMethod(current, next))
+      riskState={entry.riskState}
+      onRiskStateChange={(next: RiskStateDraft) =>
+        setEntry((current) => atEntry.setRiskState(current, next))
       }
       target={entry.target}
       exitPlan={entry.exitPlan}
@@ -118,9 +121,9 @@ function Host({
       {...shared}
       mode="after_trade"
       risk={after.risk}
-      stopMethod={after.stopMethod}
-      onStopMethodChange={(next: StopMethodDraft) =>
-        setAfter((current) => afterTrade.setStopMethod(current, next))
+      riskState={after.riskState}
+      onRiskStateChange={(next: RiskStateDraft) =>
+        setAfter((current) => afterTrade.setRiskState(current, next))
       }
       target={after.target}
       exitPlan={after.exitPlan}
@@ -160,6 +163,12 @@ function row(concept: 'risk' | 'target' | 'price'): HTMLElement {
   return document.querySelector<HTMLElement>(`[data-plan-row="${concept}"]`)!;
 }
 
+/** Take one choice the way a trader does: the label, not the hidden radio. */
+function choose(editor: ReturnType<typeof within>, name: string) {
+  const radio = editor.getByRole('radio', { name: new RegExp(`^${name}`) });
+  fireEvent.click(document.querySelector<HTMLElement>(`label[for="${radio.id}"]`)!);
+}
+
 /** Open one row's editor, the way a trader does, and read inside it. */
 function open(concept: 'risk' | 'target' | 'price' | 'exit'): ReturnType<typeof within> {
   const launcher =
@@ -180,7 +189,7 @@ describe('Plan & Risk — four rows, each opening its own editor', () => {
         mode,
       );
       // Every concept is readable without opening anything.
-      expect(row('risk')).toHaveTextContent('Risk & stop');
+      expect(row('risk')).toHaveTextContent('Risk');
       expect(row('risk')).toHaveTextContent('Not answered');
       expect(row('target')).toHaveTextContent('Not answered');
       expect(exitPlanState()).toBe('not_recorded');
@@ -195,11 +204,15 @@ describe('Plan & Risk — four rows, each opening its own editor', () => {
     },
   );
 
-  it('records Risk at Entry in its editor and reads it back on the row', () => {
+  it('records a Defined Risk in its editor and reads the amount back on the row', () => {
     renderStep({ mode: 'at_entry' });
     const editor = open('risk');
+    // The amount belongs to Defined Risk: it appears once that is chosen.
+    expect(editor.queryByLabelText(/^Risk at entry/)).toBeNull();
+    choose(editor, 'Defined risk');
     fireEvent.change(editor.getByLabelText(/^Risk at entry/), { target: { value: '100' } });
     expect(row('risk')).toHaveTextContent('100 USD');
+    expect(row('risk')).toHaveAttribute('data-risk-state', 'defined');
   });
 
   it('says Risk at Entry is required to save an open trade, and optional after the trade', () => {
@@ -216,62 +229,74 @@ describe('Plan & Risk — four rows, each opening its own editor', () => {
     // A blocked Save lands here, so the row itself must say what is wrong.
     expect(row('risk')).toHaveAttribute('data-invalid', 'true');
     expect(screen.getByText('Enter a risk greater than zero.')).toBeInTheDocument();
-    expect(open('risk').getByLabelText(/^Risk at entry/)).toHaveValue('');
+    const editor = open('risk');
+    choose(editor, 'Defined risk');
+    expect(editor.getByLabelText(/^Risk at entry/)).toHaveValue('');
   });
 });
 
-describe('Plan & Risk — Stop Method is a plan answer, never an inference', () => {
+describe('Plan & Risk — risk is a decision, never a number the form extracts', () => {
   /*
-    UNANSWERED IS NOT "NO DEFINED STOP". Nobody saying how they would stop out
-    is not the same as saying there was none (contract §2, §8, decision 53), so
-    an untouched row says nothing about the stop at all.
+    THREE STATES THAT MUST NOT COLLAPSE (contract decision 54). Unanswered is
+    not No Defined Risk, and No Defined Risk is not a zero: each reads as
+    itself on the row and each is reached by saying so.
   */
   it.each<PlanRiskMode>(['at_entry', 'after_trade'])(
-    'starts Unanswered and reads back nothing about the stop (%s)',
+    'starts Unanswered, offering both answers and taking neither (%s)',
     (mode) => {
       renderStep({ mode });
-      expect(row('risk')).toHaveAttribute('data-stop-method', 'unanswered');
-      expect(row('risk').querySelector('[data-launcher-support]')).toBeNull();
-      // The label is "Risk & stop"; what must be absent is an ANSWER about it.
-      for (const answer of ['Broker stop', 'Mental stop', 'No defined stop']) {
-        expect(row('risk')).not.toHaveTextContent(answer);
-      }
-      // And the editor offers the question with no answer taken.
+      expect(row('risk')).toHaveAttribute('data-risk-state', 'unanswered');
+      expect(row('risk')).toHaveTextContent('Not answered');
+      expect(row('risk')).not.toHaveTextContent(/no defined risk/i);
       const editor = open('risk');
-      for (const name of [/^Broker stop/, /^Mental stop/, /^No defined stop/]) {
+      for (const name of [/^Defined risk/, /^No defined risk/]) {
         expect(editor.getByRole('radio', { name })).not.toBeChecked();
       }
-      expect(editor.getByText('Not answered')).toBeInTheDocument();
+      // The amount is not asked until the decision calls for one.
+      expect(editor.queryByLabelText(/^Risk at entry/)).toBeNull();
     },
   );
 
-  it.each([
-    ['Broker stop', 'broker'],
-    ['Mental stop', 'mental'],
-    ['No defined stop', 'no_stop'],
-  ] as const)('records %s as its own answer and reads it on the row', (label, value) => {
+  it.each<PlanRiskMode>(['at_entry', 'after_trade'])(
+    'records No Defined Risk as its own answer, and asks for no amount (%s)',
+    (mode) => {
+      const editor = renderStep({ mode }) && open('risk');
+      choose(editor, 'No defined risk');
+      expect(row('risk')).toHaveAttribute('data-risk-state', 'no_defined');
+      expect(row('risk')).toHaveTextContent('No defined risk');
+      expect(editor.queryByLabelText(/^Risk at entry/)).toBeNull();
+      // And it says plainly what that costs, where the answer was given.
+      expect(
+        editor.getByText('R and RR comparison will not be available for this trade.'),
+      ).toBeVisible();
+    },
+  );
+
+  it('drops an amount that a later No Defined Risk contradicts', () => {
     renderStep({ mode: 'at_entry' });
     const editor = open('risk');
+    choose(editor, 'Defined risk');
     fireEvent.change(editor.getByLabelText(/^Risk at entry/), { target: { value: '100' } });
-    fireEvent.click(editor.getByRole('radio', { name: new RegExp(`^${label}`) }));
-    expect(row('risk')).toHaveAttribute('data-stop-method', value);
-    expect(row('risk')).toHaveTextContent('100 USD');
-    expect(row('risk')).toHaveTextContent(label);
+    choose(editor, 'No defined risk');
+    expect(row('risk')).toHaveTextContent('No defined risk');
+    expect(row('risk')).not.toHaveTextContent('100');
+    // Returning to Defined starts from empty, never from the contradicted figure.
+    choose(editor, 'Defined risk');
+    expect(editor.getByLabelText(/^Risk at entry/)).toHaveValue('');
   });
 
   it('returns to Unanswered only through its own named action', () => {
     renderStep({ mode: 'after_trade' });
     const editor = open('risk');
-    fireEvent.click(editor.getByRole('radio', { name: /^Mental stop/ }));
-    expect(row('risk')).toHaveAttribute('data-stop-method', 'mental');
-    fireEvent.click(editor.getByRole('button', { name: 'Remove stop method answer' }));
-    expect(row('risk')).toHaveAttribute('data-stop-method', 'unanswered');
-    expect(row('risk').querySelector('[data-launcher-support]')).toBeNull();
+    choose(editor, 'No defined risk');
+    fireEvent.click(editor.getByRole('button', { name: 'Remove risk answer' }));
+    expect(row('risk')).toHaveAttribute('data-risk-state', 'unanswered');
+    expect(row('risk')).toHaveTextContent('Not answered');
   });
 
   /*
-    AN SL PRICE IS WHERE A STOP WOULD SIT, NOT WHETHER ONE WAS PLACED. Price
-    stays context: recording one must never answer this question (decision 53).
+    PRICE DECIDES NOTHING (contract §3). An SL price says where a stop would
+    sit; it neither defines a risk nor proves there was none.
   */
   it('is never inferred from a recorded SL price', () => {
     renderStep({ mode: 'at_entry' });
@@ -279,9 +304,16 @@ describe('Plan & Risk — Stop Method is a plan answer, never an inference', () 
     fireEvent.change(price.getByLabelText('SL price'), { target: { value: '2395' } });
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(row('price')).toHaveTextContent('SL price 2395');
-    expect(row('risk')).toHaveAttribute('data-stop-method', 'unanswered');
-    for (const answer of ['Broker stop', 'Mental stop', 'No defined stop']) {
-      expect(row('risk')).not.toHaveTextContent(answer);
+    expect(row('risk')).toHaveAttribute('data-risk-state', 'unanswered');
+    expect(row('risk')).toHaveTextContent('Not answered');
+  });
+
+  /* Stop Method is retired from capture: the step no longer asks it. */
+  it('no longer asks for a Stop Method at all', () => {
+    renderStep({ mode: 'at_entry' });
+    const editor = open('risk');
+    for (const gone of [/broker stop/i, /mental stop/i, /no defined stop/i]) {
+      expect(editor.queryByText(gone)).toBeNull();
     }
   });
 });
@@ -430,5 +462,83 @@ describe('Plan & Risk — price levels are context', () => {
     const editor = open('price');
     expect(editor.getByLabelText('SL price')).toHaveAttribute('aria-invalid', 'true');
     expect(editor.getByText(/Your SL price is on the profit side of entry/)).toBeInTheDocument();
+  });
+});
+
+/*
+  THE PLAN AT A GLANCE (contract decision 54). The card restates answers given
+  in the rows above and states only what is known: a ratio exists when a
+  Defined Risk and a Fixed Target's profit both do, and every other shape says
+  which one it is rather than printing a figure it cannot have.
+*/
+describe('Plan & Risk — the planned summary', () => {
+  function summary(): HTMLElement {
+    return document.querySelector<HTMLElement>('[data-planned-summary]')!;
+  }
+
+  function line(name: string): HTMLElement {
+    return summary().querySelector<HTMLElement>(`[data-planned-line="${name}"]`)!;
+  }
+
+  function defineRisk(amount: string) {
+    const editor = open('risk');
+    choose(editor, 'Defined risk');
+    fireEvent.change(editor.getByLabelText(/^Risk at entry/), { target: { value: amount } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  }
+
+  function fixedTarget(profit: string) {
+    const editor = open('target');
+    fireEvent.click(editor.getByRole('radio', { name: /^Fixed target/ }));
+    fireEvent.change(editor.getByLabelText('Target profit'), { target: { value: profit } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  }
+
+  it('shows the ratio when a Defined Risk and a Fixed Target both exist', () => {
+    renderStep({ mode: 'at_entry', plannedRR: '1:2' });
+    defineRisk('50');
+    fixedTarget('100');
+    expect(line('risk')).toHaveTextContent('50 USD');
+    expect(line('target')).toHaveTextContent('100 USD');
+    expect(line('rr')).toHaveTextContent('1:2');
+  });
+
+  it('shows no ratio at all when the trader defined no risk', () => {
+    renderStep({ mode: 'at_entry' });
+    fixedTarget('100');
+    choose(open('risk'), 'No defined risk');
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(summary()).toHaveAttribute('data-planned-summary', 'no_defined');
+    expect(line('risk')).toHaveTextContent('Not defined');
+    // Not "0", not "1:0" — no ratio can ever exist for this Trade.
+    expect(line('rr')).toHaveTextContent('Not available');
+    expect(line('rr')).not.toHaveTextContent('1:');
+  });
+
+  it('keeps a rule-based plan valid, with a ratio that is not knowable yet', () => {
+    renderStep({ mode: 'at_entry' });
+    defineRisk('50');
+    const target = open('target');
+    fireEvent.click(target.getByRole('radio', { name: /^No fixed target/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(line('risk')).toHaveTextContent('50 USD');
+    expect(line('target')).toHaveTextContent('Rule-based');
+    // An open question, not a closed door: the exit rule decides the result.
+    expect(line('rr')).toHaveTextContent('Not known yet');
+  });
+
+  it('names the exit plan the rule-based plan relies on', () => {
+    renderStep({ mode: 'at_entry', withStrategy: true });
+    defineRisk('50');
+    expect(line('exitPlan')).toHaveTextContent('Trail structure');
+  });
+
+  it('never shows a trader result: at entry there is none', () => {
+    renderStep({ mode: 'at_entry', plannedRR: '1:2' });
+    defineRisk('50');
+    fixedTarget('100');
+    for (const absent of [/actual/i, /result/i, /p&l/i, /^win$/i]) {
+      expect(within(summary()).queryByText(absent)).toBeNull();
+    }
   });
 });

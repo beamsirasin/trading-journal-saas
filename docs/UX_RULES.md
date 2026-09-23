@@ -975,14 +975,14 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
 
 1. **Six canonical stages.** Each stage owns its questions, wherever a flow presents it:
 
-   | Stage                            | Questions                                                                                                                                                                                                                      |
-   | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-   | **1 — Trade Details**            | Account, Symbol, Direction, Entry time                                                                                                                                                                                         |
-   | **2 — Plan & Risk**              | The plan only (decision 53): Risk at Entry — the intended 1R; Stop Method — Unanswered / Broker stop / Mental stop / No defined stop; Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — as context |
-   | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                                                                                                              |
-   | **4 — Entry Context & Evidence** | Actual Risk — the risk execution actually carried at entry, in the mode's own form (§3.4, §12.4, decision 53); Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, the Trade's notes                    |
-   | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                                                                                                 |
-   | **6 — After-Trade Context**      | Capture-only context about the close, such as Post-Trade Emotion                                                                                                                                                               |
+   | Stage                            | Questions                                                                                                                                                                                                                                               |
+   | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | **1 — Trade Details**            | Account, Symbol, Direction, Entry time                                                                                                                                                                                                                  |
+   | **2 — Plan & Risk**              | The plan only: the Planned Risk decision — Unanswered / Defined Risk (with its 1R) / No Defined Risk (decision 54); Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — as context; and one read-only Planned summary of them |
+   | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                                                                                                                                       |
+   | **4 — Entry Context & Evidence** | Actual Risk — the risk execution actually carried at entry, in the mode's own form (§3.4, §12.4, decision 53); Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, the Trade's notes                                             |
+   | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                                                                                                                          |
+   | **6 — After-Trade Context**      | Capture-only context about the close, such as Post-Trade Emotion                                                                                                                                                                                        |
 
    Actual Risk is an entry-time **execution** fact, asked in Entry Context & Evidence in every
    flow since contract decision 53 — never in Plan & Risk, which describes the plan, and never in
@@ -1068,11 +1068,18 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
 12. **"Evidence" in a stage name means context the trader attaches**, such as a chart. It is never
     presented as verified, and it is not the Capture evidence Review reads (§9.4).
 13. **Plan & Risk is read as launcher rows (2026-09-23).** Both recording moments show the stage
-    as four rows — Risk & stop, Target, Exit Plan, Price levels — each reading back what is
-    recorded and opening one focused editor that records it, as Step 1 and stages 3–6 already do.
-    The first row reads Risk at Entry with the Stop Method beneath it, and says nothing about the
-    stop until it is answered (contract decision 53). Actual Risk is not on this stage at all;
-    Entry Context & Evidence reads it the same way, on its own row. Nothing about the answers, their states, their
+    as four rows — Risk, Target, Exit Plan, Price levels — each reading back what is recorded and
+    opening one focused editor that records it, as Step 1 and stages 3–6 already do. The first row
+    reads the Planned Risk decision: the 1R amount for a Defined Risk, "No defined risk" for that
+    answer, and the neutral placeholder while it is Unanswered (contract decision 54). Its editor
+    asks how risk was defined and reveals the amount only for Defined Risk. Actual Risk is not on
+    this stage at all; Entry Context & Evidence reads it the same way, on its own row, and does
+    not ask it when the plan says No Defined Risk.
+14. **One read-only Planned summary sits beneath those rows (2026-09-23).** It restates planned
+    risk, planned target, Planned RR and the Exit Plan, and is never a second place to edit them.
+    It states only what is known: a ratio when a Defined Risk and a Fixed Target's profit both
+    exist, "Not known yet" for a rule-based plan, and "Not available" when no risk was defined. It
+    never shows a trader result — at entry there is none (contract decision 54). Nothing about the answers, their states, their
     defaults, their validation or their provenance changes with the reading. A blocked Save focuses
     the ROW that holds the error, never an input inside a closed editor, and the row shows the error
     without being opened.

@@ -429,8 +429,16 @@ function openActualRisk(): HTMLElement {
 /** Answer one Plan & Risk field the way a trader does: open, type, close. */
 function typeInPlan(concept: 'risk' | 'target' | 'price', label: string | RegExp, value: string) {
   const editor = openPlanRow(concept);
+  // Risk is a decision first (contract decision 54); its amount follows.
+  if (concept === 'risk') chooseRisk(editor, 'Defined risk');
   type(label, value, editor);
   closeEditor();
+}
+
+/** Take one risk answer the way a trader does: its label, not the sr-only radio. */
+function chooseRisk(editor: HTMLElement, answer: 'Defined risk' | 'No defined risk') {
+  const radio = within(editor).getByRole('radio', { name: new RegExp(`^${answer}`) });
+  fireEvent.click(document.querySelector<HTMLElement>(`label[for="${radio.id}"]`)!);
 }
 
 function type(label: string | RegExp, value: string, scope: HTMLElement = document.body) {
@@ -2554,5 +2562,53 @@ describe('Stage 6 — After-Trade Context, the last canonical stage', () => {
     expect(within(stepSection('after')).getByLabelText('After-trade note')).toHaveValue(
       'Still fresh.',
     );
+  });
+});
+
+/*
+  NO PLANNED RISK, NO R (contract decision 54). Record Closed enters its
+  result before its plan, so the R readout has to say why it is missing — and
+  has to start working the moment the trader defines the risk it was missing.
+*/
+describe('Record Closed — Trader R follows the risk decision', () => {
+  it('shows the P&L but no R when the trader defined no risk, and says why', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('result');
+    type('Final net P&L', '120');
+    const editor = openPlanRow('risk');
+    chooseRisk(editor, 'No defined risk');
+    closeEditor();
+    goTo('result');
+    expect(document.querySelector('[data-actual-r]')).toHaveAttribute(
+      'data-actual-r',
+      'unavailable',
+    );
+    expect(
+      screen.getByText('No planned risk was defined, so R is not available.'),
+    ).toBeInTheDocument();
+    // The result itself is untouched: P&L is still recorded and still saved.
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ plannedRiskState: 'no_defined', finalPnlMinor: '12000' });
+    // After Trade states the absence explicitly rather than omitting the key.
+    expect(payload().plannedRiskMinor).toBeNull();
+    expect(payload().actualR).toBeUndefined();
+  });
+
+  it('starts showing R once the risk is defined after the result', () => {
+    renderForm();
+    fillIdentity();
+    goTo('result');
+    type('Final net P&L', '100');
+    // Before the plan is answered, R says what it still needs.
+    expect(document.querySelector('[data-actual-r]')).toHaveAttribute(
+      'data-actual-r',
+      'unavailable',
+    );
+    typeInPlan('risk', 'Risk at entry', '50');
+    goTo('result');
+    expect(document.querySelector('[data-actual-r]')).toHaveAttribute('data-actual-r', 'known');
+    expect(screen.getByText('+2.00R')).toBeInTheDocument();
   });
 });

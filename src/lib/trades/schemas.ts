@@ -15,6 +15,7 @@ import {
   ACTUAL_RISK_ANSWERS,
   ENTERED_AT_SOURCES,
   EXIT_PLAN_PROVENANCES,
+  PLANNED_RISK_STATES,
   PLANNED_STOP_METHODS,
   RECORDING_CONTRACT_ADD_TRADE_V1,
   TARGET_STATES,
@@ -478,9 +479,11 @@ const CreateTradeObjectSchema = z
     recordingContract: z.literal(RECORDING_CONTRACT_ADD_TRADE_V1).optional(),
     /** Absent = Unanswered. */
     /**
-     * Absent = Unanswered, which is never "no defined stop". Never derived
-     * from a recorded SL price (contract decision 53).
+     * Absent = Unanswered. 'defined' carries `plannedRiskMinor`; 'no_defined'
+     * carries none and forecloses every R / RR figure (decision 54).
      */
+    plannedRiskState: z.enum(PLANNED_RISK_STATES).optional(),
+    /** Retired from capture (decision 54); still accepted for older clients. */
     plannedStopMethod: z.enum(PLANNED_STOP_METHODS).optional(),
     targetState: z.enum(TARGET_STATES).optional(),
     targetPrice: positiveDecimalField().nullable().optional(),
@@ -497,6 +500,7 @@ const CreateTradeObjectSchema = z
   .strict();
 
 const ADD_TRADE_CONTRACT_ONLY_FIELDS = [
+  'plannedRiskState',
   'plannedStopMethod',
   'targetState',
   'targetPrice',
@@ -546,7 +550,18 @@ function addAddTradeContractIssues(
     if (data[field] != null) issue('contract_price_is_context', field);
   }
   if (data.actualResultMode !== undefined) issue('contract_price_is_context', 'actualResultMode');
-  if (data.plannedRiskMinor == null) issue('contract_requires_risk_at_entry', 'plannedRiskMinor');
+  /*
+    A RISK DECISION IS REQUIRED; A MONETARY RISK IS NOT (decision 54). Defined
+    Risk must carry its amount, and No Defined Risk must carry none — an
+    amount beside it would contradict the answer it was saved with.
+  */
+  if (data.plannedRiskState === undefined) {
+    issue('contract_requires_risk_decision', 'plannedRiskState');
+  } else if (data.plannedRiskState === 'defined' && data.plannedRiskMinor == null) {
+    issue('contract_requires_risk_at_entry', 'plannedRiskMinor');
+  } else if (data.plannedRiskState === 'no_defined' && data.plannedRiskMinor != null) {
+    issue('no_defined_risk_has_no_amount', 'plannedRiskMinor');
+  }
   const hasTargetProfit = data.plannedRewardMinor != null;
   const hasTargetPrice = data.targetPrice != null;
   if (data.targetState === 'fixed') {
@@ -1059,10 +1074,9 @@ const CompletedTradeObjectSchema = z
     /** Only with Different; blank is Different, amount unknown. */
     actualInitialRiskMinor: nullablePositiveMinorField(),
     /** Absent = Unanswered. */
-    /**
-     * Absent = Unanswered, which is never "no defined stop". Never derived
-     * from a recorded SL price (contract decision 53).
-     */
+    /** Absent = Unanswered; 'no_defined' carries no amount (decision 54). */
+    plannedRiskState: z.enum(PLANNED_RISK_STATES).optional(),
+    /** Retired from capture (decision 54); still accepted for older clients. */
     plannedStopMethod: z.enum(PLANNED_STOP_METHODS).optional(),
     targetState: z.enum(TARGET_STATES).optional(),
     /** Target Profit — monetary intent. */

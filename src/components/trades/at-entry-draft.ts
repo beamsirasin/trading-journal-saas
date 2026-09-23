@@ -26,7 +26,7 @@ import Decimal from 'decimal.js';
 import type { z } from 'zod';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
-import type { PlannedStopMethod } from '@/lib/trades/add-trade-contract';
+import type { PlannedRiskState, PlannedStopMethod } from '@/lib/trades/add-trade-contract';
 import type { CreateTradeSchema } from '@/lib/trades/schemas';
 import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
@@ -72,6 +72,12 @@ export interface ActualRiskDraft {
  * is never `no_stop` (contract §2, §8, decision 53).
  */
 export type StopMethodDraft = 'unanswered' | PlannedStopMethod;
+
+/**
+ * How risk was decided, as the draft holds it: `unanswered` until the trader
+ * chooses, then Defined (with an amount) or No Defined Risk (with none).
+ */
+export type RiskStateDraft = 'unanswered' | PlannedRiskState;
 
 export interface TargetDraft {
   readonly state: 'unanswered' | 'fixed' | 'no_fixed';
@@ -136,8 +142,14 @@ export interface AtEntryDraft {
   readonly symbol: string;
   readonly direction: Direction;
   readonly entryTime: EntryTimeDraft;
+  /** The explicit risk decision; the amount below belongs to 'defined' alone. */
+  readonly riskState: RiskStateDraft;
   readonly risk: string;
-  /** Plan & Risk's second plan answer: how the stop was to be held. */
+  /**
+   * RETIRED FROM CAPTURE (decision 54). Stop Method is no longer asked and no
+   * new value is ever written; the field stays only so a draft written while
+   * it existed still parses. Historical Trades keep their stored value.
+   */
   readonly stopMethod: StopMethodDraft;
   readonly actualRisk: ActualRiskDraft;
   readonly target: TargetDraft;
@@ -154,6 +166,7 @@ export function createAtEntryDraft(tradingAccountId: string): AtEntryDraft {
     symbol: '',
     direction: '',
     entryTime: { source: 'default_now', value: '' },
+    riskState: 'unanswered',
     risk: '',
     stopMethod: 'unanswered',
     actualRisk: { mode: 'unanswered', amount: '' },
@@ -206,6 +219,26 @@ export function resetEntryTimeToNow(draft: AtEntryDraft, nowLocal: string): AtEn
 // ---------------------------------------------------------------------------
 // Actual Risk and Target
 // ---------------------------------------------------------------------------
+
+/**
+ * The risk decision. Choosing **No Defined Risk** clears the planned amount,
+ * because a Trade cannot both have no 1R and carry one; returning to Defined
+ * starts from empty rather than resurrecting a contradicted figure.
+ */
+export function setRiskState(draft: AtEntryDraft, riskState: RiskStateDraft): AtEntryDraft {
+  if (riskState === draft.riskState) return draft;
+  return {
+    ...draft,
+    riskState,
+    risk: riskState === 'defined' ? draft.risk : '',
+    /*
+      "Did what you risked match your plan?" has no answer when there was no
+      plan to match. Choosing No Defined Risk returns Actual Risk to
+      Unanswered rather than leaving a comparison against nothing.
+    */
+    actualRisk: riskState === 'no_defined' ? { mode: 'unanswered', amount: '' } : draft.actualRisk,
+  };
+}
 
 export function setStopMethod(draft: AtEntryDraft, stopMethod: StopMethodDraft): AtEntryDraft {
   return { ...draft, stopMethod };
@@ -651,6 +684,7 @@ export type AtEntryErrorCode =
   | 'invalid_datetime'
   | 'invalid_price'
   | 'fixed_target_requires_value'
+  | 'risk_decision_required'
   | 'actual_risk_equals_risk_at_entry'
   /** The server's own chart-link rule, checked before Save rather than after it. */
   | 'invalid_tradingview_url'
@@ -695,12 +729,21 @@ export function validateAtEntryDraft(
   if (draft.symbol.trim() === '') errors.symbol = 'required';
   if (draft.direction === '') errors.direction = 'required';
 
+  /*
+    RECORD OPEN REQUIRES A RISK DECISION, NOT A NUMBER (contract decision 54).
+    Defined Risk needs its amount; No Defined Risk is a complete answer with
+    none; Unanswered blocks Save, because nobody has decided either way — and
+    a trader is never forced to invent a monetary risk to get past it.
+  */
   let riskMinor: string | null = null;
-  if (draft.risk.trim() === '') errors.risk = 'required';
-  else {
-    const risk = parseTradeMoneyInput(draft.risk, context.currency);
-    if (risk.ok) riskMinor = risk.value;
-    else errors.risk = moneyError(risk.code);
+  if (draft.riskState === 'unanswered') errors.risk = 'risk_decision_required';
+  else if (draft.riskState === 'defined') {
+    if (draft.risk.trim() === '') errors.risk = 'required';
+    else {
+      const risk = parseTradeMoneyInput(draft.risk, context.currency);
+      if (risk.ok) riskMinor = risk.value;
+      else errors.risk = moneyError(risk.code);
+    }
   }
 
   if (draft.actualRisk.mode === 'different') {
@@ -857,6 +900,7 @@ export function hasUserWork(draft: AtEntryDraft, pristine: AtEntryDraft): boolea
   const { entryTime: _t, actualRisk: _a, exitPlan: _e, ...pristineRest } = pristine;
   return (
     entryTime.source !== 'default_now' ||
+    draft.riskState !== 'unanswered' ||
     draft.stopMethod !== 'unanswered' ||
     actualRisk.mode !== 'unanswered' ||
     actualRisk.amount !== '' ||
@@ -885,7 +929,10 @@ export function buildAtEntryPayload(
   },
 ): CreateTradePayload | null {
   const validation = validateAtEntryDraft(draft, context);
-  if (atEntryReadiness(validation).status !== 'ready' || validation.riskMinor === null) return null;
+  if (atEntryReadiness(validation).status !== 'ready') return null;
+  // Defined Risk without its amount would be a contradiction, never a Save.
+  if (draft.riskState === 'defined' && validation.riskMinor === null) return null;
+  if (draft.riskState === 'unanswered') return null;
   // A chosen answer whose source went away is resolved by the trader, never dropped.
   if (hasStaleSelection(staleSelections(draft, context.options))) return null;
   if (draft.direction === '') return null;
@@ -913,7 +960,8 @@ export function buildAtEntryPayload(
     systemPlanBasis: 'money',
     symbol: draft.symbol.trim().toUpperCase(),
     direction: draft.direction,
-    plannedRiskMinor: validation.riskMinor,
+    plannedRiskState: draft.riskState,
+    ...(validation.riskMinor === null ? {} : { plannedRiskMinor: validation.riskMinor }),
     ...(draft.actualRisk.mode === 'unanswered'
       ? {}
       : { actualRiskAnswer: draft.actualRisk.mode === 'matched' ? 'matched' : 'different' }),
@@ -924,7 +972,6 @@ export function buildAtEntryPayload(
           enteredAtSource: draft.entryTime.source === 'trader' ? 'trader' : 'default_now',
         }
       : {}),
-    ...(draft.stopMethod === 'unanswered' ? {} : { plannedStopMethod: draft.stopMethod }),
     ...(draft.target.state === 'unanswered' ? {} : { targetState: draft.target.state }),
     ...(targetProfit?.ok ? { plannedRewardMinor: targetProfit.value } : {}),
     ...(draft.target.state === 'fixed' && trimmedOrUndefined(draft.target.price) !== undefined

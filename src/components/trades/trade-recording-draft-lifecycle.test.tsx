@@ -120,7 +120,11 @@ function closeEditor() {
 }
 
 function typeRisk(value: string) {
-  fireEvent.change(openRiskEditor().getByLabelText('Risk at entry'), { target: { value } });
+  const editor = openRiskEditor();
+  // Risk is a decision first (contract decision 54); the amount follows it.
+  const radio = editor.getByRole('radio', { name: /^Defined risk/ });
+  fireEvent.click(document.querySelector<HTMLElement>(`label[for="${radio.id}"]`)!);
+  fireEvent.change(editor.getByLabelText('Risk at entry'), { target: { value } });
   closeEditor();
 }
 

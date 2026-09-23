@@ -192,14 +192,22 @@ function chooseDirection(direction: 'Long' | 'Short') {
 }
 
 /** Save Open Trade's minimum: identity on Step 1, Risk at Entry on Plan & Risk. */
+/** Choose how risk was defined, then answer what that choice asks for. */
+function chooseRisk(answer: 'Defined risk' | 'No defined risk', amount?: string) {
+  const editor = openPlanRow('risk');
+  const radio = editor.getByRole('radio', { name: new RegExp(`^${answer}`) });
+  fireEvent.click(document.querySelector<HTMLElement>(`label[for="${radio.id}"]`)!);
+  if (amount !== undefined) {
+    fireEvent.change(editor.getByLabelText('Risk at entry'), { target: { value: amount } });
+  }
+  closeEditor();
+}
+
 function fillMinimum() {
   chooseSymbol('xauusd');
   chooseDirection('Long');
   goTo('plan');
-  fireEvent.change(openPlanRow('risk').getByLabelText('Risk at entry'), {
-    target: { value: '100' },
-  });
-  closeEditor();
+  chooseRisk('Defined risk', '100');
 }
 
 /** Strategy and Setup are Setup & Checklist's launcher rows; the choice is the answer. */
@@ -402,10 +410,7 @@ describe('Record Open — Save and Save now', () => {
   it('takes a blocked Save to Step 1 and focuses the row a missing answer belongs to', async () => {
     renderForm();
     goTo('plan');
-    fireEvent.change(openPlanRow('risk').getByLabelText('Risk at entry'), {
-      target: { value: '100' },
-    });
-    closeEditor();
+    chooseRisk('Defined risk', '100');
     fireEvent.click(document.getElementById('entry-quick-save')!);
     await waitFor(() => expect(currentStep()).toBe('trade'));
     await waitFor(() => expect(document.getElementById('entry-row-symbol')).toHaveFocus());
@@ -413,7 +418,7 @@ describe('Record Open — Save and Save now', () => {
     expect(createTradeMock).not.toHaveBeenCalled();
   });
 
-  it('takes a blocked Save to Plan & Risk when Risk at Entry is what is missing', async () => {
+  it('takes a blocked Save to Plan & Risk when the risk decision is missing', async () => {
     renderForm();
     chooseSymbol('xauusd');
     chooseDirection('Short');
@@ -421,7 +426,8 @@ describe('Record Open — Save and Save now', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
     await waitFor(() => expect(currentStep()).toBe('plan'));
     await waitFor(() => expect(planRow('risk')).toHaveFocus());
-    expect(screen.getByText('Enter your risk at entry.')).toBeVisible();
+    // The question is which decision, not which number (decision 54).
+    expect(screen.getByText('Say how risk was defined for this trade.')).toBeVisible();
     expect(createTradeMock).not.toHaveBeenCalled();
   });
 
@@ -1289,7 +1295,13 @@ describe('Record Open — the step list beside a wide form', () => {
       */
       cleanup();
       let filled = atEntry.createAtEntryDraft(ACCOUNT);
-      filled = { ...filled, symbol: 'xauusd', direction: 'long', risk: '100' };
+      filled = {
+        ...filled,
+        symbol: 'xauusd',
+        direction: 'long',
+        riskState: 'defined',
+        risk: '100',
+      };
       filled = atEntry.selectStrategy(filled, BREAKOUT);
       filled = atEntry.selectSetup(filled, RETEST);
       filled = atEntry.answerCondition(filled, 'candle', 'met');

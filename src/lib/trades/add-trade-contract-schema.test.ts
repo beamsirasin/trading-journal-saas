@@ -17,6 +17,7 @@ function contractInput(overrides: Record<string, unknown> = {}) {
     recordingTiming: 'at_entry' as const,
     recordingContract: 'add_trade_v1' as const,
     systemPlanBasis: 'money' as const,
+    plannedRiskState: 'defined' as const,
     plannedRiskMinor: '10000',
     actualRiskAnswer: 'matched' as const,
     ...overrides,

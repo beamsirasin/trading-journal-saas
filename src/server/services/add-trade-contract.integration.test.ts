@@ -155,6 +155,8 @@ describe('Add Trade contract At Entry (real database)', () => {
       recordingTiming: 'at_entry',
       recordingContract: 'add_trade_v1',
       systemPlanBasis: 'money',
+      // Risk is an explicit decision since contract decision 54.
+      plannedRiskState: 'defined',
       plannedRiskMinor: 10_000n,
       actualRiskAnswer: 'matched',
       ...overrides,

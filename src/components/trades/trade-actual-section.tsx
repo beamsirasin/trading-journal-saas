@@ -104,11 +104,14 @@ export function ActualSection({
                 <span data-actual-r-reason="" className="text-muted-foreground text-xs">
                   {a(
                     `result.unavailable.${
-                      trade.netPnlMinor === null && trade.plannedRiskMinor === null
-                        ? 'needs_pnl_and_risk'
-                        : trade.plannedRiskMinor === null
-                          ? 'needs_risk'
-                          : 'needs_pnl'
+                      // A stated "no planned risk" is an answer, not a gap.
+                      trade.plannedRiskState === 'no_defined'
+                        ? 'no_defined_risk'
+                        : trade.netPnlMinor === null && trade.plannedRiskMinor === null
+                          ? 'needs_pnl_and_risk'
+                          : trade.plannedRiskMinor === null
+                            ? 'needs_risk'
+                            : 'needs_pnl'
                     }`,
                   )}
                 </span>

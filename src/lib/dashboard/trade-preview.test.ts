@@ -71,6 +71,7 @@ function detail(overrides: Partial<TradeDetail> = {}): TradeDetail {
     plannedTarget: null,
     plannedPositionSize: null,
     plannedRiskMinor: null,
+    plannedRiskState: null,
     plannedRewardMinor: null,
     plannedR: null,
 

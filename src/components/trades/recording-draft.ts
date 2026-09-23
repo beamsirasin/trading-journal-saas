@@ -36,7 +36,7 @@
  */
 import { z } from 'zod';
 
-import { PLANNED_STOP_METHODS } from '@/lib/trades/add-trade-contract';
+import { PLANNED_RISK_STATES, PLANNED_STOP_METHODS } from '@/lib/trades/add-trade-contract';
 
 import {
   createAfterTradeDraft,
@@ -52,6 +52,7 @@ import {
   type AnswerState,
   type AtEntryDraft,
   type ConditionStatus,
+  type RiskStateDraft,
   type TargetDraft,
 } from './at-entry-draft';
 
@@ -61,6 +62,13 @@ import {
  * whole and carries only the legacy After Trade values whose meaning did not
  * change. Any other version is never guessed.
  *
+ * v4 (2026-09-23): Risk is an explicit decision (contract decision 54), so both
+ * sections hold a `riskState`. A draft written before it has only the typed
+ * amount, and `upgradeV3Envelope` reads exactly what that amount says: an
+ * amount present means the trader had decided a 1R (**Defined**), and a blank
+ * one means nobody had decided yet (**Unanswered**). It NEVER reads a blank as
+ * No Defined Risk — that is an explicit answer nobody gave (§2, §8).
+ *
  * v3 (2026-09-23): At Entry's Actual Risk holds `unanswered`, and that is its
  * default. In v2 the default was spelled `matched`, so a stored v2 draft
  * cannot tell an untouched draft from one where the trader really said it
@@ -69,7 +77,7 @@ import {
  * re-answer, while upgrading a default nobody chose would manufacture a
  * positive observation (contract §2, §8, §28).
  */
-export const RECORDING_DRAFT_VERSION = 3;
+export const RECORDING_DRAFT_VERSION = 4;
 
 /**
  * Conservative automatic retention: a draft untouched for 30 days is dropped
@@ -102,7 +110,14 @@ export interface SharedRecordingValues {
   readonly direction: '' | 'long' | 'short';
   /** An explicit entry time only; '' is Unanswered, never "now". */
   readonly enteredAt: string;
-  /** A manually entered Risk at Entry. */
+  /**
+   * The trader's own risk decision, which travels with the amount it explains
+   * (contract §23, decision 54). Carrying the amount alone would land the
+   * other mode with a figure its row cannot read, and carrying nothing would
+   * drop an explicit No Defined Risk.
+   */
+  readonly riskDecision: RiskStateDraft;
+  /** A manually entered Risk at Entry; belongs to a Defined Risk alone. */
   readonly riskAtEntry: string;
   readonly classification: {
     readonly strategy: AnswerState;
@@ -194,6 +209,7 @@ export function sharedFromAtEntry(draft: AtEntryDraft): SharedRecordingValues {
     symbol: draft.symbol,
     direction: draft.direction,
     enteredAt: draft.entryTime.source === 'trader' ? draft.entryTime.value : '',
+    riskDecision: draft.riskState,
     riskAtEntry: draft.risk,
     classification: {
       strategy: classification.strategy,
@@ -255,6 +271,7 @@ export function sharedFromAfterTrade(draft: AfterTradeDraft): SharedRecordingVal
       After Trade draft, which persists and recovers it like any other answer.
     */
     enteredAt: isCompleteEntryTimestamp(draft.enteredAt) ? draft.enteredAt : '',
+    riskDecision: draft.riskState,
     riskAtEntry: draft.risk,
     classification: {
       strategy: classification.strategy,
@@ -297,6 +314,7 @@ const SHARED_FIELDS: readonly SharedField[] = [
   'symbol',
   'direction',
   'enteredAt',
+  'riskDecision',
   'riskAtEntry',
   'classification',
   'conditions',
@@ -332,6 +350,8 @@ function isUnanswered(field: SharedField, source: SharedRecordingValues): boolea
       return source.classification.strategy === 'unanswered';
     case 'conditions':
       return !hasAnyCondition(source.conditions);
+    case 'riskDecision':
+      return source.riskDecision === 'unanswered';
     case 'target':
       return (
         source.target.state === 'unanswered' &&
@@ -400,6 +420,7 @@ export function applySharedToAtEntry(
           : { source: 'trader', value: shared.enteredAt },
     };
   }
+  if (has('riskDecision')) next = { ...next, riskState: shared.riskDecision };
   if (has('riskAtEntry')) next = { ...next, risk: shared.riskAtEntry };
   if (has('classification')) {
     next = {
@@ -490,6 +511,7 @@ export function applySharedToAfterTrade(
   if (has('symbol')) next = { ...next, symbol: shared.symbol };
   if (has('direction')) next = { ...next, direction: shared.direction };
   if (has('enteredAt')) next = { ...next, enteredAt: shared.enteredAt };
+  if (has('riskDecision')) next = { ...next, riskState: shared.riskDecision };
   if (has('riskAtEntry')) next = { ...next, risk: shared.riskAtEntry };
   if (has('classification')) {
     next = {
@@ -736,11 +758,17 @@ const contextSchema = z.object({
 
 const stopMethod = z.enum(['unanswered', ...PLANNED_STOP_METHODS]).default('unanswered');
 
+/* Absent in v2/v3; `upgradeV3Envelope` decides what that absence meant. */
+const riskState = z.enum(['unanswered', ...PLANNED_RISK_STATES]).default('unanswered');
+/* The same three states, as the shared carry holds them. */
+const riskDecision = riskState;
+
 const atEntrySchema = z.object({
   tradingAccountId: text,
   symbol: text,
   direction,
   entryTime: z.object({ source: z.enum(['default_now', 'trader', 'cleared']), value: text }),
+  riskState,
   risk: text,
   stopMethod,
   actualRisk: z.object({
@@ -806,6 +834,7 @@ const afterTradeSchema = z.object({
   postTradeEmotions: emotionsSchema,
   context: contextSchema,
   // Stage 6 (2026-09-22). Absent from a draft written before it: Unanswered.
+  riskState,
   stopMethod,
   afterTradeNote: text.default(''),
   afterTradeTradingviewUrl: text.default(''),
@@ -816,6 +845,7 @@ const sharedSchema = z.object({
   symbol: text,
   direction,
   enteredAt: text,
+  riskDecision,
   riskAtEntry: text,
   classification: z.object({
     strategy: answerState,
@@ -850,7 +880,7 @@ const sharedSchema = z.object({
 }) satisfies z.ZodType<SharedRecordingValues>;
 
 const envelopeSchema = z.object({
-  version: z.union([z.literal(2), z.literal(RECORDING_DRAFT_VERSION)]),
+  version: z.union([z.literal(2), z.literal(3), z.literal(RECORDING_DRAFT_VERSION)]),
   activeMode: z.enum(['at_entry', 'after_trade']),
   mutationKey: z.string().uuid(),
   updatedAt: z.string().datetime({ offset: true }),
@@ -1011,6 +1041,7 @@ function upgradeV1Shared(legacy: z.infer<typeof v1SharedSchema>): SharedRecordin
     symbol: legacy.symbol,
     direction: legacy.direction,
     enteredAt: legacy.enteredAt,
+    riskDecision: legacy.riskAtEntry.trim() === '' ? 'unanswered' : 'defined',
     riskAtEntry: legacy.riskAtEntry,
     classification: {
       strategy: legacy.strategyId === '' ? 'unanswered' : 'selected',
@@ -1071,6 +1102,37 @@ function upgradeV2Envelope(parsed: z.infer<typeof envelopeSchema>): RecordingDra
   };
 }
 
+/**
+ * A pre-v4 draft's risk decision, read from the only evidence it has: the
+ * amount the trader typed. An amount means they had decided a 1R; a blank
+ * means they had not decided yet. No Defined Risk is never inferred, because
+ * nobody answered it (contract §2, §8, decision 54).
+ */
+function upgradeV3Envelope(
+  parsed: z.infer<typeof envelopeSchema>,
+  envelope: RecordingDraftEnvelope,
+): RecordingDraftEnvelope {
+  if (parsed.version === RECORDING_DRAFT_VERSION) return envelope;
+  const decided = (risk: string): 'unanswered' | 'defined' =>
+    risk.trim() === '' ? 'unanswered' : 'defined';
+  return {
+    ...envelope,
+    atEntry:
+      envelope.atEntry === null
+        ? null
+        : { ...envelope.atEntry, riskState: decided(envelope.atEntry.risk) },
+    afterTrade:
+      envelope.afterTrade === null
+        ? null
+        : { ...envelope.afterTrade, riskState: decided(envelope.afterTrade.risk) },
+    // What was carried at the last switch is read the same way.
+    lastCarried:
+      envelope.lastCarried === null
+        ? null
+        : { ...envelope.lastCarried, riskDecision: decided(envelope.lastCarried.riskAtEntry) },
+  };
+}
+
 export type ParsedRecordingDraft =
   | { readonly status: 'recovered'; readonly envelope: RecordingDraftEnvelope }
   | { readonly status: 'expired' }
@@ -1100,10 +1162,15 @@ export function parseRecordingDraft(raw: string, now: Date): ParsedRecordingDraf
     const parsed = v1EnvelopeSchema.safeParse(value);
     if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
     envelope = upgradeV1Envelope(parsed.data);
-  } else if (version === undefined || version === 2 || version === RECORDING_DRAFT_VERSION) {
+  } else if (
+    version === undefined ||
+    version === 2 ||
+    version === 3 ||
+    version === RECORDING_DRAFT_VERSION
+  ) {
     const parsed = envelopeSchema.safeParse(value);
     if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
-    envelope = upgradeV2Envelope(parsed.data);
+    envelope = upgradeV3Envelope(parsed.data, upgradeV2Envelope(parsed.data));
   } else {
     return { status: 'unrecoverable', reason: 'unsupported_version' };
   }

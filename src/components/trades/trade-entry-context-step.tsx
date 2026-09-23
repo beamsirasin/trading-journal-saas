@@ -8,7 +8,7 @@ import { CONFIDENCE_LEVELS } from '@/lib/trades/constants';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 
-import type { ContextDraft, EmotionsDraft } from './at-entry-draft';
+import type { ContextDraft, EmotionsDraft, RiskStateDraft } from './at-entry-draft';
 import { useActualRiskSummaryLine, type ActualRiskSummary } from './trade-actual-risk-summary';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
@@ -43,9 +43,14 @@ export type EntryContextValues = Pick<
  * Review asks belong to other stages and never appear here.
  *
  * ACTUAL RISK IS AN EXECUTION FACT, NOT A PLAN (contract decision 53). Plan &
- * Risk says what was intended and how the stop was to be held; this step says
- * what the entry actually carried. It starts Unanswered in both recording
- * moments and is never inferred from Risk at Entry (decision 52).
+ * Risk says what was intended; this step says what the entry actually
+ * carried. It starts Unanswered in both recording moments and is never
+ * inferred from Risk at Entry (decision 52).
+ *
+ * IT IS ONLY ASKED WHERE THERE IS A PLAN TO COMPARE WITH (decision 54).
+ * "Did what you risked match your plan?" has no answer on a Trade whose
+ * trader said there was no planned 1R, so the row says the question does not
+ * apply rather than offering Matched / Different against nothing.
  *
  * DIRECT WHERE A TAP WOULD BE WASTED. Confidence is one tap on the step
  * itself, and the text answers are typed where they are asked. Only the
@@ -66,6 +71,7 @@ export type EntryContextValues = Pick<
 export function TradeEntryContextStep({
   mode,
   idPrefix,
+  plannedRiskState,
   actualRisk,
   actualRiskEditor,
   actualRiskError,
@@ -85,6 +91,8 @@ export function TradeEntryContextStep({
   mode: EntryContextMode;
   /** Prefix for DOM ids, so each host keeps the ids it already had. */
   idPrefix: string;
+  /** The plan's risk decision: 'no_defined' means there is nothing to compare. */
+  plannedRiskState: RiskStateDraft;
   /** What the host's draft records about actual risk, for its row. */
   actualRisk: ActualRiskSummary;
   /** The host's own Actual Risk control, shown in the row's editor. */
@@ -118,6 +126,7 @@ export function TradeEntryContextStep({
   const [riskEditor, setRiskEditor] = useState(false);
   const actualRiskRow = useRef<HTMLButtonElement>(null);
   const actualRiskLine = useActualRiskSummaryLine();
+  const noPlannedRisk = plannedRiskState === 'no_defined';
   const [lastOneHint, setLastOneHint] = useState(false);
   const emotionRow = useRef<HTMLButtonElement>(null);
 
@@ -135,20 +144,29 @@ export function TradeEntryContextStep({
         {atEntry ? e('descriptionAtEntry') : e('descriptionAfterTrade')}
       </p>
 
-      {/* 1 — WHAT THE ENTRY ACTUALLY RISKED (contract §4, decisions 52–53). */}
+      {/* 1 — WHAT THE ENTRY ACTUALLY RISKED (contract §4, decisions 52–54). */}
       <GroupCard title={e('actualRiskTitle')}>
         <TradeLauncherRow
           id={`${idPrefix}-actual-risk-row`}
           rowRef={actualRiskRow}
           label={a('actualRisk.legend')}
-          value={actualRisk.kind === 'not_recorded' ? null : actualRiskLine(actualRisk, currency)}
+          value={
+            noPlannedRisk
+              ? e('actualRiskNotApplicable')
+              : actualRisk.kind === 'not_recorded'
+                ? null
+                : actualRiskLine(actualRisk, currency)
+          }
           placeholder={c('notAnswered')}
           error={actualRiskError}
           editLabel={a('trade.editAria', { field: a('actualRisk.legend') })}
           icon={Scale}
-          answered={actualRisk.kind !== 'not_recorded'}
+          answered={!noPlannedRisk && actualRisk.kind !== 'not_recorded'}
+          disabled={noPlannedRisk}
           onOpen={() => setRiskEditor(true)}
-          buttonData={{ 'data-actual-risk-summary': actualRisk.kind }}
+          buttonData={{
+            'data-actual-risk-summary': noPlannedRisk ? 'not_applicable' : actualRisk.kind,
+          }}
         />
       </GroupCard>
 

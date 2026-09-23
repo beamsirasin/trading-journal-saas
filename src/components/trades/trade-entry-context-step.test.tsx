@@ -26,7 +26,13 @@ let latest: Hosted;
  * THE STEP, HOSTED THE WAY EACH FORM HOSTS IT: its own draft and its own
  * module's transitions. The drafts are never merged.
  */
-function Host({ mode }: { mode: EntryContextMode }) {
+function Host({
+  mode,
+  plannedRiskState = 'defined',
+}: {
+  mode: EntryContextMode;
+  plannedRiskState?: atEntry.RiskStateDraft;
+}) {
   const [drafts, setDrafts] = useState<Hosted>(() => ({
     entry: atEntry.createAtEntryDraft(ACCOUNT_ID),
     after: afterTrade.createAfterTradeDraft(ACCOUNT_ID),
@@ -47,6 +53,7 @@ function Host({ mode }: { mode: EntryContextMode }) {
       mode="at_entry"
       idPrefix="entry"
       currency="USD"
+      plannedRiskState={plannedRiskState}
       actualRisk={
         entryRisk.mode === 'different'
           ? { kind: 'different', amount: entryRisk.amount }
@@ -87,6 +94,7 @@ function Host({ mode }: { mode: EntryContextMode }) {
       mode="after_trade"
       idPrefix="after"
       currency="USD"
+      plannedRiskState={plannedRiskState}
       actualRisk={
         afterRisk.answer === 'matched'
           ? { kind: 'matched' }
@@ -125,10 +133,13 @@ function Host({ mode }: { mode: EntryContextMode }) {
   );
 }
 
-function renderStep(mode: EntryContextMode) {
+function renderStep(
+  mode: EntryContextMode,
+  options: { plannedRiskState?: atEntry.RiskStateDraft } = {},
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <Host mode={mode} />
+      <Host mode={mode} {...options} />
     </NextIntlClientProvider>,
   );
 }
@@ -325,5 +336,33 @@ describe('Entry Context — Actual Risk, the execution fact', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'unknown' }));
     expect(riskRow('after_trade')).toHaveAttribute('data-actual-risk-summary', 'unknown');
     expect(riskRow('after_trade')).toHaveTextContent('Actual risk not known');
+  });
+});
+
+/*
+  ACTUAL RISK NEEDS A PLAN TO COMPARE WITH (contract decision 54). On a Trade
+  whose trader said there was no planned 1R, "did what you risked match your
+  plan?" has no answer, so the row says the question does not apply instead of
+  offering Matched / Different against nothing.
+*/
+describe('Entry Context — Actual Risk needs a planned risk', () => {
+  function riskRow(): HTMLElement {
+    return document.getElementById('entry-actual-risk-row')!;
+  }
+
+  it('asks the question when a risk was defined', () => {
+    renderStep('at_entry', { plannedRiskState: 'defined' });
+    expect(riskRow()).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
+    expect(riskRow()).not.toBeDisabled();
+  });
+
+  it('does not ask it when the trader defined no risk', () => {
+    renderStep('at_entry', { plannedRiskState: 'no_defined' });
+    expect(riskRow()).toHaveAttribute('data-actual-risk-summary', 'not_applicable');
+    expect(riskRow()).toHaveTextContent('Not applicable — no planned risk was defined.');
+    expect(riskRow()).toBeDisabled();
+    // And nothing opens: there is no answer to give.
+    fireEvent.click(riskRow());
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

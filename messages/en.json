@@ -2306,7 +2306,8 @@
             "invalidPrice": "Enter a price greater than zero, using digits and one decimal point.",
             "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target.",
             "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all.",
-            "notAccepted": "This value wasn't accepted. Check it and try again."
+            "notAccepted": "This value wasn't accepted. Check it and try again.",
+            "riskDecisionRequired": "Say how risk was defined for this trade."
           },
           "steps": {
             "modeShort": "At entry",
@@ -2381,7 +2382,8 @@
             "unavailable": {
               "needs_pnl_and_risk": "Actual R needs your final net P&L and risk at entry.",
               "needs_risk": "Actual R needs your risk at entry.",
-              "needs_pnl": "Actual R needs your final net P&L."
+              "needs_pnl": "Actual R needs your final net P&L.",
+              "no_defined_risk": "No planned risk was defined, so R is not available."
             }
           },
           "risk": {
@@ -2593,7 +2595,8 @@
           "evidenceTitle": "Before-entry evidence",
           "evidenceHint": "A chart from before or at entry. It is context and never changes the result.",
           "actualRiskTitle": "What the entry actually risked",
-          "actualRiskHint": "The risk the position really carried at entry. Your 1R stays your risk at entry."
+          "actualRiskHint": "The risk the position really carried at entry. Your 1R stays your risk at entry.",
+          "actualRiskNotApplicable": "Not applicable — no planned risk was defined."
         },
         "planRows": {
           "actualRisk": {
@@ -2605,17 +2608,26 @@
           "target": {
             "fixed": "Fixed · {amount}"
           },
-          "riskAndStop": "Risk & stop",
-          "stopMethod": {
-            "legend": "Stop method",
-            "removeAria": "Remove stop method answer",
-            "broker": "Broker stop",
-            "brokerDescription": "A stop order resting with your broker",
-            "mental": "Mental stop",
-            "mentalDescription": "A planned manual stop, with no broker order",
-            "no_stop": "No defined stop",
-            "no_stopDescription": "You had no defined stop approach"
+          "risk": {
+            "label": "Risk",
+            "question": "How was risk defined for this trade?",
+            "defined": "Defined risk",
+            "noDefined": "No defined risk",
+            "noDefinedHint": "R and RR comparison will not be available for this trade.",
+            "oneR": "1R",
+            "removeAria": "Remove risk answer"
           }
+        },
+        "plannedSummary": {
+          "title": "Planned",
+          "risk": "Planned risk",
+          "target": "Planned target",
+          "rr": "Planned RR",
+          "exitPlan": "Exit plan",
+          "riskNotDefined": "Not defined",
+          "targetRuleBased": "Rule-based",
+          "rrNotAvailable": "Not available",
+          "rrNotKnownYet": "Not known yet"
         }
       },
       "backToTrades": "Back to Trades",

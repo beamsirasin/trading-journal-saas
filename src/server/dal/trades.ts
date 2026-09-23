@@ -15,6 +15,7 @@ import {
   type EnteredAtSource,
   type ExitPlanProvenance,
   type ExitPlanState,
+  type PlannedRiskState,
   type RecordingContract,
   type TargetState,
 } from '@/lib/trades/add-trade-contract';
@@ -420,6 +421,7 @@ export async function listWorkspaceTrades(
       actualInitialRiskMinor: trades.actualInitialRiskMinor,
       recordingContract: trades.recordingContract,
       plannedRiskMinor: trades.plannedRiskMinor,
+      plannedRiskState: trades.plannedRiskState,
       tradingAccountName: tradingAccounts.name,
       tradingAccountBaseCurrency: tradingAccounts.baseCurrency,
       tradingAccountIsArchived: tradingAccounts.isArchived,
@@ -707,6 +709,8 @@ export interface TradeDetail {
   readonly plannedPositionSize: string | null;
   /** Account-currency minor units, in `tradingAccountBaseCurrency` — the Money-mode Plan (migration 0010). */
   readonly plannedRiskMinor: string | null;
+  /** The trader's risk decision; 'no_defined' forecloses every R figure. */
+  readonly plannedRiskState: PlannedRiskState | null;
   readonly plannedRewardMinor: string | null;
   readonly plannedR: string | null;
 
@@ -1030,6 +1034,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       plannedTarget: trade.plannedTarget,
       plannedPositionSize: trade.plannedPositionSize,
       plannedRiskMinor: minorToString(trade.plannedRiskMinor),
+      plannedRiskState: trade.plannedRiskState as PlannedRiskState | null,
       plannedRewardMinor: minorToString(trade.plannedRewardMinor),
       plannedR: trade.plannedR,
 

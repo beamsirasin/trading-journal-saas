@@ -14,6 +14,21 @@ import type { ExitHistoryCompleteness, OutcomeValue } from './constants';
 export const RECORDING_CONTRACT_ADD_TRADE_V1 = 'add_trade_v1' as const;
 export type RecordingContract = typeof RECORDING_CONTRACT_ADD_TRADE_V1;
 
+/**
+ * THE TRADER'S RISK DECISION BEFORE ENTRY (contract §4, decision 54).
+ *
+ * NULL / absent is **Unanswered** — nobody decided yet — and is never
+ * `no_defined`: an unanswered observation is never a negative one (§2, §8).
+ * `defined` carries the planned 1R amount; `no_defined` is the explicit answer
+ * that there was no planned 1R, and forecloses every R / RR comparison for
+ * that Trade rather than producing a zero or a guess.
+ *
+ * It is never inferred from price: an SL price says where a stop would sit,
+ * not whether a 1R was decided (§3).
+ */
+export const PLANNED_RISK_STATES = ['defined', 'no_defined'] as const;
+export type PlannedRiskState = (typeof PLANNED_RISK_STATES)[number];
+
 /** NULL / absent is Unanswered. */
 export const TARGET_STATES = ['fixed', 'no_fixed'] as const;
 export type TargetState = (typeof TARGET_STATES)[number];

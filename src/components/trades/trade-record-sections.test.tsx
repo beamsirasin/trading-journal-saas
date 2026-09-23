@@ -89,6 +89,7 @@ const base: TradeDetailModel = {
   plannedTarget: null,
   plannedPositionSize: null,
   plannedRiskMinor: null,
+  plannedRiskState: null,
   plannedRewardMinor: null,
   plannedR: null,
   actualResultMode: null,

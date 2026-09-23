@@ -5,8 +5,9 @@
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
 > final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
 > decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49, the
-> recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52 and
-> stage-placement amendment 53 (2026-09-23) are recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
+> recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52,
+> stage-placement amendment 53 and Planned Risk amendment 54 (2026-09-23) are recorded in the
+> [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
 > place.
@@ -45,7 +46,7 @@ forms. The lifecycle groups the semantics this contract already defines into six
 stages; it adds no new state, value, result or requirement, and it changes none:
 
 1. **Trade Details** — Account, Symbol, Direction, Entry time (§6, §13).
-2. **Plan & Risk** — Risk at Entry, the intended 1R, Stop Method (decision 53), and Actual Risk, the risk execution actually
+2. **Plan & Risk** — the Planned Risk decision (decision 54) and, when it is Defined, the intended 1R; and Actual Risk, the risk execution actually
    carried at entry compared with it (§4); Target and Exit Plan (§5); and price levels as context
    only (§3).
 3. **Setup & Checklist** — Strategy, Setup and setup conditions (§7–§8).
@@ -177,15 +178,21 @@ Actual risk differed
 
 เพื่อบันทึก Actual Risk เฉพาะเมื่อจำเป็น
 
-## Stop Method (แผนการหยุดขาดทุน)
+## Planned Risk (การตัดสินใจเรื่องความเสี่ยง)
 
-**เพิ่ม 2026-09-23 (decision 53):** Stop Method เป็น **plan fact** บันทึกใน Plan & Risk ข้าง Risk at Entry
+**แก้ไข 2026-09-23 (decision 54):** Planned Risk มี **สามสถานะ** เท่านั้น
 
-สถานะ: **Unanswered** (ค่าเริ่มต้น) · **Broker stop** (มีคำสั่งที่โบรกเกอร์) · **Mental stop** (วางแผนตัดมือ ไม่มีคำสั่งที่โบรกเกอร์) · **No defined stop** (ไม่ได้กำหนดวิธีหยุดขาดทุน)
+- **Unanswered** (ค่าเริ่มต้น) — ยังไม่ได้ตัดสินใจ ห้ามตีความเป็น No Defined Risk
+- **Defined Risk** — มี planned 1R เป็นจำนวนเงิน และจำนวนนั้นต้อง > 0
+- **No Defined Risk** — คำตอบที่ระบุชัดว่าไม่ได้กำหนด 1R ไม่มีจำนวนเงิน และไม่มี R / RR ให้เทียบตลอดไป
 
-Unanswered ≠ No defined stop และห้าม infer จาก SL price — SL price เป็น Price Context บอกว่า stop จะอยู่ตรงไหน ไม่ได้บอกว่ามีคำสั่งหรือไม่ (§2, §3, §8)
+Record Open **ต้องมีการตัดสินใจ** (Defined + จำนวน หรือ No Defined Risk) แต่ **ไม่บังคับให้ต้องมีจำนวนเงิน** — ห้ามบังคับให้ trader สมมติตัวเลขขึ้นมา After Trade ยังคงปล่อยให้ Unanswered ได้สำหรับ Trade ย้อนหลัง
 
-v1 slice นี้ไม่คำนวณ System Result, risk amount หรือ adherence ใด ๆ จาก Stop Method
+Trade ที่เป็น No Defined Risk: ห้ามสร้าง Actual R / Trader R / RR ใด ๆ และไม่ถาม Actual Risk (ไม่มีแผนให้เทียบ — ดู §4 Actual Risk)
+
+ห้าม infer สถานะนี้จาก SL price — SL price เป็น Price Context บอกว่า stop จะอยู่ตรงไหน ไม่ได้บอกว่ามีการกำหนด 1R หรือไม่ (§2, §3, §8)
+
+_Stop Method (decision 53) ถูกถอดออกจากการบันทึกแล้ว (decision 54): ไม่มี UI ไม่มีการเขียนค่าใหม่ ค่าที่เคยบันทึกไว้ยังคงอยู่เป็นข้อมูลประวัติเท่านั้น ห้าม infer อะไรจากค่าเหล่านั้น_
 
 ## Actual Risk at Entry
 
@@ -203,6 +210,13 @@ trader ต้องระบุอย่าง explicit ว่า:
 Unanswered ไม่ขัดขวาง primary System-vs-Actual comparison เพราะ Actual R ใช้ Risk at Entry เป็น 1R baseline ร่วม (§4, §17)
 
 _เดิม (v1, 2026-09-14 ถึง 2026-09-22): การไม่เปิด `Actual risk differed` หมายถึง trader ยืนยันว่า actual risk ตรงกับ Risk at Entry ที่บันทึก โดย interaction ต้องสื่อความหมายนี้อย่างซื่อสัตย์ ห้ามเป็น hidden server inference — Trade ที่บันทึกไว้ภายใต้ข้อตกลงเดิมยังคงเป็น historical observation ที่ valid ห้าม backfill หรือ reinterpret (decision 52)_
+
+## Planned RR (decision 54)
+
+- **Fixed Target + Defined Risk** → ทราบ Planned RR
+- **No Fixed Target + Defined Risk + Exit Plan** → ยังไม่ทราบ Planned RR ตอนเข้า แต่ยังใช้ประเมิน System-vs-Trader แบบอิงกฎได้ภายหลัง
+- **No Fixed Target โดยไม่มี Exit Plan ที่ใช้ได้** → ไม่มี planned System result ให้ resolve จากโมเดลปัจจุบัน
+- **No Defined Risk** → ไม่มีค่า R / RR ไม่ว่าจะตั้ง Target แบบใด
 
 ## Known Risk at Entry
 
@@ -1624,3 +1638,37 @@ Stage placement and Stop Method, 2026-09-23 (item 53):
     its meaning and its provenance (§28). A draft written before this decision simply holds no Stop
     Method: absent is Unanswered, so it loads whole and nothing is invented for it. Amends §2 and
     §4; refines §23. (§2, §4, §23)
+
+Planned Risk simplification, 2026-09-23 (item 54):
+
+54. **Planned Risk is a three-state decision, and Stop Method is retired** — Planned Risk is
+    **Unanswered**, **Defined Risk** (a planned 1R greater than zero) or **No Defined Risk** (an
+    explicit answer that no 1R was set). The three never collapse: Unanswered is not No Defined
+    Risk, and No Defined Risk is not a zero (§2, §8). **Record Open requires the decision, not the
+    money** — Defined with its amount, or No Defined Risk — so a trader who traded without a 1R
+    records that truthfully instead of inventing one. After Trade may still leave it Unanswered
+    for a historical Trade.
+
+    **No Defined Risk forecloses the R family.** No Actual R, Trader R or RR is produced for such
+    a Trade whatever its Target, and Actual Risk is not asked at all: "did what you risked match
+    your plan?" has no answer when there was no plan to match, so the row states that the question
+    does not apply. Where an R figure would otherwise appear, the reason given is that no planned
+    risk was defined — not that a risk is missing.
+
+    **Target semantics are unchanged.** Fixed Target with a Defined Risk gives a known Planned RR.
+    No Fixed Target with a Defined Risk and an Exit Plan is a complete, valid plan whose RR is not
+    knowable at entry and which stays eligible for later rule-based System-vs-Trader evaluation.
+    No Fixed Target without a usable Exit Plan resolves no planned System result under this model.
+    The System-result questionnaire is **not** part of this decision.
+
+    **Stop Method (decision 53) is withdrawn from capture.** It has no UI, no new value is ever
+    written, and nothing is inferred from the values already stored, which remain valid history.
+    `planned_stop_method` and migration 0029 stay in place; the column is simply no longer fed.
+
+    **Price still decides nothing.** `context_stop_price` neither creates a Defined Risk nor proves
+    the absence of one; Money remains the authoritative representation (§3).
+
+    **Nothing historical changes.** No row is backfilled or reinterpreted. A draft written before
+    this decision carries only the amount the trader typed, and is read from exactly that: an
+    amount means Defined, a blank means Unanswered, and No Defined Risk is never invented for it.
+    Amends §2, §4 and §5; refines §23. (§2, §4, §5, §23)

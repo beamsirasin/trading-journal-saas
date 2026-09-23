@@ -7,6 +7,7 @@ import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety
 import { trades, workspaces } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+import { chooseInEditor } from './support/plan-rows';
 import { provisionVerifiedUser } from './support/provision-user';
 import { recordOpenMinimum, recordOpenSave } from './support/record-open';
 
@@ -290,6 +291,7 @@ test.describe('Stage 6 — After-Trade Context', () => {
       // Stage 2 — Plan.
       await step('plan');
       await page.locator('[data-plan-row="risk"]').click();
+      await chooseInEditor(page.getByRole('dialog'), /^Defined risk/);
       await page.getByRole('dialog').locator('#after-risk').fill('60');
       await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
       // Stages 3–4 — Setup and Entry Context; Post-Trade Emotion is not here.

@@ -16,6 +16,26 @@ export function formatR(value: string | null): string | null {
   }
 }
 
+/**
+ * THE PLAN'S REWARD-TO-RISK, READ AS A RATIO (contract §4–§5, decision 54).
+ *
+ * `1:2` says the same thing as `+2.00R` and says it the way a plan is spoken.
+ * Only a positive, finite planned R has a ratio: a zero or negative one is not
+ * a reward the plan aimed at, and `null` keeps the summary silent rather than
+ * printing `1:0`.
+ */
+export function formatPlannedRatio(plannedR: string | null): string | null {
+  if (plannedR === null) return null;
+  try {
+    const decimal = new Decimal(plannedR);
+    if (!decimal.isFinite() || decimal.lte(0)) return null;
+    // Two places at most, and no trailing zeros: 1:2, not 1:2.00.
+    return `1:${decimal.toDecimalPlaces(2).toString()}`;
+  } catch {
+    return null;
+  }
+}
+
 export function formatTradeMoney(minor: string | null, currency: string): string | null {
   if (minor === null || !/^-?\d+$/.test(minor)) return null;
   if (!isCurrencyCode(currency)) return `${minor} ${currency} minor units`;

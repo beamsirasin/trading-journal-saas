@@ -37,7 +37,7 @@ import {
   setActualRiskAmount,
   setActualRiskMode,
   setConfidence,
-  setStopMethod,
+  setRiskState,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -52,7 +52,7 @@ import { InlineAction, StateText, TextField } from './trade-at-entry-controls';
 import { tradeDetailsRowId, TradeDetailsStep, type EntryErrorCode } from './trade-details-step';
 import { TradeEntryContextStep } from './trade-entry-context-step';
 import { instantToDatetimeLocal, parseTradeMoneyInput } from './trade-form-values';
-import { formatR, formatTradeMoney } from './trade-format';
+import { formatPlannedRatio, formatR, formatTradeMoney } from './trade-format';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import type { RecordingSaveControls } from './trade-recording-form';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
@@ -131,7 +131,7 @@ const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
   exitPlanRow: PLAN_ROW_ID.exitPlan,
   priceRow: PLAN_ROW_ID.price,
   risk: 'entry-risk',
-  stopMethod: 'entry-stop-method',
+  riskState: 'entry-risk-state',
   targetState: 'entry-target',
   targetProfit: 'entry-target-profit',
   targetPrice: 'entry-target-price',
@@ -414,6 +414,8 @@ export function TradeAtEntryForm({
               : field === 'actualRiskAmount'
                 ? c('errors.requiredActualRisk')
                 : c('errors.requiredRisk');
+      case 'risk_decision_required':
+        return c('errors.riskDecisionRequired');
       case 'invalid_money':
         return c('errors.invalidMoney');
       case 'must_be_positive':
@@ -626,7 +628,7 @@ export function TradeAtEntryForm({
     );
 
   // At Entry's money-based R for a Target Profit: context for the plan, never a result.
-  const targetR = (() => {
+  const plannedR = (() => {
     if (draft.direction === '' || validation.riskMinor === null) return null;
     if (draft.target.state !== 'fixed' || draft.target.profit.trim() === '') return null;
     const profit = parseTradeMoneyInput(draft.target.profit, currency);
@@ -639,8 +641,10 @@ export function TradeAtEntryForm({
       plannedRiskMinor: BigInt(validation.riskMinor),
       plannedRewardMinor: BigInt(profit.value),
     });
-    return composed.ok ? formatR(composed.value.plannedR) : null;
+    return composed.ok ? composed.value.plannedR : null;
   })();
+  const targetR = formatR(plannedR);
+  const plannedRR = formatPlannedRatio(plannedR);
 
   /*
     WHAT EACH STEP HOLDS, IN A LINE. Read-only restatements of answers already
@@ -885,8 +889,9 @@ export function TradeAtEntryForm({
             targetWrongSide: validation.notices.includes('target_wrong_side'),
           }}
           targetR={targetR}
-          stopMethod={draft.stopMethod}
-          onStopMethodChange={(next) => apply((current) => setStopMethod(current, next))}
+          plannedRR={plannedRR}
+          riskState={draft.riskState}
+          onRiskStateChange={(next) => apply((current) => setRiskState(current, next))}
           onRiskChange={(risk) => apply((current) => ({ ...current, risk }))}
           onTargetStateChange={(state) => apply((current) => setTargetState(current, state))}
           onTargetValueChange={(field, value) =>
@@ -943,6 +948,7 @@ export function TradeAtEntryForm({
           mode="at_entry"
           idPrefix="entry"
           currency={currency}
+          plannedRiskState={draft.riskState}
           /*
             EVERY ANSWER HERE IS THE TRADER'S OWN. The draft starts
             `unanswered` and only a named action moves it, so a match on the

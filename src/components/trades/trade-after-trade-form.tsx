@@ -55,7 +55,7 @@ import {
   setEntryTime,
   setFinalPnl,
   setOutcome,
-  setStopMethod,
+  setRiskState,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -235,7 +235,7 @@ const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
   exitPlanRow: PLAN_ROW_ID.exitPlan,
   priceRow: PLAN_ROW_ID.price,
   risk: 'after-risk',
-  stopMethod: 'after-stop-method',
+  riskState: 'after-risk-state',
   targetState: 'after-target',
   targetProfit: 'after-targetProfit',
   targetPrice: 'after-targetPrice',
@@ -1239,8 +1239,8 @@ export function TradeAfterTradeForm({
               apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
             }
             onLibraryChanged={setAdoptedExitPlans}
-            stopMethod={draft.stopMethod}
-            onStopMethodChange={(next) => apply((current) => setStopMethod(current, next))}
+            riskState={draft.riskState}
+            onRiskStateChange={(next) => apply((current) => setRiskState(current, next))}
           />
         </>,
       )}
@@ -1286,6 +1286,7 @@ export function TradeAfterTradeForm({
             mode="after_trade"
             idPrefix="after"
             currency={currency}
+            plannedRiskState={draft.riskState}
             /*
               EVERY ANSWER HERE IS THE TRADER'S OWN. This draft starts at
               `unanswered` and only a selection moves it, so `matched` reaching

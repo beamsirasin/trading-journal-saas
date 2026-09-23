@@ -16,6 +16,7 @@ import {
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+import { chooseInEditor } from './support/plan-rows';
 import { provisionVerifiedUser } from './support/provision-user';
 import {
   closePlanEditor,
@@ -263,12 +264,12 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
       await expectStep(page, 'plan');
       await expect(page.locator('[data-step-progress]:visible').first()).toHaveText('Step 2 of 4');
       const riskEditor = await openPlanRow(page, 'risk');
+      await chooseInEditor(riskEditor, /^Defined risk/);
       await riskEditor.locator('#entry-risk').fill('100');
-      // The assumption is stated in the editor, with the words that qualify it.
-      await expect(riskEditor.getByText('Your actual risk matched this amount.')).toBeVisible();
       await closePlanEditor(page);
-      // The row never repeats it as a fact nobody stated.
-      await expect(planRow(page, 'risk')).toContainText('Actual risk not recorded');
+      // Plan & Risk reads the plan: the 1R amount, and nothing about execution.
+      await expect(planRow(page, 'risk')).toContainText('100 USD');
+      await expect(planRow(page, 'risk')).not.toContainText(/actual risk/i);
       const targetEditor = await openPlanRow(page, 'target');
       await chooseChoice(page, /^Fixed target/);
       await targetEditor.locator('#entry-target-profit').fill('300');
@@ -557,6 +558,7 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
     await recordOpenSymbol(page, 'NZDUSD');
     await recordOpenDirection(page, 'Long');
     const riskEditor = await openPlanRow(page, 'risk');
+    await chooseInEditor(riskEditor, /^Defined risk/);
     await riskEditor.locator('#entry-risk').fill('');
     await closePlanEditor(page);
     await recordOpenSave(page);

@@ -22,6 +22,7 @@ import {
   setActualRiskAmount,
   setActualRiskMode,
   setConfidence,
+  setRiskState,
   setStopMethod,
   setTargetValue,
   toggleEmotion,
@@ -442,8 +443,64 @@ describe('persisted shape', () => {
     expect(parsed.envelope.atEntry?.risk).toBe('100');
   });
 
+  /*
+    THE RISK DECISION SURVIVES A RELOAD (contract decision 54), and the three
+    states stay apart: a stated No Defined Risk is not an Unanswered draft.
+  */
+  it('keeps Unanswered, Defined and No Defined Risk apart across a reload', () => {
+    for (const [riskState, risk] of [
+      ['unanswered', ''],
+      ['defined', '100'],
+      ['no_defined', ''],
+    ] as const) {
+      const stored = envelopeWith({ ...workedAtEntry(), riskState, risk });
+      const parsed = parseRecordingDraft(serializeRecordingDraft(stored), NOW);
+      if (parsed.status !== 'recovered') throw new Error('unreachable');
+      expect(parsed.envelope.atEntry?.riskState).toBe(riskState);
+      expect(parsed.envelope.atEntry?.risk).toBe(risk);
+    }
+  });
+
+  /*
+    A DRAFT WRITTEN BEFORE THE DECISION EXISTED has only the amount the trader
+    typed. An amount means they had decided a 1R; a blank means they had not
+    decided yet. It NEVER becomes No Defined Risk — nobody answered that.
+  */
+  it('reads a pre-decision draft from its amount, and never invents No Defined Risk', () => {
+    const withAmount = JSON.parse(serializeRecordingDraft(envelopeWith(workedAtEntry())));
+    delete withAmount.atEntry.riskState;
+    withAmount.version = 3;
+    const defined = parseRecordingDraft(JSON.stringify(withAmount), NOW);
+    if (defined.status !== 'recovered') throw new Error('unreachable');
+    expect(defined.envelope.atEntry?.riskState).toBe('defined');
+    expect(defined.envelope.atEntry?.risk).toBe('100');
+    expect(defined.envelope.version).toBe(RECORDING_DRAFT_VERSION);
+
+    const blank = JSON.parse(
+      serializeRecordingDraft(envelopeWith({ ...workedAtEntry(), risk: '' })),
+    );
+    delete blank.atEntry.riskState;
+    blank.version = 3;
+    const undecided = parseRecordingDraft(JSON.stringify(blank), NOW);
+    if (undecided.status !== 'recovered') throw new Error('unreachable');
+    expect(undecided.envelope.atEntry?.riskState).toBe('unanswered');
+  });
+
+  it('carries the risk decision across a mode switch, with the amount it explains', () => {
+    const defined = envelopeWith({ ...workedAtEntry(), riskState: 'defined', risk: '100' });
+    const switched = switchRecordingMode(defined, 'after_trade', CONTEXT);
+    expect(switched.afterTrade?.riskState).toBe('defined');
+    expect(switched.afterTrade?.risk).toBe('100');
+
+    // An explicit No Defined Risk is an answer, and travels as one.
+    const none = envelopeWith(setRiskState(workedAtEntry(), 'no_defined'));
+    const carried = switchRecordingMode(none, 'after_trade', CONTEXT);
+    expect(carried.afterTrade?.riskState).toBe('no_defined');
+    expect(carried.afterTrade?.risk).toBe('');
+  });
+
   it('refuses an unknown schema version instead of reinterpreting its answers', () => {
-    const future = { ...JSON.parse(serializeRecordingDraft(envelope())), version: 4 };
+    const future = { ...JSON.parse(serializeRecordingDraft(envelope())), version: 5 };
     expect(parseRecordingDraft(JSON.stringify(future), NOW)).toEqual({
       status: 'unrecoverable',
       reason: 'unsupported_version',

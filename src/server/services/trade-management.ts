@@ -30,6 +30,7 @@ import {
   type CaptureOrigin,
   type EnteredAtSource,
   type ExitPlanProvenance,
+  type PlannedRiskState,
   type PlannedStopMethod,
   type TargetState,
 } from '@/lib/trades/add-trade-contract';
@@ -505,6 +506,8 @@ export interface CreateTradeInput {
   readonly enteredAt?: Date | undefined;
   /** Add Trade contract v1 — see `src/lib/trades/add-trade-contract.ts`. Absent = a legacy write. */
   readonly recordingContract?: typeof RECORDING_CONTRACT_ADD_TRADE_V1 | undefined;
+  /** The explicit risk decision; 'no_defined' forecloses every R figure. */
+  readonly plannedRiskState?: PlannedRiskState | undefined;
   /** A plan answer only: no figure, outcome or adherence is derived from it. */
   readonly plannedStopMethod?: PlannedStopMethod | undefined;
   readonly targetState?: TargetState | undefined;
@@ -706,7 +709,19 @@ function validateContractCreate(
     }
     if (input.exitPlanInheritanceDeclined === true) return 'invalid_exit_plan';
   } else {
-    if (input.plannedRiskMinor == null) return 'invalid_initial_risk';
+    /*
+      A RISK DECISION, NOT NECESSARILY AN AMOUNT (contract decision 54). An
+      Open contract Trade records Defined Risk with its 1R, or an explicit No
+      Defined Risk with none; Unanswered is not a Save. A payload that claims
+      No Defined Risk while carrying an amount contradicts itself.
+    */
+    if (input.plannedRiskState === undefined) return 'invalid_initial_risk';
+    if (input.plannedRiskState === 'defined' && input.plannedRiskMinor == null) {
+      return 'invalid_initial_risk';
+    }
+    if (input.plannedRiskState === 'no_defined' && input.plannedRiskMinor != null) {
+      return 'invalid_initial_risk';
+    }
     // Actual Risk is the trader's to answer or leave Unanswered; only a
     // stated answer must be one this contract knows (contract §2, §8).
     if (
@@ -719,6 +734,13 @@ function validateContractCreate(
     if (input.postTradeEmotionKeys !== undefined || input.closedAtCreation !== undefined) {
       return 'invalid_plan_authority';
     }
+  }
+  if (input.plannedRiskState === 'no_defined' && input.plannedRiskMinor != null) {
+    return 'invalid_initial_risk';
+  }
+  // No planned 1R exists to match, so Actual Risk cannot claim it matched one.
+  if (input.plannedRiskState === 'no_defined' && input.actualRiskAnswer === 'matched') {
+    return 'invalid_initial_risk';
   }
   if (input.actualRiskAnswer === 'matched' && input.actualInitialRiskMinor != null) {
     return 'invalid_initial_risk';
@@ -1167,6 +1189,7 @@ export async function createTradeInTx(
         ? {
             recordingContract: RECORDING_CONTRACT_ADD_TRADE_V1,
             enteredAtSource: input.enteredAt === undefined ? null : (input.enteredAtSource ?? null),
+            plannedRiskState: input.plannedRiskState ?? null,
             plannedStopMethod: input.plannedStopMethod ?? null,
             targetState: input.targetState ?? null,
             targetPrice: input.targetPrice ?? null,

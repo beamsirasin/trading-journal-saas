@@ -91,6 +91,7 @@ function trade(overrides: Partial<TradeDetail> = {}): TradeDetail {
     plannedTarget: '150',
     plannedPositionSize: null,
     plannedRiskMinor: null,
+    plannedRiskState: null,
     plannedRewardMinor: null,
     plannedR: '5.0000',
     actualResultMode: 'price',

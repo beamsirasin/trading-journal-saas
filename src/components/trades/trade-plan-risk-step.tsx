@@ -4,22 +4,23 @@ import { Crosshair, DollarSign, Waves } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 
-import { PLANNED_STOP_METHODS } from '@/lib/trades/add-trade-contract';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 
 import {
   createAtEntryDraft,
+  resolveExitPlan,
   type AtEntryDraft,
   type ClassificationDraft,
   type ContextDraft,
   type ExitPlanDraft,
-  type StopMethodDraft,
+  type RiskStateDraft,
   type TargetDraft,
 } from './at-entry-draft';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   ChoiceGroup,
+  Helper,
   InlineAction,
   Notice,
   StateText,
@@ -28,6 +29,7 @@ import {
 } from './trade-at-entry-controls';
 import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { TradeLauncherRow } from './trade-launcher-row';
+import { TradePlannedSummary } from './trade-planned-summary';
 
 /** The recording moment this step is shown in. It decides defaults and wording, never meaning. */
 export type PlanRiskMode = 'at_entry' | 'after_trade';
@@ -39,7 +41,7 @@ export type PlanRiskField =
 /** Every DOM id the step renders: its rows, its inputs and the Target choice. */
 export type PlanStepId =
   | PlanRiskField
-  | 'stopMethod'
+  | 'riskState'
   | 'targetState'
   | 'riskRow'
   | 'targetRow'
@@ -62,16 +64,18 @@ const NO_CLASSIFICATION: ClassificationDraft = createAtEntryDraft('').classifica
  * read. A step that is four open forms asks a trader to scan controls; a step
  * that is four rows lets them read the plan and then change one thing.
  *
- * IT DESCRIBES THE PLAN, AND NOTHING THAT HAPPENED (contract decision 53).
- * Risk at Entry (the intended 1R), how that risk was to be protected (Stop
- * Method), the Target, the Exit Plan, and price levels as context. **Actual
- * Risk is not here**: what the position really carried is an execution fact,
- * asked with the rest of the entry's execution context in Step 4. Strategy is
- * not this step's answer either; it lives in Step 3.
+ * IT DESCRIBES THE PLAN, AND NOTHING THAT HAPPENED (contract decisions 53,
+ * 54). The risk decision (Defined Risk with its 1R, or No Defined Risk), the
+ * Target, the Exit Plan, and price levels as context. **Actual Risk is not
+ * here**: what the position really carried is an execution fact, asked with
+ * the rest of the entry's execution context in Step 4. Strategy is not this
+ * step's answer either; it lives in Step 3.
  *
- * STOP METHOD IS AN ANSWER, NEVER AN INFERENCE. Unanswered is not "no defined
- * stop", and a recorded SL price says where a stop would sit, not whether one
- * was placed — so the price context never decides this row (§2, §8).
+ * RISK IS A DECISION, NOT A FIGURE THE FORM EXTRACTS. Unanswered, Defined and
+ * No Defined Risk are three different things, and a trader who had no 1R says
+ * so rather than inventing one. A recorded SL price decides none of them: it
+ * says where a stop would sit, never whether a 1R was decided (§2, §3, §8).
+ * Stop Method is no longer captured (decision 54); stored values stay history.
  *
  * IT OWNS NO SEMANTICS. Every change goes back through the host's own draft
  * transitions (`at-entry-draft` or `after-trade-draft`), so the two draft
@@ -98,8 +102,8 @@ export function TradePlanRiskStep({
   mode,
   ids,
   currency,
+  riskState,
   risk,
-  stopMethod,
   target,
   exitPlan,
   classification,
@@ -108,8 +112,9 @@ export function TradePlanRiskStep({
   errorText,
   notices,
   targetR = null,
+  plannedRR = null,
   onRiskChange,
-  onStopMethodChange,
+  onRiskStateChange,
   onTargetStateChange,
   onTargetValueChange,
   onExitPlanChange,
@@ -123,10 +128,10 @@ export function TradePlanRiskStep({
    */
   ids: Readonly<Record<PlanStepId, string>>;
   currency: string;
+  /** The explicit risk decision; the amount below belongs to 'defined' alone. */
+  riskState: RiskStateDraft;
   /** Risk at Entry as typed; '' is not recorded, never zero. */
   risk: string;
-  /** How the trader planned to hold the stop; 'unanswered' until they say. */
-  stopMethod: StopMethodDraft;
   target: TargetDraft;
   exitPlan: ExitPlanDraft;
   /**
@@ -141,8 +146,10 @@ export function TradePlanRiskStep({
   notices: { readonly stopWrongSide: boolean; readonly targetWrongSide: boolean };
   /** At Entry's "reaching your target would be …R", already formatted; `null` shows nothing. */
   targetR?: string | null;
+  /** The plan's reward-to-risk as `1:2`; `null` when it is not knowable. */
+  plannedRR?: string | null;
   onRiskChange: (risk: string) => void;
-  onStopMethodChange: (stopMethod: StopMethodDraft) => void;
+  onRiskStateChange: (riskState: RiskStateDraft) => void;
   onTargetStateChange: (state: TargetDraft['state']) => void;
   onTargetValueChange: (field: 'profit' | 'price', value: string) => void;
   onExitPlanChange: (exitPlan: ExitPlanDraft) => void;
@@ -172,9 +179,18 @@ export function TradePlanRiskStep({
     classification: atEntry ? (classification ?? NO_CLASSIFICATION) : NO_CLASSIFICATION,
   };
 
-  const riskValue = risk.trim() === '' ? null : `${risk.trim()} ${currency}`;
-  /* An unanswered Stop Method adds no line: it is not "no defined stop". */
-  const stopLine = stopMethod === 'unanswered' ? null : rows(`stopMethod.${stopMethod}`);
+  /*
+    WHAT THE ROW SAYS ABOUT RISK. No Defined Risk is an answer and reads as
+    one; Defined Risk reads its amount; Unanswered reads the neutral
+    placeholder, never "no risk" (§2, §8).
+  */
+  const riskAmount = risk.trim() === '' ? null : `${risk.trim()} ${currency}`;
+  const riskValue =
+    riskState === 'no_defined'
+      ? rows('risk.noDefined')
+      : riskState === 'defined'
+        ? riskAmount
+        : null;
 
   const targetValue =
     target.state === 'unanswered'
@@ -206,13 +222,28 @@ export function TradePlanRiskStep({
 
   const priceError = errorText('entryPrice') ?? errorText('stopPrice') ?? errorText('positionSize');
 
+  /*
+    THE EXIT PLAN IN ONE PHRASE, resolved exactly as its own row resolves it —
+    an inherited or chosen plan by name, an explicit No Defined Exit Rule by
+    its answer, and nothing at all when none is recorded.
+  */
+  const exitPlanResolved = resolveExitPlan(exitPlanView, options).resolved;
+  const exitPlanLabel =
+    exitPlanResolved.status === 'saved' || exitPlanResolved.status === 'inherited'
+      ? exitPlanResolved.plan.name
+      : exitPlanResolved.status === 'customized'
+        ? c('exitPlan.customized')
+        : exitPlanResolved.status === 'no_rule'
+          ? c('exitPlan.noRule')
+          : null;
+
   return (
     <div data-plan-risk-step={mode} className="flex min-w-0 flex-col gap-3">
       {/* 1 — RISK AT ENTRY: the intended 1R, the baseline both R figures share. */}
       <TradeLauncherRow
         id={ids.riskRow}
         rowRef={riskRow}
-        label={rows('riskAndStop')}
+        label={rows('risk.label')}
         marker={
           atEntry ? (
             <span className="text-muted-foreground text-xs font-medium">{a('steps.required')}</span>
@@ -221,14 +252,14 @@ export function TradePlanRiskStep({
           )
         }
         value={riskValue}
-        support={stopLine}
+        support={riskState === 'defined' && riskAmount !== null ? rows('risk.oneR') : null}
         placeholder={c('notAnswered')}
         error={errorText('risk')}
-        editLabel={a('trade.editAria', { field: rows('riskAndStop') })}
+        editLabel={a('trade.editAria', { field: rows('risk.label') })}
         icon={DollarSign}
         answered={riskValue !== null}
         onOpen={() => setEditor('risk')}
-        buttonData={{ 'data-plan-row': 'risk', 'data-stop-method': stopMethod }}
+        buttonData={{ 'data-plan-row': 'risk', 'data-risk-state': riskState }}
       />
 
       {/* 2 — TARGET: Unanswered, Fixed (with a value) or No Fixed Target. */}
@@ -266,6 +297,19 @@ export function TradePlanRiskStep({
             })}
       />
 
+      {/*
+        THE PLAN AT A GLANCE, read-only and secondary to the rows above: every
+        value here is answered in one of them (decision 54).
+      */}
+      <TradePlannedSummary
+        riskState={riskState}
+        risk={risk}
+        currency={currency}
+        target={target}
+        plannedRR={plannedRR}
+        exitPlanLabel={exitPlanLabel}
+      />
+
       {/* 4 — PRICE CONTEXT: never a result, and it says so where it is entered. */}
       <TradeLauncherRow
         id={ids.priceRow}
@@ -282,46 +326,52 @@ export function TradePlanRiskStep({
         buttonData={{ 'data-plan-row': 'price' }}
       />
 
-      {/* THE 1R BASELINE, AND HOW IT WAS TO BE PROTECTED — one plan, one editor. */}
+      {/* HOW RISK WAS DECIDED — the question first, the amount only if it applies. */}
       <PlanEditor
         open={editor === 'risk'}
-        title={rows('riskAndStop')}
-        description={atEntry ? c('risk.hint') : a('risk.hint')}
+        title={rows('risk.label')}
+        description={rows('risk.question')}
         returnFocusRef={riskRow}
         onClose={() => setEditor(null)}
       >
-        <TextField
-          id={ids.risk}
-          label={atEntry ? c('risk.label') : a('risk.label')}
-          value={risk}
-          onChange={onRiskChange}
-          suffix={currency}
-          inputMode="decimal"
-          figure
-          error={errorText('risk')}
-        />
         <ChoiceGroup
-          idPrefix={ids.stopMethod}
-          legend={rows('stopMethod.legend')}
-          value={stopMethod === 'unanswered' ? null : stopMethod}
+          idPrefix={ids.riskState}
+          legend={rows('risk.question')}
+          hideLegend
+          value={riskState === 'unanswered' ? null : riskState}
           status={c('notAnswered')}
-          onChange={(value) => onStopMethodChange(value)}
+          onChange={(value) => onRiskStateChange(value)}
           aside={
-            stopMethod === 'unanswered' ? null : (
+            riskState === 'unanswered' ? null : (
               <InlineAction
-                ariaLabel={rows('stopMethod.removeAria')}
-                onClick={() => onStopMethodChange('unanswered')}
+                ariaLabel={rows('risk.removeAria')}
+                onClick={() => onRiskStateChange('unanswered')}
               >
                 {c('removeAnswer')}
               </InlineAction>
             )
           }
-          options={PLANNED_STOP_METHODS.map((method) => ({
-            value: method,
-            label: rows(`stopMethod.${method}`),
-            description: rows(`stopMethod.${method}Description`),
-          }))}
+          options={[
+            { value: 'defined', label: rows('risk.defined') },
+            { value: 'no_defined', label: rows('risk.noDefined') },
+          ]}
         />
+        {riskState === 'defined' ? (
+          <TextField
+            id={ids.risk}
+            label={atEntry ? c('risk.label') : a('risk.label')}
+            value={risk}
+            onChange={onRiskChange}
+            suffix={currency}
+            inputMode="decimal"
+            figure
+            hint={atEntry ? c('risk.hint') : a('risk.hint')}
+            error={errorText('risk')}
+          />
+        ) : riskState === 'no_defined' ? (
+          // Said plainly once, where the answer was given: this Trade has no 1R.
+          <Helper>{rows('risk.noDefinedHint')}</Helper>
+        ) : null}
       </PlanEditor>
 
       {/* THE TARGET, WITH ITS TP PRICE: one objective, read together. */}

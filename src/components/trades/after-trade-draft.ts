@@ -39,6 +39,7 @@ import type {
   ContextDraft,
   EmotionsDraft,
   ExitPlanDraft,
+  RiskStateDraft,
   StopMethodDraft,
   TargetDraft,
 } from './at-entry-draft';
@@ -92,7 +93,9 @@ export interface AfterTradeDraft {
   /** Risk at Entry — the 1R baseline; '' is not recorded. */
   readonly risk: string;
   readonly actualRisk: AfterTradeActualRiskDraft;
-  /** The same plan answer At Entry records, reconstructed (decision 53). */
+  /** The same risk decision At Entry records, reconstructed (decision 54). */
+  readonly riskState: RiskStateDraft;
+  /** Retired from capture (decision 54); kept so older drafts still parse. */
   readonly stopMethod: StopMethodDraft;
   readonly target: TargetDraft;
   /** Same shape as At Entry's; `inherit` never arises, because nothing is inherited. */
@@ -132,6 +135,7 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
     exitedAt: '',
     risk: '',
     actualRisk: { answer: 'unanswered', amount: '' },
+    riskState: 'unanswered',
     stopMethod: 'unanswered',
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: { choice: { kind: 'unanswered' }, customText: '', customBaseId: null },
@@ -174,7 +178,20 @@ export function setActualRiskAmount(draft: AfterTradeDraft, amount: string): Aft
   return { ...draft, actualRisk: { answer: 'different', amount } };
 }
 
-/** The plan answer, reconstructed: Unanswered until the trader says (decision 53). */
+/** The risk decision, reconstructed: Unanswered until the trader says (decision 54). */
+export function setRiskState(draft: AfterTradeDraft, riskState: RiskStateDraft): AfterTradeDraft {
+  if (riskState === draft.riskState) return draft;
+  return {
+    ...draft,
+    riskState,
+    risk: riskState === 'defined' ? draft.risk : '',
+    // No planned 1R to match, so the Actual Risk comparison has no question.
+    actualRisk:
+      riskState === 'no_defined' ? { answer: 'unanswered', amount: '' } : draft.actualRisk,
+  };
+}
+
+/** Retired from capture (decision 54); kept for drafts that still hold one. */
 export function setStopMethod(
   draft: AfterTradeDraft,
   stopMethod: StopMethodDraft,
@@ -631,8 +648,16 @@ export type AfterTradeNotice =
   | { readonly kind: 'stop_wrong_side' }
   | { readonly kind: 'target_wrong_side' };
 
-/** Why Actual R cannot be shown — never `0`, never a guess. */
-export type ActualRUnavailableReason = 'needs_pnl_and_risk' | 'needs_risk' | 'needs_pnl';
+/**
+ * Why Actual R cannot be shown — never `0`, never a guess.
+ *
+ * `no_defined_risk` is not a missing input: the trader said this Trade had no
+ * planned 1R, so no R exists to show and none ever will (decision 54). Saying
+ * "needs your risk at entry" there would ask for something they already
+ * answered.
+ */
+export type ActualRUnavailableReason =
+  'needs_pnl_and_risk' | 'needs_risk' | 'needs_pnl' | 'no_defined_risk';
 
 export interface AfterTradeValidation {
   readonly errors: AfterTradeErrors;
@@ -868,11 +893,13 @@ export function validateAfterTradeDraft(
     actual = {
       status: 'unavailable',
       reason:
-        finalPnlMinor === null && riskMinor === null
-          ? 'needs_pnl_and_risk'
-          : riskMinor === null
-            ? 'needs_risk'
-            : 'needs_pnl',
+        draft.riskState === 'no_defined'
+          ? 'no_defined_risk'
+          : finalPnlMinor === null && riskMinor === null
+            ? 'needs_pnl_and_risk'
+            : riskMinor === null
+              ? 'needs_risk'
+              : 'needs_pnl',
     };
   } else {
     const measured = actualR(BigInt(finalPnlMinor), BigInt(riskMinor));
@@ -1098,7 +1125,7 @@ export function buildAfterTradePayload(
       ? {}
       : { actualRiskAnswer: draft.actualRisk.answer }),
     ...(actualRiskAmount === null ? {} : { actualInitialRiskMinor: actualRiskAmount }),
-    ...(draft.stopMethod === 'unanswered' ? {} : { plannedStopMethod: draft.stopMethod }),
+    ...(draft.riskState === 'unanswered' ? {} : { plannedRiskState: draft.riskState }),
     ...(draft.target.state === 'unanswered' ? {} : { targetState: draft.target.state }),
     ...(draft.target.state === 'fixed'
       ? {

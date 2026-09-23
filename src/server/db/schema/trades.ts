@@ -231,6 +231,13 @@ export const trades = pgTable(
     // without a Risk — see `trades_planned_money_check`.
     // -------------------------------------------------------------------
     plannedRiskMinor: bigint('planned_risk_minor', { mode: 'bigint' }),
+    /**
+     * The trader's explicit risk decision (contract decision 54). NULL is
+     * Unanswered and is never 'no_defined'; 'defined' carries
+     * `planned_risk_minor`, 'no_defined' carries no amount and forecloses
+     * every R / RR comparison. Never inferred from `context_stop_price`.
+     */
+    plannedRiskState: text('planned_risk_state'),
     plannedRewardMinor: bigint('planned_reward_minor', { mode: 'bigint' }),
 
     // -------------------------------------------------------------------
@@ -857,10 +864,29 @@ export const trades = pgTable(
       )`,
     ),
     check(
+      'trades_planned_risk_state_check',
+      sql`${table.plannedRiskState} IS NULL OR (
+        ${table.recordingContract} IS NOT NULL
+        AND (
+          (${table.plannedRiskState} = 'defined' AND ${table.plannedRiskMinor} IS NOT NULL)
+          OR (${table.plannedRiskState} = 'no_defined' AND ${table.plannedRiskMinor} IS NULL)
+        )
+      )`,
+    ),
+    /*
+      An Open contract Trade needs an explicit risk DECISION, not necessarily
+      an amount: a stated No Defined Risk is an answer (decision 54). Rows
+      written before that decision carry an amount and satisfy this untouched.
+    */
+    check(
       'trades_contract_open_risk_check',
       sql`${table.recordingContract} IS NULL OR (
         ${table.status} <> 'planned'
-        AND (${table.status} <> 'open' OR ${table.plannedRiskMinor} IS NOT NULL)
+        AND (
+          ${table.status} <> 'open'
+          OR ${table.plannedRiskMinor} IS NOT NULL
+          OR ${table.plannedRiskState} = 'no_defined'
+        )
       )`,
     ),
     check(

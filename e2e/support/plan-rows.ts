@@ -35,6 +35,32 @@ export async function openExitPlanRow(page: Page): Promise<Locator> {
   return editor;
 }
 
+/**
+ * Take one choice the way a trader does. The radio itself is `sr-only`, so a
+ * real browser reaches it through its label, as every choice in this product
+ * is reached.
+ */
+export async function chooseInEditor(editor: Locator, name: string | RegExp) {
+  const radio = editor.getByRole('radio', { name });
+  const id = await radio.getAttribute('id');
+  await editor.locator(`label[for="${id}"]`).click();
+}
+
+/**
+ * Risk is a decision first (contract decision 54): Defined Risk reveals the
+ * amount, No Defined Risk asks for none.
+ */
+export async function answerRisk(
+  page: Page,
+  answer: 'Defined risk' | 'No defined risk',
+  amount?: { readonly id: string; readonly value: string },
+) {
+  const editor = await openPlanRow(page, 'risk');
+  await chooseInEditor(editor, new RegExp(`^${answer}`));
+  if (amount !== undefined) await editor.locator(`#${amount.id}`).fill(amount.value);
+  await closePlanEditor(page);
+}
+
 /** Done keeps every answer — each keystroke is already in the host's draft. */
 export async function closePlanEditor(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();

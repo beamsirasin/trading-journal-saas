@@ -73,11 +73,19 @@ export async function openExitPlanRow(page: Page) {
 
 export const closePlanEditor = rows.closePlanEditor;
 
-/** Risk at Entry — the 1R baseline — recorded in the Risk row's editor. */
+/**
+ * Risk at Entry — the 1R baseline — recorded as the decision it is since
+ * contract decision 54: Defined Risk, then its amount.
+ */
 export async function recordOpenRisk(page: Page, amount: string) {
-  const editor = await openPlanRow(page, 'risk');
-  await editor.locator('#entry-risk').fill(amount);
-  await closePlanEditor(page);
+  await recordOpenStep(page, 'plan');
+  await rows.answerRisk(page, 'Defined risk', { id: 'entry-risk', value: amount });
+}
+
+/** The other answer: no planned 1R at all, and no amount to give. */
+export async function recordOpenNoDefinedRisk(page: Page) {
+  await recordOpenStep(page, 'plan');
+  await rows.answerRisk(page, 'No defined risk');
 }
 
 /** Save Open Trade's minimum: Symbol and Direction on Step 1, Risk at Entry on Plan & Risk. */

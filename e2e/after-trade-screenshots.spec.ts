@@ -14,7 +14,7 @@ import {
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
-import { closePlanEditor, openPlanRow } from './support/plan-rows';
+import { chooseInEditor, closePlanEditor, openPlanRow } from './support/plan-rows';
 import { provisionVerifiedUser } from './support/provision-user';
 
 /**
@@ -108,6 +108,7 @@ test.describe('After Trade step-flow captures', () => {
         // A blocked Save from the last step lands on the control that needs it.
         await goTo(page, 'plan');
         const blocked = await openPlanRow(page, 'risk');
+        await chooseInEditor(blocked, /^Defined risk/);
         await blocked.locator('#after-risk').fill('12..5');
         await closePlanEditor(page);
         await goTo(page, 'save');
@@ -119,6 +120,7 @@ test.describe('After Trade step-flow captures', () => {
         await expect(page.locator('[data-plan-row="risk"]')).toBeFocused();
         await capture(page, `${width}-${theme}-blocked-save`);
         const repaired = await openPlanRow(page, 'risk');
+        await chooseInEditor(repaired, /^Defined risk/);
         await repaired.locator('#after-risk').fill('100');
         await closePlanEditor(page);
         await discardDraft(page);
@@ -301,6 +303,7 @@ async function fillEverything(page: Page) {
   // Plan & Risk reads as launcher rows; each answer is given in its editor.
   await goTo(page, 'plan');
   const riskEditor = await openPlanRow(page, 'risk');
+  await chooseInEditor(riskEditor, /^Defined risk/);
   await riskEditor.locator('#after-risk').fill('100');
   await clickChoice(page, 'It was different');
   await riskEditor.locator('#after-actual-risk-amount').fill('120');

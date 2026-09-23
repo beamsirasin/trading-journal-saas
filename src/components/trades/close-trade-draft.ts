@@ -99,7 +99,8 @@ export type ActualRReadout =
   | { readonly status: 'known'; readonly value: string }
   | {
       readonly status: 'unavailable';
-      readonly reason: 'needs_pnl_and_risk' | 'needs_risk' | 'needs_pnl';
+      /** 'no_defined_risk': the trader stated there was no planned 1R (decision 54). */
+      readonly reason: 'needs_pnl_and_risk' | 'needs_risk' | 'needs_pnl' | 'no_defined_risk';
     };
 
 export interface CloseValidation {

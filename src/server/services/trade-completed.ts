@@ -11,6 +11,7 @@ import { systemClock, type Clock } from '@/lib/time';
 import {
   RECORDING_CONTRACT_ADD_TRADE_V1,
   type ActualRiskAnswer,
+  type PlannedRiskState,
   type PlannedStopMethod,
   type TargetState,
 } from '@/lib/trades/add-trade-contract';
@@ -81,6 +82,7 @@ export interface CreateCompletedTradeInput {
   readonly plannedRiskMinor?: bigint | null;
   readonly actualRiskAnswer?: ActualRiskAnswer | undefined;
   readonly actualInitialRiskMinor?: bigint | null;
+  readonly plannedRiskState?: PlannedRiskState | undefined;
   readonly plannedStopMethod?: PlannedStopMethod | undefined;
   readonly targetState?: TargetState | undefined;
   /** Target Profit. */
@@ -346,6 +348,7 @@ export async function createCompletedTrade(
         plannedRiskMinor: input.plannedRiskMinor ?? null,
         actualRiskAnswer: input.actualRiskAnswer,
         actualInitialRiskMinor: input.actualInitialRiskMinor ?? null,
+        plannedRiskState: input.plannedRiskState,
         plannedStopMethod: input.plannedStopMethod,
         targetState: input.targetState,
         plannedRewardMinor: input.plannedRewardMinor ?? null,
