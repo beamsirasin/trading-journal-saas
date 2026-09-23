@@ -1,15 +1,16 @@
 'use client';
 
-import { Compass, GitBranch, Layers } from 'lucide-react';
+import { Compass, Layers, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
+import { cn } from '@/lib/utils';
 import type { TradeCreateSetupOption, TradeCreateStrategyOption } from '@/server/dal/trades';
 
 import type { RecalledConditionStatus } from './after-trade-draft';
 import type { AnswerState, ConditionStatus } from './at-entry-draft';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import { ChoiceGroup, Helper, InlineAction, Notice, StateText } from './trade-at-entry-controls';
+import { Helper, InlineAction, RadioMark, StateText } from './trade-at-entry-controls';
 import { TradeChoiceList } from './trade-choice-list';
 import { TradeLauncherRow } from './trade-launcher-row';
 import { GroupCard } from './trade-recording-step-parts';
@@ -131,49 +132,72 @@ export function TradeSetupChecklistStep(
   const inheritedPlan =
     props.mode === 'at_entry' && strategy !== null ? props.inheritedExitPlanName : null;
 
+  /*
+    WHAT EACH ROW CAN ADD BENEATH ITS ANSWER — a fact about the answer's
+    context, never an answer of its own:
+      Strategy  the Exit Plan it currently supplies (At Entry, while still
+                inherited), or that the workspace has no Strategies yet.
+      Setup     that the chosen Strategy has no Setups yet.
+    "No strategies" and "no setups" are valid states of a workspace, stated
+    plainly; No strategy / No setup stay one tap away in the editor.
+  */
+  const strategySupport =
+    inheritedPlan !== null
+      ? s('exitPlanFromStrategy', { plan: inheritedPlan })
+      : strategies.length === 0 && strategyAnswer === 'unanswered' && !stale.strategy
+        ? s('noStrategiesRow')
+        : null;
+  const setupSupport =
+    strategy !== null && strategy.setups.length === 0 && setupAnswer === 'unanswered'
+      ? s('noSetupsYet', { strategy: strategy.name })
+      : null;
+
   const close = () => setEditor(null);
 
   return (
-    <div data-setup-checklist-step={props.mode} className="flex min-w-0 flex-col gap-4">
-      <p className="text-muted-foreground text-sm">{s('description')}</p>
+    <div data-setup-checklist-step={props.mode} className="flex min-w-0 flex-col gap-3">
+      <p className="text-muted-foreground mb-1 text-sm">{s('description')}</p>
 
-      <div className="grid min-w-0 gap-2.5 min-[560px]:grid-cols-2 lg:gap-3">
-        <TradeLauncherRow
-          id={`${idPrefix}-strategy`}
-          rowRef={strategyRow}
-          label={c('strategy.label')}
-          value={strategyValue}
-          placeholder={c('strategy.notAnswered')}
-          editLabel={a('trade.editAria', { field: c('strategy.label') })}
-          icon={Compass}
-          answered={strategyAnswer !== 'unanswered' || stale.strategy}
-          onOpen={() => setEditor('strategy')}
-          buttonData={{
-            'data-classification': 'strategy',
-            'data-answer': stale.strategy ? 'unavailable' : strategyAnswer,
-          }}
-        />
-        <TradeLauncherRow
-          id={`${idPrefix}-setup`}
-          rowRef={setupRow}
-          label={c('strategy.setup')}
-          value={setupValue}
-          placeholder={setupAvailable ? c('strategy.notAnswered') : setupPlaceholder}
-          editLabel={a('trade.editAria', { field: c('strategy.setup') })}
-          icon={Layers}
-          answered={setupAvailable && (setupAnswer !== 'unanswered' || stale.setup)}
-          disabled={!setupAvailable}
-          onOpen={() => setEditor('setup')}
-          buttonData={{
-            'data-classification': 'setup',
-            'data-answer': !setupAvailable
-              ? 'unavailable_without_strategy'
-              : stale.setup
-                ? 'unavailable'
-                : setupAnswer,
-          }}
-        />
-      </div>
+      {/* STRATEGY, THEN SETUP — one column, read top to bottom as Step 2 is. */}
+      <TradeLauncherRow
+        id={`${idPrefix}-strategy`}
+        rowRef={strategyRow}
+        label={c('strategy.label')}
+        value={strategyValue}
+        support={strategySupport}
+        supportWraps
+        placeholder={c('strategy.notAnswered')}
+        editLabel={a('trade.editAria', { field: c('strategy.label') })}
+        icon={Compass}
+        answered={strategyAnswer !== 'unanswered' || stale.strategy}
+        onOpen={() => setEditor('strategy')}
+        buttonData={{
+          'data-classification': 'strategy',
+          'data-answer': stale.strategy ? 'unavailable' : strategyAnswer,
+        }}
+      />
+      <TradeLauncherRow
+        id={`${idPrefix}-setup`}
+        rowRef={setupRow}
+        label={c('strategy.setup')}
+        value={setupValue}
+        support={setupSupport}
+        supportWraps
+        placeholder={setupAvailable ? c('strategy.notAnswered') : setupPlaceholder}
+        editLabel={a('trade.editAria', { field: c('strategy.setup') })}
+        icon={Layers}
+        answered={setupAvailable && (setupAnswer !== 'unanswered' || stale.setup)}
+        disabled={!setupAvailable}
+        onOpen={() => setEditor('setup')}
+        buttonData={{
+          'data-classification': 'setup',
+          'data-answer': !setupAvailable
+            ? 'unavailable_without_strategy'
+            : stale.setup
+              ? 'unavailable'
+              : setupAnswer,
+        }}
+      />
 
       {stale.strategy || stale.setup ? (
         <p role="alert" data-classification-unavailable="" className="text-warning text-sm">
@@ -184,27 +208,22 @@ export function TradeSetupChecklistStep(
       {/*
         THE INHERITED EXIT PLAN, ANNOUNCED WHERE IT IS CAUSED. Choosing a
         Strategy may change an Exit Plan that is still inherited, on a step the
-        trader is not looking at; this line says so here, politely, as it
-        happens (UX Rules §20.8). Record Closed never renders it.
+        trader is not looking at (UX Rules §20.8). It is SEEN on the Strategy
+        row, under the name that causes it, and HEARD here: the row's button is
+        named by its edit label, so its support line is never read on a change.
+        Record Closed never renders either.
       */}
-      <div aria-live="polite" className="min-w-0">
+      <div aria-live="polite" className="sr-only">
         {inheritedPlan === null || strategy === null ? null : (
-          <div data-inherited-exit-plan="">
-            <Notice
-              icon={
-                <GitBranch
-                  className="text-muted-foreground mt-0.5 size-4 shrink-0"
-                  aria-hidden="true"
-                />
-              }
-            >
-              {c('strategy.suppliesExitPlan', { strategy: strategy.name, plan: inheritedPlan })}
-            </Notice>
-          </div>
+          <p data-inherited-exit-plan="">
+            {c('strategy.suppliesExitPlan', { strategy: strategy.name, plan: inheritedPlan })}
+          </p>
         )}
       </div>
 
-      <Checklist {...props} s={s} c={c} a={a} />
+      <div className="mt-1 min-w-0">
+        <Checklist {...props} s={s} c={c} a={a} />
+      </div>
 
       {/* Strategy: one focused editor; the choice is the commit. */}
       <TradeAdaptiveOverlay
@@ -322,20 +341,23 @@ type Translate = ReturnType<typeof useTranslations>;
 
 /**
  * THE CHECKLIST, ALWAYS SAYING WHERE IT STANDS. Before there is a Setup to
- * check, the card says what would make one — or, for No strategy and No setup,
- * that there is nothing to check, which is a complete answer. With a Setup,
- * every condition is on screen with its own multi-state answer.
+ * check, one quiet line says what would make one — or, for No strategy, No
+ * setup and a workspace or Strategy with nothing to choose, that there is
+ * nothing to check, which is a complete state and not an error. With a Setup,
+ * every condition is on screen at once, as one list, each with its own
+ * multi-state answer.
  */
 function Checklist(
   props: {
     readonly idPrefix: string;
+    readonly strategies: readonly TradeCreateStrategyOption[];
     readonly classification: SetupChecklistClassification;
     readonly s: Translate;
     readonly c: Translate;
     readonly a: Translate;
   } & ModeProps,
 ) {
-  const { idPrefix, classification, s, c, a } = props;
+  const { idPrefix, strategies, classification, s, c, a } = props;
   const { strategy, setup, strategyAnswer, setupAnswer, stale } = classification;
   const conditions = setup?.conditions ?? [];
   const answered = conditions.filter(
@@ -349,83 +371,256 @@ function Checklist(
     strategyAnswer === 'none'
       ? s('checklistNoStrategy')
       : strategy === null
-        ? s('checklistNeedsStrategy')
+        ? strategies.length === 0
+          ? s('checklistNoStrategies')
+          : s('checklistNeedsStrategy')
         : setupAnswer === 'none'
           ? s('checklistNoSetup')
           : setup === null
-            ? s('checklistNeedsSetup')
+            ? strategy.setups.length === 0
+              ? s('checklistNoSetups', { strategy: strategy.name })
+              : s('checklistNeedsSetup')
             : conditions.length === 0
               ? s('checklistEmpty')
               : null;
+
+  if (state !== null) {
+    return (
+      <div
+        data-checklist-state="message"
+        className="text-muted-foreground flex min-w-0 items-start gap-2.5 px-1 text-sm"
+      >
+        <ListChecks className="text-subtle-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <p data-checklist-message="" className="min-w-0">
+          {state}
+        </p>
+      </div>
+    );
+  }
+
+  const removeAria = (label: string) => c('strategy.removeConditionAria', { condition: label });
 
   return (
     <GroupCard
       title={c('strategy.conditions')}
       aside={
-        conditions.length === 0 ? null : (
-          <StateText>{c('summary.conditions', { answered, total: conditions.length })}</StateText>
-        )
+        <StateText>{c('summary.conditions', { answered, total: conditions.length })}</StateText>
       }
-      data-checklist-state={state === null ? 'conditions' : 'message'}
+      data-checklist-state="conditions"
     >
-      {state !== null ? (
-        <p data-checklist-message="" className="text-muted-foreground text-sm">
-          {state}
-        </p>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-1">
-          <Helper>
-            {props.mode === 'at_entry' ? c('strategy.conditionsHint') : a('conditions.hint')}
-          </Helper>
-          <ul className="divide-border mt-1 flex min-w-0 flex-col divide-y">
-            {conditions.map((condition) => {
-              const remove = (
-                <InlineAction
-                  ariaLabel={c('strategy.removeConditionAria', { condition: condition.label })}
-                  onClick={() => props.onCondition(condition.conditionKey, null)}
-                >
-                  {c('removeAnswer')}
-                </InlineAction>
-              );
+      <div className="-mt-2 flex min-w-0 flex-col">
+        <Helper>
+          {props.mode === 'at_entry' ? c('strategy.conditionsHint') : a('conditions.hint')}
+        </Helper>
+        <ul className="divide-border mt-2 flex min-w-0 flex-col divide-y">
+          {conditions.map((condition) =>
+            props.mode === 'at_entry' ? (
+              <ConditionRow
+                key={condition.conditionKey}
+                idPrefix={`${idPrefix}-condition-${condition.conditionKey}`}
+                label={condition.label}
+                value={props.conditionAnswers[condition.conditionKey] ?? null}
+                onChange={(status) => props.onCondition(condition.conditionKey, status)}
+                options={[
+                  { value: 'met', label: c('strategy.met') },
+                  { value: 'not_met', label: c('strategy.notMet') },
+                ]}
+                notAnswered={c('notAnswered')}
+                removeLabel={c('removeAnswer')}
+                removeAria={removeAria(condition.label)}
+              />
+            ) : (
+              <ConditionRow
+                key={condition.conditionKey}
+                idPrefix={`${idPrefix}-condition-${condition.conditionKey}`}
+                label={condition.label}
+                value={props.conditionAnswers[condition.conditionKey] ?? null}
+                onChange={(status) => props.onCondition(condition.conditionKey, status)}
+                options={[
+                  { value: 'met', label: c('strategy.met') },
+                  { value: 'not_met', label: c('strategy.notMet') },
+                  { value: 'unknown', label: a('conditions.dontRemember') },
+                ]}
+                notAnswered={c('notAnswered')}
+                removeLabel={c('removeAnswer')}
+                removeAria={removeAria(condition.label)}
+              />
+            ),
+          )}
+        </ul>
+      </div>
+    </GroupCard>
+  );
+}
+
+/**
+ * ONE CONDITION, ONE ROW OF A LIST — not a form of its own.
+ *
+ * The condition's words sit on the left with its state beneath them: "Not
+ * answered", or once answered the named Remove answer that returns it to
+ * Unanswered (never to Not met). The answers sit on the right, so down the
+ * whole list they form one column a trader can scan. A short condition shares
+ * its line with them; a long one takes the full width and they move beneath
+ * it, still on the right — the text is never squeezed into a narrow column.
+ *
+ * A CHOICE GROUP, NOT A SEGMENTED CONTROL (DESIGN.md "Choices"). Every option
+ * is neutral at rest, so an unanswered condition shows nothing selected; the
+ * chosen one carries the radio marker, a stronger weight and the active
+ * surface, so it survives greyscale. The radios are native, named by the
+ * condition, and moved between with the arrow keys.
+ *
+ * Record Closed's third answer, Don't remember, does not fit beside a
+ * condition on a phone, so there the three answers share one full-width row.
+ */
+function ConditionRow<T extends string>({
+  idPrefix,
+  label,
+  value,
+  onChange,
+  options,
+  notAnswered,
+  removeLabel,
+  removeAria,
+}: {
+  idPrefix: string;
+  label: string;
+  value: T | null;
+  onChange: (value: T | null) => void;
+  options: readonly { value: T; label: string }[];
+  notAnswered: string;
+  removeLabel: string;
+  removeAria: string;
+}) {
+  const name = useId();
+  const labelId = `${idPrefix}-label`;
+  const three = options.length === 3;
+  // How wide a row must be before its words and its answers sit side by side.
+  const wide = three ? 'lg' : 'md';
+  return (
+    <li className="@container/condition min-w-0 py-3 last:pb-0">
+      <fieldset
+        aria-labelledby={labelId}
+        data-condition-answer={value ?? 'unanswered'}
+        className="min-w-0"
+      >
+        {/*
+          ONE SHAPE FOR EVERY ROW. On a phone the words take the full width and
+          the state and the answers share the line beneath — state on the left,
+          answers on the right — whatever the length of the words. From a wider
+          row the words and state sit beside the answers. Record Closed's three
+          answers take their own full-width line until the row is wide enough.
+        */}
+        <div
+          className={cn(
+            'grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2',
+            wide === 'md' ? '@[34rem]/condition:gap-x-6' : '@[40rem]/condition:gap-x-6',
+          )}
+        >
+          <p
+            id={labelId}
+            className={cn(
+              'text-foreground col-span-2 text-sm leading-5 font-medium break-words',
+              wide === 'md'
+                ? '@[34rem]/condition:col-span-1 @[34rem]/condition:self-end'
+                : '@[40rem]/condition:col-span-1 @[40rem]/condition:self-end',
+            )}
+          >
+            {label}
+          </p>
+          <div
+            className={cn(
+              'col-start-1 flex min-h-5 min-w-0 items-center',
+              three && 'col-span-2',
+              wide === 'md'
+                ? '@[34rem]/condition:row-start-2 @[34rem]/condition:self-start'
+                : '@[40rem]/condition:col-span-1 @[40rem]/condition:row-start-2 @[40rem]/condition:self-start',
+            )}
+          >
+            {value === null ? (
+              <span data-condition-state="" className="text-subtle-foreground text-[0.8125rem]">
+                {notAnswered}
+              </span>
+            ) : (
+              <button
+                type="button"
+                aria-label={removeAria}
+                onClick={() => onChange(null)}
+                className={cn(
+                  'text-muted-foreground hover:text-foreground focus-visible:ring-ring relative rounded-sm text-left text-[0.8125rem] underline-offset-4 outline-none hover:underline focus-visible:ring-2',
+                  'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
+                )}
+              >
+                {removeLabel}
+              </button>
+            )}
+          </div>
+          <div
+            className={cn(
+              'min-w-0 gap-2',
+              three
+                ? 'col-span-2 grid grid-cols-3 @[40rem]/condition:col-span-1 @[40rem]/condition:col-start-2 @[40rem]/condition:row-span-2 @[40rem]/condition:row-start-1 @[40rem]/condition:flex'
+                : 'col-start-2 flex justify-end @[34rem]/condition:row-span-2 @[34rem]/condition:row-start-1',
+            )}
+          >
+            {options.map((option) => {
+              const id = `${idPrefix}-${option.value}`;
+              const checked = value === option.value;
               return (
-                <li key={condition.conditionKey} className="min-w-0 py-3">
-                  {props.mode === 'at_entry' ? (
-                    <ChoiceGroup
-                      idPrefix={`${idPrefix}-condition-${condition.conditionKey}`}
-                      legend={condition.label}
-                      value={props.conditionAnswers[condition.conditionKey] ?? null}
-                      compact
-                      status={c('notAnswered')}
-                      aside={remove}
-                      onChange={(status) => props.onCondition(condition.conditionKey, status)}
-                      options={[
-                        { value: 'met', label: c('strategy.met') },
-                        { value: 'not_met', label: c('strategy.notMet') },
-                      ]}
-                    />
-                  ) : (
-                    <ChoiceGroup
-                      idPrefix={`${idPrefix}-condition-${condition.conditionKey}`}
-                      legend={condition.label}
-                      value={props.conditionAnswers[condition.conditionKey] ?? null}
-                      compact
-                      columns={3}
-                      status={c('notAnswered')}
-                      aside={remove}
-                      onChange={(status) => props.onCondition(condition.conditionKey, status)}
-                      options={[
-                        { value: 'met', label: c('strategy.met') },
-                        { value: 'not_met', label: c('strategy.notMet') },
-                        { value: 'unknown', label: a('conditions.dontRemember') },
-                      ]}
-                    />
-                  )}
-                </li>
+                <div key={option.value} className="min-w-0">
+                  <input
+                    type="radio"
+                    id={id}
+                    name={name}
+                    value={option.value}
+                    checked={checked}
+                    onChange={() => onChange(option.value)}
+                    className="peer sr-only"
+                  />
+                  <label
+                    htmlFor={id}
+                    data-option-selected={checked ? 'true' : undefined}
+                    className={cn(
+                      'flex h-full min-h-11 min-w-0 cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors motion-reduce:transition-none',
+                      /*
+                        THREE ANSWERS ON A PHONE STACK THE MARKER ABOVE THE WORD,
+                        as Confidence's steps do, so "Don't remember" wraps only
+                        at its space and never mid-word, down to a 360px phone.
+                      */
+                      three &&
+                        'flex-col justify-center gap-1 px-1.5 py-2 text-center @[40rem]/condition:flex-row @[40rem]/condition:justify-start @[40rem]/condition:gap-2 @[40rem]/condition:px-3 @[40rem]/condition:py-1.5 @[40rem]/condition:text-left',
+                      'peer-focus-visible:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+                      checked
+                        ? 'border-foreground/60 bg-accent text-foreground font-semibold'
+                        : 'border-control-border bg-background hover:bg-accent text-foreground font-medium',
+                    )}
+                  >
+                    <RadioMark checked={checked} />
+                    {/*
+                      The word keeps its selected width at rest — a bold,
+                      invisible, zero-height copy drawn by CSS reserves it — so
+                      choosing an answer never nudges its neighbours or the
+                      column of answers. The copy is not text: the label's name
+                      stays exactly the word.
+                    */}
+                    <span
+                      data-label={option.label}
+                      className={cn(
+                        'inline-flex min-w-0 flex-col',
+                        'after:invisible after:h-0 after:overflow-hidden after:font-semibold after:content-[attr(data-label)] after:select-none',
+                        three
+                          ? 'text-[0.8125rem] leading-4 @[40rem]/condition:text-sm @[40rem]/condition:leading-5'
+                          : 'whitespace-nowrap',
+                      )}
+                    >
+                      {option.label}
+                    </span>
+                  </label>
+                </div>
               );
             })}
-          </ul>
+          </div>
         </div>
-      )}
-    </GroupCard>
+      </fieldset>
+    </li>
   );
 }

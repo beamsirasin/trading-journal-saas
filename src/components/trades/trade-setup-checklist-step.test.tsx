@@ -267,14 +267,30 @@ describe('Setup & Checklist — Strategy and Setup keep their three answers', ()
   it('says a Strategy has no Setups yet, and still takes No setup', () => {
     renderStep({ mode: 'at_entry' });
     choose('Strategy', 'Range Fade');
+    // Said on the row and in place of the checklist, as a state — not an error.
+    expect(row('setup')).toHaveTextContent('Range Fade has no setups yet.');
+    expect(row('setup')).toHaveAttribute('data-answer', 'unanswered');
+    expect(checklistMessage()).toBe(
+      'Range Fade has no setups, so there is no checklist to answer.',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Edit Setup' }));
-    expect(screen.getByText('Range Fade has no setups yet.')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('dialog')).getByText('Range Fade has no setups yet.'),
+    ).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'No setup' }));
     expect(row('setup')).toHaveAttribute('data-answer', 'none');
+    // Once answered, the row says the answer and nothing more.
+    expect(row('setup')).not.toHaveTextContent('has no setups yet');
+    expect(checklistMessage()).toBe('No setup for this trade, so there is no checklist to answer.');
   });
 
   it('says there are no strategies yet, and still takes No strategy', () => {
     renderStep({ mode: 'after_trade', offered: { strategies: [], exitPlans: [] } });
+    expect(row('strategy')).toHaveTextContent('Not answered');
+    expect(row('strategy')).toHaveTextContent('No strategies in this workspace yet');
+    expect(checklistMessage()).toBe(
+      'There are no strategies yet, so there is no checklist to answer.',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Edit Strategy' }));
     expect(
       screen.getByText('You have no strategies yet. Add them on the Strategies page.'),
@@ -283,6 +299,10 @@ describe('Setup & Checklist — Strategy and Setup keep their three answers', ()
       within(screen.getByRole('dialog')).getByRole('button', { name: 'No strategy' }),
     );
     expect(row('strategy')).toHaveAttribute('data-answer', 'none');
+    expect(row('strategy')).not.toHaveTextContent('No strategies in this workspace yet');
+    expect(checklistMessage()).toBe(
+      'No strategy for this trade, so there is no checklist to answer.',
+    );
   });
 
   it('keeps a Setup with no conditions from looking unfinished', () => {
@@ -340,6 +360,32 @@ describe('Setup & Checklist — conditions are multi-state, never checkboxes', (
     expect(within(retest).getByRole('radio', { name: 'Not met' })).not.toBeChecked();
   });
 
+  it('each row reads its own state — Unanswered in words, an answer by marker and weight', () => {
+    openChecklist('at_entry');
+    const retest = screen.getByRole('group', { name: 'Retest held' });
+    // Unanswered: said in words, nothing selected, and nothing to remove.
+    expect(retest).toHaveAttribute('data-condition-answer', 'unanswered');
+    expect(within(retest).getByText('Not answered')).toBeInTheDocument();
+    expect(retest.querySelector('[data-option-selected]')).toBeNull();
+    expect(within(retest).queryByRole('button', { name: /Remove answer/ })).toBeNull();
+
+    fireEvent.click(within(retest).getByRole('radio', { name: 'Met' }));
+    expect(retest).toHaveAttribute('data-condition-answer', 'met');
+    const selected = retest.querySelectorAll('[data-option-selected]');
+    expect(selected).toHaveLength(1);
+    expect(selected[0]).toHaveTextContent('Met');
+    expect(within(retest).queryByText('Not answered')).toBeNull();
+    // The other row is untouched: answering one never answers its neighbour.
+    expect(screen.getByRole('group', { name: 'Trend aligned' })).toHaveAttribute(
+      'data-condition-answer',
+      'unanswered',
+    );
+
+    fireEvent.click(within(retest).getByRole('button', { name: 'Remove answer for Retest held' }));
+    expect(retest).toHaveAttribute('data-condition-answer', 'unanswered');
+    expect(within(retest).getByText('Not answered')).toBeInTheDocument();
+  });
+
   it('Record Closed adds Don’t remember as its own answer, distinct from Not met and Unanswered', () => {
     openChecklist('after_trade');
     const retest = screen.getByRole('group', { name: 'Retest held' });
@@ -367,6 +413,8 @@ describe('Setup & Checklist — the Exit Plan', () => {
     expect(notice()).toContain(
       'Golden Breakout currently supplies the exit plan “Trail structure”',
     );
+    // SEEN where it is caused: under the Strategy on its own row, whole, not truncated.
+    expect(row('strategy')).toHaveTextContent('Exit plan from Strategy: Trail structure');
     // The announcement sits in a polite live region, so the change is heard as well as seen.
     expect(document.querySelector('[data-inherited-exit-plan]')!.parentElement).toHaveAttribute(
       'aria-live',
@@ -374,6 +422,9 @@ describe('Setup & Checklist — the Exit Plan', () => {
     );
     choose('Strategy', 'Range Fade');
     expect(notice()).toContain('Range Fade currently supplies the exit plan “Fade to the mean”');
+    // A Strategy change is never silent: the row follows it.
+    expect(row('strategy')).toHaveTextContent('Exit plan from Strategy: Fade to the mean');
+    expect(row('strategy')).not.toHaveTextContent('Trail structure');
     // The step itself never writes the Exit Plan: inheritance is still the host's answer.
     expect(latest.entry.exitPlan.choice).toEqual({ kind: 'inherit' });
   });
@@ -387,6 +438,8 @@ describe('Setup & Checklist — the Exit Plan', () => {
     expect(notice()).toBeNull();
     choose('Strategy', 'Range Fade');
     expect(notice()).toBeNull();
+    // An override is not implied to be inherited, on the row either.
+    expect(row('strategy')).not.toHaveTextContent(/Exit plan from Strategy/);
     expect(latest.entry.exitPlan.choice).toEqual({ kind: 'no_rule' });
   });
 
@@ -395,6 +448,7 @@ describe('Setup & Checklist — the Exit Plan', () => {
     choose('Strategy', 'Golden Breakout');
     expect(notice()).toBeNull();
     expect(screen.queryByText(/supplies the exit plan/)).toBeNull();
+    expect(row('strategy')).not.toHaveTextContent(/Exit plan from Strategy/);
     expect(latest.after.exitPlan.choice).toEqual({ kind: 'unanswered' });
   });
 });

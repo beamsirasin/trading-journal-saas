@@ -35,6 +35,7 @@ export function TradeLauncherRow({
   marker = null,
   value,
   support = null,
+  supportWraps = false,
   placeholder,
   error,
   editLabel,
@@ -52,6 +53,12 @@ export function TradeLauncherRow({
   value: string | null;
   /** A second recorded answer read under the value, or null when there is none. */
   support?: string | null;
+  /**
+   * Let a support line that must be read whole wrap instead of truncating —
+   * Setup & Checklist's inherited Exit Plan names a plan the trader may be
+   * about to change. Off by default, so every other row keeps its one line.
+   */
+  supportWraps?: boolean;
   /** The neutral word for nothing recorded — never a negative (UX Rules §4.3). */
   placeholder: string;
   error?: string | undefined;
@@ -114,7 +121,10 @@ export function TradeLauncherRow({
           {support === null ? null : (
             <span
               data-launcher-support=""
-              className="text-muted-foreground mt-0.5 block truncate text-[0.8125rem] leading-5"
+              className={cn(
+                'text-muted-foreground mt-0.5 block text-[0.8125rem] leading-5',
+                supportWraps ? 'break-words' : 'truncate',
+              )}
             >
               {support}
             </span>
