@@ -1212,6 +1212,10 @@ export const trades = pgTable(
     // choice, independent of P&L sign and R — so it is not tied to either.
     // What stays structural: Money is the only result basis, and Actual R
     // exists only when both of its inputs do (Final Net P&L / Risk at Entry).
+    //
+    // An OPEN contract row in Money mode needs a 1R — or the trader's explicit
+    // No Defined Risk (migration 0031, contract decision 54), which opens a
+    // Trade that will never have one. Unanswered is not that answer.
     // The legacy shapes stay exactly as they were, so a derived
     // outcome (legacy row, or a contract row closed by the pre-contract Final
     // Close) is still held to its sign/tolerance derivation. `canceled` is deliberately
@@ -1253,6 +1257,7 @@ export const trades = pgTable(
             AND (
               ${table.actualInitialRiskMinor} IS NOT NULL
               OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskMinor} IS NOT NULL)
+              OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskState} = 'no_defined')
             )
           )
         )

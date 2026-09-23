@@ -656,8 +656,9 @@ function replayOf(
  * price is context, a known Risk at Entry is positive, and an explicit Fixed
  * Target carries Target Profit or a TP price.
  *
- * At Entry (Save Open Trade) requires Risk at Entry and a Matched / Different
- * Actual Risk answer, and may inherit the Strategy's default Exit Plan.
+ * At Entry (Save Open Trade) requires an explicit risk decision — a Defined
+ * Risk at Entry or No Defined Risk (decision 54) — and may inherit the
+ * Strategy's default Exit Plan.
  *
  * After Trade (Save Closed Trade) requires nothing beyond identity: Risk at
  * Entry, Actual Risk and every other answer may be Unanswered. It never
@@ -985,8 +986,13 @@ export async function createTradeInTx(
   // means this Trade must be created already `open`; validated
   // identically to `openTrade`'s own Price/Money checks (same error
   // codes), just before the insert rather than in a second mutation.
+  // A contract At Entry Trade is always Money-authoritative (contract §3), so
+  // it opens in Money even when no plan basis exists — an explicit No Defined
+  // Risk with no Target carries no planned money at all (decision 54).
   const defaultActualMode =
-    input.recordingTiming === 'at_entry' ? planAuthority.systemPlanBasis : null;
+    input.recordingTiming === 'at_entry'
+      ? (planAuthority.systemPlanBasis ?? (contract ? 'money' : null))
+      : null;
   const actualResultMode = input.actualResultMode ?? defaultActualMode ?? undefined;
   const defaultingActualFromPlan =
     input.actualResultMode === undefined && actualResultMode !== undefined;

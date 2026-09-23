@@ -135,6 +135,7 @@ describe('Stage 6 After-Trade Context (real database)', () => {
       recordingContract: 'add_trade_v1',
       systemPlanBasis: 'money',
       plannedRiskMinor: 10_000n,
+      plannedRiskState: 'defined',
       actualRiskAnswer: 'matched',
       enteredAt: ENTERED_AT,
       enteredAtSource: 'trader',

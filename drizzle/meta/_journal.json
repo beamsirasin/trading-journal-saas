@@ -218,6 +218,13 @@
       "when": 1790164399983,
       "tag": "0030_planned_risk_state",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790182956030,
+      "tag": "0031_no_defined_risk_open",
+      "breakpoints": true
     }
   ]
 }

@@ -226,6 +226,60 @@ describe('Add Trade contract At Entry (real database)', () => {
       });
     });
 
+    // Decision 54: an explicit No Defined Risk opens a Trade with no 1R. The
+    // payloads below are exactly what the At Entry form builds for it — no
+    // plan basis without planned money, and one with a remembered Target.
+    it.each([
+      ['with no planned money at all', {}],
+      [
+        'with a Fixed Target from Target Profit',
+        {
+          systemPlanBasis: 'money' as const,
+          targetState: 'fixed' as const,
+          plannedRewardMinor: 30_000n,
+        },
+      ],
+    ])('opens a No Defined Risk Trade %s', async (_label, extra) => {
+      const fw = await freshFramework();
+      const {
+        systemPlanBasis: _basis,
+        plannedRiskMinor: _risk,
+        actualRiskAnswer: _answer,
+        ...base
+      } = contractInput(fw);
+      const result = await createTrade(workspaceId, actorUserId, {
+        ...base,
+        ...ENTERED,
+        plannedRiskState: 'no_defined',
+        ...extra,
+      });
+      if (!result.ok) throw new Error(`No Defined Risk create failed: ${result.code}`);
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        status: 'open',
+        actualResultMode: 'money',
+        plannedRiskState: 'no_defined',
+        plannedRiskMinor: null,
+        actualInitialRiskMinor: null,
+        actualRiskAnswer: null,
+        plannedStopMethod: null,
+      });
+
+      // It closes on its stated result, and no R is ever built for it.
+      const closed = await recordContractExit(workspaceId, actorUserId, result.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: 12_000n,
+        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+      });
+      expect(closed).toMatchObject({ ok: true, actualR: null });
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        status: 'closed',
+        netPnlMinor: 12_000n,
+        actualR: null,
+        plannedRiskState: 'no_defined',
+      });
+    });
+
     it('keeps a defaulted entry time distinct from one the trader confirmed', async () => {
       const fw = await freshFramework();
       const defaulted = await readTrade(

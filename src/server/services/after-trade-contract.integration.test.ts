@@ -312,6 +312,7 @@ describe('Add Trade contract After Trade (real database)', () => {
         symbol: 'XAUUSD',
         direction: 'long',
         plannedRiskMinor: 10_000n,
+        plannedRiskState: 'defined' as const,
         actualRiskAnswer: 'matched' as const,
       };
       const open = await createTrade(workspaceId, actorUserId, atEntryRequest);
@@ -397,6 +398,7 @@ describe('Add Trade contract After Trade (real database)', () => {
           symbol: 'XAUUSD',
           direction: 'long',
           plannedRiskMinor: 10_000n,
+          plannedRiskState: 'defined' as const,
           actualRiskAnswer: 'matched' as const,
         };
         const first = await createTrade(workspaceId, actorUserId, request);
@@ -859,6 +861,7 @@ describe('Add Trade contract After Trade (real database)', () => {
           symbol: 'XAUUSD',
           direction: 'long',
           plannedRiskMinor: 5_000n,
+          plannedRiskState: 'defined',
           actualRiskAnswer: 'matched',
           strategyId: fw.strategyId,
           setupId: fw.setupId,

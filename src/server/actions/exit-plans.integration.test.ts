@@ -154,6 +154,7 @@ function draftFor(tradingAccountId: string): AtEntryDraft {
     ...createAtEntryDraft(tradingAccountId),
     symbol: 'XAUUSD',
     direction: 'long',
+    riskState: 'defined',
     risk: '100',
   };
 }

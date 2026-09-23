@@ -27,6 +27,7 @@ import {
   recordOpenConcept,
   recordOpenDirection,
   recordOpenMinimum,
+  recordOpenNoDefinedRisk,
   recordOpenPriceLevels,
   recordOpenRisk,
   recordOpenSave,
@@ -346,6 +347,46 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
       timeframe: null,
     });
   });
+
+  // Decision 54: an explicit No Defined Risk is a complete risk decision. The
+  // Save must reach the database and be accepted there, with and without a
+  // remembered Fixed Target — every layer in between once refused one of them.
+  for (const target of [null, '300'] as const) {
+    test(`2b · No Defined Risk saves${target === null ? '' : ' with a Fixed Target'}, at 390px`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      page.setDefaultTimeout(15_000);
+      await page.setViewportSize(PHONE);
+      const user = await newUser(page, target === null ? 'ro-no-risk' : 'ro-no-risk-tp');
+      await page.goto(ROUTE);
+      await recordOpenSymbol(page, 'EURUSD');
+      await recordOpenDirection(page, 'Long');
+      await recordOpenNoDefinedRisk(page);
+      if (target !== null) {
+        const editor = await openPlanRow(page, 'target');
+        await chooseInEditor(editor, /^Fixed target/);
+        await editor.locator('#entry-target-profit').fill(target);
+        await closePlanEditor(page);
+      }
+      await recordOpenStep(page, 'context');
+      await expect(page.locator('#entry-actual-risk-row')).toHaveAttribute(
+        'data-actual-risk-summary',
+        'not_applicable',
+      );
+      await recordOpenSave(page);
+      await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
+      expect(await latestTrade(user.workspaceId)).toMatchObject({
+        status: 'open',
+        actualResultMode: 'money',
+        plannedRiskState: 'no_defined',
+        plannedRiskMinor: null,
+        actualRiskAnswer: null,
+        plannedRewardMinor: target === null ? null : 30000n,
+        targetState: target === null ? null : 'fixed',
+      });
+    });
+  }
 
   test('3 · Back/Next keep every answer; a reload restores the draft from Step 1', async ({
     page,
