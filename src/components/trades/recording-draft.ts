@@ -1088,11 +1088,16 @@ function upgradeV1Envelope(legacy: z.infer<typeof v1EnvelopeSchema>): RecordingD
  * A v2 draft's At Entry Actual Risk, read the only way that cannot invent an
  * answer: its `matched` was the untouched default far more often than it was
  * a statement, and the two are indistinguishable in what was stored.
+ *
+ * ONLY v2. From v3 the default is `unanswered`, so a stored `matched` can only
+ * have been chosen, and it is kept. The guard names the version that changed
+ * the meaning, never "the current version": when v4 arrived, a guard written
+ * as `=== RECORDING_DRAFT_VERSION` quietly began downgrading every v3 Matched.
  */
 function upgradeV2Envelope(parsed: z.infer<typeof envelopeSchema>): RecordingDraftEnvelope {
   const envelope: RecordingDraftEnvelope = { ...parsed, version: RECORDING_DRAFT_VERSION };
   if (
-    parsed.version === RECORDING_DRAFT_VERSION ||
+    parsed.version >= 3 ||
     envelope.atEntry === null ||
     envelope.atEntry.actualRisk.mode !== 'matched'
   ) {
@@ -1117,7 +1122,8 @@ function upgradeV3Envelope(
   parsed: z.infer<typeof envelopeSchema>,
   envelope: RecordingDraftEnvelope,
 ): RecordingDraftEnvelope {
-  if (parsed.version === RECORDING_DRAFT_VERSION) return envelope;
+  // Only a pre-v4 draft lacks the decision; the same rule as above, for v4.
+  if (parsed.version >= 4) return envelope;
   const decided = (risk: string): 'unanswered' | 'defined' =>
     risk.trim() === '' ? 'unanswered' : 'defined';
   return {

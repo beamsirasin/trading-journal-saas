@@ -424,6 +424,36 @@ describe('persisted shape', () => {
   });
 
   /*
+    FROM v3 ON, `matched` IS A STATEMENT. v3 introduced the Unanswered default,
+    so a v3 draft's Matched can only have been chosen. It must survive the v3 →
+    v4 upgrade as Matched — only v2, where Matched was also the untouched
+    default, is ambiguous and read as Unanswered.
+  */
+  it("keeps a v3 draft's explicit Matched, and its Unanswered stays Unanswered", () => {
+    const current = JSON.parse(serializeRecordingDraft(envelopeWith(workedAtEntry())));
+    const v3 = (actualRisk: { mode: string; amount: string }) => {
+      // A v3 envelope: no risk decision yet (v4 added it), Actual Risk as stored.
+      const { riskState: _decision, ...atEntry } = current.atEntry;
+      return JSON.stringify({ ...current, version: 3, atEntry: { ...atEntry, actualRisk } });
+    };
+
+    const matched = parseRecordingDraft(v3({ mode: 'matched', amount: '' }), NOW);
+    if (matched.status !== 'recovered') throw new Error('v3 draft not recovered');
+    expect(matched.envelope.version).toBe(RECORDING_DRAFT_VERSION);
+    expect(matched.envelope.atEntry?.actualRisk).toEqual({ mode: 'matched', amount: '' });
+    // The v4 upgrade itself still runs: the typed amount makes the risk Defined.
+    expect(matched.envelope.atEntry?.riskState).toBe('defined');
+
+    const untouched = parseRecordingDraft(v3({ mode: 'unanswered', amount: '' }), NOW);
+    if (untouched.status !== 'recovered') throw new Error('v3 draft not recovered');
+    expect(untouched.envelope.atEntry?.actualRisk.mode).toBe('unanswered');
+
+    const different = parseRecordingDraft(v3({ mode: 'different', amount: '150' }), NOW);
+    if (different.status !== 'recovered') throw new Error('v3 draft not recovered');
+    expect(different.envelope.atEntry?.actualRisk).toEqual({ mode: 'different', amount: '150' });
+  });
+
+  /*
     BOTH ANSWERS SURVIVE A RELOAD, and keep their explicitness: a Stop Method
     the trader chose and an Actual Risk they stated must still be different
     from the states nobody answered (contract decisions 52–53).
