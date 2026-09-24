@@ -57,8 +57,15 @@ export function TradeAfterTradeContextStep({
   onNote,
   onTradingviewUrl,
   systemResult = null,
+  task,
 }: {
   idPrefix: string;
+  /**
+   * Which task shows Stage 6, for the one sentence that differs. After a Final
+   * Close the Trade is already Closed and saved. In Record Closed nothing is
+   * saved until the task's own Save, which saves these answers with it.
+   */
+  task: 'close_existing' | 'record_closed';
   /** Section A, the System Result — rendered first, before the context fields. */
   systemResult?: ReactNode;
   emotions: EmotionsDraft;
@@ -91,7 +98,9 @@ export function TradeAfterTradeContextStep({
 
   return (
     <div data-after-trade-context-step="" className="flex min-w-0 flex-col gap-4">
-      <p className="text-muted-foreground text-sm">{s('description')}</p>
+      <p className="text-muted-foreground text-sm">
+        {task === 'record_closed' ? s('descriptionRecordClosed') : s('description')}
+      </p>
 
       {systemResult}
 

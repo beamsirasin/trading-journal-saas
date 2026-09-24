@@ -2377,12 +2377,12 @@
             "removeOutcomeAria": "Remove outcome answer",
             "winNegative": "You chose Win, but your final net P&L is negative. Check it if that is not what you meant. This does not block saving.",
             "lossPositive": "You chose Loss, but your final net P&L is positive. Check it if that is not what you meant. This does not block saving.",
-            "actualR": "Actual R",
+            "actualR": "Trader R",
             "actualRBasis": "Final net P&L ÷ risk at entry",
             "unavailable": {
-              "needs_pnl_and_risk": "Actual R needs your final net P&L and risk at entry.",
-              "needs_risk": "Actual R needs your risk at entry.",
-              "needs_pnl": "Actual R needs your final net P&L.",
+              "needs_pnl_and_risk": "Trader R needs your final net P&L and risk at entry.",
+              "needs_risk": "Trader R needs your risk at entry.",
+              "needs_pnl": "Trader R needs your final net P&L.",
               "no_defined_risk": "No planned risk was defined, so R is not available."
             }
           },
@@ -3215,6 +3215,7 @@
       "title": "After trade",
       "optional": "Optional",
       "description": "Optional. Add anything useful while it is fresh. The trade is already saved.",
+      "descriptionRecordClosed": "Optional. Anything you add here is saved with the closed trade when you press Save.",
       "close": "Close",
       "done": "Done",
       "planOutcome": {
@@ -3223,7 +3224,7 @@
         "later": "Optional. You can answer later from the trade.",
         "boundedLegend": "What happened first under the original plan?",
         "targetFirst": "Planned target",
-        "riskFirst": "Planned risk / stop",
+        "riskFirst": "Planned risk limit",
         "cannotDetermine": "Can't determine",
         "exitPlanHeading": "Your exit plan",
         "exitPlanLegend": "If you followed this exit plan, what result would it have produced?",

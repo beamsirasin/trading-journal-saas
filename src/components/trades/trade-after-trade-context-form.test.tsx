@@ -97,6 +97,10 @@ describe('Stage 6 after a Final Close', () => {
     renderForm();
     const closed = document.querySelector('[data-trade-closed]')!;
     expect(closed).toHaveTextContent('Trade closed');
+    // After a Final Close the Trade really is saved, and Stage 6 says so.
+    expect(document.querySelector('[data-after-trade-context-step]')).toHaveTextContent(
+      'The trade is already saved.',
+    );
     const emotion = document.getElementById('stage6-post-emotions')!;
     expect(closed.compareDocumentPosition(emotion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // Every part starts Unanswered — never None, never a default.

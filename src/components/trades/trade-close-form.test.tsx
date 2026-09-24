@@ -288,7 +288,10 @@ describe('All Remaining — "Close trade"', () => {
     renderForm('all_remaining');
     const readout = () => document.querySelector('[data-actual-r]')!;
     expect(readout()).toHaveAttribute('data-actual-r', 'unavailable');
-    expect(readout()).toHaveTextContent('Actual R needs your final net P&L.');
+    expect(readout()).toHaveTextContent('Trader R needs your final net P&L.');
+    // The close page's Step 5 names the figure what it is: Trader R.
+    expect(readout()).toHaveTextContent('Trader R');
+    expect(readout()).not.toHaveTextContent('Actual R');
     expect(readout()).not.toHaveTextContent('0.00R');
     type('Final net P&L', '150');
     expect(readout()).toHaveAttribute('data-actual-r', 'known');

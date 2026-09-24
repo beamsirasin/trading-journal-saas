@@ -582,6 +582,9 @@ describe('After Trade — the moment and its steps', () => {
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('120');
     expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
+    // What the trader did is Trader R; System R belongs to After Trade.
+    expect(document.querySelector('[data-result-panel]')).toHaveTextContent('Trader R');
+    expect(document.querySelector('[data-result-panel]')).not.toHaveTextContent('Actual R');
     goTo('after');
     expect(document.querySelector('[data-trade-summary]')).toHaveTextContent(
       /XAUUSD · Long · Main USD/,
@@ -2122,10 +2125,10 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     renderForm();
     goTo('result');
     expect(
-      screen.getByText('Actual R needs your final net P&L and risk at entry.'),
+      screen.getByText('Trader R needs your final net P&L and risk at entry.'),
     ).toBeInTheDocument();
     type('Final net P&L', '100');
-    expect(screen.getByText('Actual R needs your risk at entry.')).toBeInTheDocument();
+    expect(screen.getByText('Trader R needs your risk at entry.')).toBeInTheDocument();
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
@@ -2222,7 +2225,15 @@ describe('Step 6 — System Result (decision 55)', () => {
     );
     // The plan's own figures are shown on the answers — nothing to type.
     const target = within(section).getByRole('radio', { name: /^Planned target/ });
-    const risk = within(section).getByRole('radio', { name: /^Planned risk/ });
+    const risk = within(section).getByRole('radio', { name: /^Planned risk limit/ });
+    // No canonical Stop field exists, so the answer never names one.
+    expect(section).not.toHaveTextContent(/stop/i);
+    // Nothing is saved yet in Record Closed: Stage 6 says the Save carries it.
+    const intro = document.querySelector('[data-after-trade-context-step]')!;
+    expect(intro).toHaveTextContent(
+      'Anything you add here is saved with the closed trade when you press Save.',
+    );
+    expect(intro).not.toHaveTextContent(/already saved/);
     expect(target.closest('div')!.parentElement).toHaveTextContent('+2.00R');
     expect(risk.closest('div')!.parentElement).toHaveTextContent('-1.00R');
     expect(within(section).queryByRole('textbox')).toBeNull();

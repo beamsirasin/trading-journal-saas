@@ -1435,6 +1435,7 @@ export function TradeAfterTradeForm({
         <>
           <TradeAfterTradeContextStep
             idPrefix={AFTER_CONTEXT_PREFIX}
+            task="record_closed"
             systemResult={
               <TradePlanOutcomeSection
                 idPrefix={AFTER_CONTEXT_PREFIX}
