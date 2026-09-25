@@ -466,11 +466,12 @@ export function ChoiceGroup<T extends string>({
    */
   fit?: 'row' | 'split';
   /**
-   * `segmented` is a light scale for a secondary question — one row of plain
-   * tinted segments, no marker, the chosen one outlined and emphasised. The
-   * options stay radios with the same names, states and keyboard behaviour.
+   * `scale` is a compact rating row for a secondary question: one small
+   * answer tile per option, five across at every width, each with its own
+   * radio marker above the label so the recorded answer reads as an answer,
+   * never as a mode or filter. Same radios, states and keyboard behaviour.
    */
-  appearance?: 'cards' | 'segmented';
+  appearance?: 'cards' | 'scale';
   /**
    * The group sits under a heading that already asks the question, so the
    * legend stays for the accessible name and drops out of the picture.
@@ -478,8 +479,8 @@ export function ChoiceGroup<T extends string>({
   hideLegend?: boolean;
 }) {
   const name = useId();
-  const segmented = appearance === 'segmented';
-  const stacked = !segmented && fit !== undefined && columns === 5;
+  const scale = appearance === 'scale';
+  const stacked = !scale && fit !== undefined && columns === 5;
   const errorId = `${idPrefix}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
@@ -494,12 +495,12 @@ export function ChoiceGroup<T extends string>({
         <div
           className={cn(
             'grid min-w-0 gap-2',
-            segmented
+            scale
               ? columns === 5
-                ? 'grid-cols-5 gap-1'
+                ? 'grid-cols-5 gap-1.5'
                 : columns === 3
-                  ? 'grid-cols-3 gap-1'
-                  : 'grid-cols-2 gap-1'
+                  ? 'grid-cols-3 gap-1.5'
+                  : 'grid-cols-2 gap-1.5'
               : fit === 'row'
                 ? columns === 5
                   ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
@@ -540,8 +541,8 @@ export function ChoiceGroup<T extends string>({
                   htmlFor={id}
                   className={cn(
                     'flex h-full min-w-0 cursor-pointer gap-2.5 rounded-md border px-3 transition-colors motion-reduce:transition-none',
-                    segmented
-                      ? 'min-h-10 items-center justify-center px-1 py-1.5 text-center'
+                    scale
+                      ? 'min-h-12 flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-center'
                       : stacked
                         ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
                         : compact
@@ -556,37 +557,28 @@ export function ChoiceGroup<T extends string>({
                       banner. The label is always the word, so the state
                       survives greyscale and colour blindness (DESIGN.md §9.4).
                     */
-                    segmented
-                      ? checked
-                        ? 'border-foreground/60 bg-accent'
-                        : cn(
-                            'bg-muted/50 hover:bg-accent border-transparent',
-                            error === undefined ? null : 'border-destructive',
-                          )
-                      : checked
-                        ? option.tone === 'positive'
-                          ? 'border-positive/45 bg-positive/8'
-                          : option.tone === 'negative'
-                            ? 'border-negative/45 bg-negative/8'
-                            : 'border-foreground/60 bg-accent'
-                        : cn(
-                            'bg-background hover:bg-accent',
-                            error === undefined ? 'border-control-border' : 'border-destructive',
-                          ),
+                    checked
+                      ? option.tone === 'positive'
+                        ? 'border-positive/45 bg-positive/8'
+                        : option.tone === 'negative'
+                          ? 'border-negative/45 bg-negative/8'
+                          : 'border-foreground/60 bg-accent'
+                      : cn(
+                          'bg-background hover:bg-accent',
+                          error === undefined ? 'border-control-border' : 'border-destructive',
+                        ),
                   )}
                 >
-                  {segmented ? null : (
-                    <RadioMark
-                      checked={checked}
-                      tone={option.tone}
-                      className={compact || stacked ? '' : 'mt-0.5'}
-                    />
-                  )}
+                  <RadioMark
+                    checked={checked}
+                    tone={option.tone}
+                    className={scale ? 'size-3.5' : compact || stacked ? '' : 'mt-0.5'}
+                  />
                   <span className="min-w-0">
                     <span
                       className={cn(
                         'block break-words',
-                        segmented ? 'text-xs leading-tight min-[420px]:text-sm' : 'text-sm',
+                        scale ? 'text-xs leading-tight min-[420px]:text-sm' : 'text-sm',
                         checked ? 'font-semibold' : 'font-medium',
                         checked && option.tone === 'positive'
                           ? 'text-positive'

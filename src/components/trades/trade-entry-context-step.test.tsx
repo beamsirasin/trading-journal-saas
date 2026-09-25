@@ -182,6 +182,10 @@ describe('Entry Context — Confidence has no default', () => {
     const group = screen.getByRole('group', { name: WORDING[mode].confidence });
     for (const radio of within(group).getAllByRole('radio')) expect(radio).not.toBeChecked();
     expect(hosted(mode).confidence).toBeNull();
+    // Every option carries its own recorded-answer marker, not only a tint.
+    const labels = [...group.querySelectorAll('label')];
+    expect(labels).toHaveLength(5);
+    for (const label of labels) expect(label.querySelector('[aria-hidden="true"]')).not.toBeNull();
     fireEvent.click(within(group).getByRole('radio', { name: 'High' }));
     expect(hosted(mode).confidence).toBe(75);
     fireEvent.click(screen.getByRole('button', { name: 'Remove confidence answer' }));

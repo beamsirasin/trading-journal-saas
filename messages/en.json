@@ -2270,7 +2270,7 @@
             "panelTitle": "Needed to save",
             "panelDescription": "Everything else can be added now or later.",
             "ready": "Ready to save. Everything else can wait.",
-            "remaining": "{count} of 4 needed to save",
+            "remaining": "{count, plural, one {# required field still missing} other {# required fields still missing}}",
             "blocked": "{count, plural, one {# thing needs attention} other {# things need attention}} before saving",
             "helper": "You can record exits and review this trade later.",
             "requirement": {
@@ -2443,7 +2443,7 @@
             "panelTitle": "Needed to save",
             "panelDescription": "Only these three. Everything else is optional.",
             "ready": "Ready to save.",
-            "remaining": "{count} of 3 needed to save",
+            "remaining": "{count, plural, one {# required field still missing} other {# required fields still missing}}",
             "blocked": "{count, plural, one {# thing needs attention} other {# things need attention}} before saving",
             "recommendedTitle": "Worth recording",
             "recommendedDescription": "Not required, but your trader results use them.",

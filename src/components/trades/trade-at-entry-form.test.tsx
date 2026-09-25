@@ -589,6 +589,14 @@ describe('Record Open — Plan & Risk: Target', () => {
 });
 
 describe('Record Open — readiness and errors', () => {
+  it('counts the Trade’s missing required fields, never a share of this step', () => {
+    renderForm();
+    goTo('context');
+    // Step 4 asks nothing required, so the count must name what it counts.
+    expect(statusText()).toMatch(/^[0-9]+ required fields? still missing$/);
+    expect(statusText()).not.toMatch(/ of [0-9]/);
+  });
+
   it('never reports Ready while a blocking price error sits on another step', () => {
     renderForm();
     fillMinimum();

@@ -47,8 +47,8 @@ export type EntryContextValues = Pick<
  * this trade, timeframe, session) and Notes & evidence. The stage's one
  * subtitle is the step header's; nothing here repeats it.
  *
- * DIRECT WHERE A TAP WOULD BE WASTED. Confidence is one tap on a light
- * five-point scale on the step itself, and the text answers are typed where
+ * DIRECT WHERE A TAP WOULD BE WASTED. Confidence is one tap on a compact
+ * five-point answer scale on the step itself, and the text answers are typed where
  * they are asked. Only the
  * emotion question — a long multi-choice list — opens a focused editor from a
  * launcher row, which reads back what was chosen.
@@ -125,7 +125,7 @@ export function TradeEntryContextStep({
           value={confidence === null ? null : String(confidence)}
           status={c('notAnswered')}
           columns={5}
-          appearance="segmented"
+          appearance="scale"
           aside={
             <InlineAction ariaLabel={c('confidence.removeAria')} onClick={() => onConfidence(null)}>
               {c('removeAnswer')}

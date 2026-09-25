@@ -238,6 +238,10 @@ function goTo(step: keyof typeof STEP_LABEL) {
 }
 
 /** One step's own section, mounted whether or not it is the step being shown. */
+function statusText(): string {
+  return document.querySelector('[data-save-status]')?.textContent ?? '';
+}
+
 function stepSection(step: keyof typeof STEP_LABEL): HTMLElement {
   return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
 }
@@ -508,6 +512,13 @@ beforeEach(() => {
 });
 
 describe('After Trade — the moment and its steps', () => {
+  it('counts the Trade’s missing required fields, never a share of a step', () => {
+    renderForm();
+    goTo('after');
+    expect(statusText()).toMatch(/^[0-9]+ required fields? still missing$/);
+    expect(statusText()).not.toMatch(/ of [0-9]/);
+  });
+
   it('asks one topic at a time, in reading order, with no Money/Price result basis', () => {
     renderForm();
     const seen: string[] = [];
