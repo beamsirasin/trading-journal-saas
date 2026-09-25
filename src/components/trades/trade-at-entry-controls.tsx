@@ -438,6 +438,7 @@ export function ChoiceGroup<T extends string>({
   columns = 2,
   compact = false,
   fit,
+  appearance = 'cards',
   hideLegend = false,
 }: {
   idPrefix: string;
@@ -465,13 +466,20 @@ export function ChoiceGroup<T extends string>({
    */
   fit?: 'row' | 'split';
   /**
+   * `segmented` is a light scale for a secondary question — one row of plain
+   * tinted segments, no marker, the chosen one outlined and emphasised. The
+   * options stay radios with the same names, states and keyboard behaviour.
+   */
+  appearance?: 'cards' | 'segmented';
+  /**
    * The group sits under a heading that already asks the question, so the
    * legend stays for the accessible name and drops out of the picture.
    */
   hideLegend?: boolean;
 }) {
   const name = useId();
-  const stacked = fit !== undefined && columns === 5;
+  const segmented = appearance === 'segmented';
+  const stacked = !segmented && fit !== undefined && columns === 5;
   const errorId = `${idPrefix}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
@@ -486,25 +494,31 @@ export function ChoiceGroup<T extends string>({
         <div
           className={cn(
             'grid min-w-0 gap-2',
-            fit === 'row'
+            segmented
               ? columns === 5
-                ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
+                ? 'grid-cols-5 gap-1'
                 : columns === 3
-                  ? 'grid-cols-3'
-                  : 'grid-cols-2'
-              : fit === 'split'
+                  ? 'grid-cols-3 gap-1'
+                  : 'grid-cols-2 gap-1'
+              : fit === 'row'
                 ? columns === 5
-                  ? 'grid-cols-3 gap-1.5 min-[380px]:grid-cols-5 min-[560px]:gap-2'
+                  ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
                   : columns === 3
-                    ? 'grid-cols-2 min-[420px]:grid-cols-3'
+                    ? 'grid-cols-3'
                     : 'grid-cols-2'
-                : columns === 5
-                  ? 'grid-cols-1 min-[560px]:grid-cols-5'
-                  : columns === 3
-                    ? 'grid-cols-1 min-[420px]:grid-cols-3'
-                    : options.some((option) => option.description !== undefined)
-                      ? 'grid-cols-1 min-[420px]:grid-cols-2'
-                      : 'grid-cols-2',
+                : fit === 'split'
+                  ? columns === 5
+                    ? 'grid-cols-3 gap-1.5 min-[380px]:grid-cols-5 min-[560px]:gap-2'
+                    : columns === 3
+                      ? 'grid-cols-2 min-[420px]:grid-cols-3'
+                      : 'grid-cols-2'
+                  : columns === 5
+                    ? 'grid-cols-1 min-[560px]:grid-cols-5'
+                    : columns === 3
+                      ? 'grid-cols-1 min-[420px]:grid-cols-3'
+                      : options.some((option) => option.description !== undefined)
+                        ? 'grid-cols-1 min-[420px]:grid-cols-2'
+                        : 'grid-cols-2',
           )}
         >
           {options.map((option, index) => {
@@ -526,11 +540,13 @@ export function ChoiceGroup<T extends string>({
                   htmlFor={id}
                   className={cn(
                     'flex h-full min-w-0 cursor-pointer gap-2.5 rounded-md border px-3 transition-colors motion-reduce:transition-none',
-                    stacked
-                      ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
-                      : compact
-                        ? 'min-h-11 items-center py-2'
-                        : 'min-h-12 items-start py-2.5',
+                    segmented
+                      ? 'min-h-10 items-center justify-center px-1 py-1.5 text-center'
+                      : stacked
+                        ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
+                        : compact
+                          ? 'min-h-11 items-center py-2'
+                          : 'min-h-12 items-start py-2.5',
                     'peer-focus-visible:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
                     /*
                       SELECTED, WITH A DIRECTION WHERE THERE IS ONE. The tint is
@@ -540,27 +556,37 @@ export function ChoiceGroup<T extends string>({
                       banner. The label is always the word, so the state
                       survives greyscale and colour blindness (DESIGN.md §9.4).
                     */
-                    checked
-                      ? option.tone === 'positive'
-                        ? 'border-positive/45 bg-positive/8'
-                        : option.tone === 'negative'
-                          ? 'border-negative/45 bg-negative/8'
-                          : 'border-foreground/60 bg-accent'
-                      : cn(
-                          'bg-background hover:bg-accent',
-                          error === undefined ? 'border-control-border' : 'border-destructive',
-                        ),
+                    segmented
+                      ? checked
+                        ? 'border-foreground/60 bg-accent'
+                        : cn(
+                            'bg-muted/50 hover:bg-accent border-transparent',
+                            error === undefined ? null : 'border-destructive',
+                          )
+                      : checked
+                        ? option.tone === 'positive'
+                          ? 'border-positive/45 bg-positive/8'
+                          : option.tone === 'negative'
+                            ? 'border-negative/45 bg-negative/8'
+                            : 'border-foreground/60 bg-accent'
+                        : cn(
+                            'bg-background hover:bg-accent',
+                            error === undefined ? 'border-control-border' : 'border-destructive',
+                          ),
                   )}
                 >
-                  <RadioMark
-                    checked={checked}
-                    tone={option.tone}
-                    className={compact || stacked ? '' : 'mt-0.5'}
-                  />
+                  {segmented ? null : (
+                    <RadioMark
+                      checked={checked}
+                      tone={option.tone}
+                      className={compact || stacked ? '' : 'mt-0.5'}
+                    />
+                  )}
                   <span className="min-w-0">
                     <span
                       className={cn(
-                        'block text-sm break-words',
+                        'block break-words',
+                        segmented ? 'text-xs leading-tight min-[420px]:text-sm' : 'text-sm',
                         checked ? 'font-semibold' : 'font-medium',
                         checked && option.tone === 'positive'
                           ? 'text-positive'

@@ -664,7 +664,7 @@ describe('After Trade — the moment and its steps', () => {
     const context = stepSection('context');
     expect(within(context).getByLabelText('Timeframe')).toHaveValue('15m');
     expect(within(stepSection('after')).queryByLabelText('Timeframe')).toBeNull();
-    expect(within(stepSection('after')).queryByLabelText('Notes')).toBeNull();
+    expect(within(stepSection('after')).queryByLabelText('Entry notes')).toBeNull();
     expect(within(stepSection('after')).queryByLabelText('Chart link')).toBeNull();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());

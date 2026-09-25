@@ -2227,7 +2227,6 @@
           "notAnswered": "Not answered",
           "confidence": {
             "label": "Confidence",
-            "hint": "How sure are you as you enter? The result never changes this.",
             "removeAria": "Remove confidence answer"
           },
           "emotions": {
@@ -2252,7 +2251,7 @@
           },
           "context": {
             "reason": "Why this trade",
-            "reasonPlaceholder": "What you see, and why it is worth the risk.",
+            "reasonPlaceholder": "What made this trade worth taking?",
             "chart": "Chart link",
             "timeframe": "Timeframe",
             "session": "Session",
@@ -2424,8 +2423,7 @@
             "dontRemember": "Don't remember"
           },
           "confidence": {
-            "label": "Confidence at entry",
-            "hint": "How sure you were as you entered, as you remember it."
+            "label": "Confidence at entry"
           },
           "emotions": {
             "entryLegend": "How you felt as you entered",
@@ -2518,7 +2516,6 @@
             "modeShort": "After trade",
             "groups": {
               "notes": "Trade notes",
-              "market": "Market context",
               "price": "Price levels"
             },
             "optional": "Optional",
@@ -2530,8 +2527,7 @@
               "risk": "Risk",
               "strategy": "Strategy and setup",
               "mindset": "Entry mindset",
-              "afterTrade": "After the trade",
-              "thesis": "Why you took it"
+              "afterTrade": "After the trade"
             },
             "after": {
               "label": "After trade",
@@ -2576,14 +2572,13 @@
           "checklistEmpty": "This setup has no conditions to answer."
         },
         "entryContextStep": {
-          "descriptionAtEntry": "What you know, think and feel as you enter. Not needed to save; it builds your Strategy and Psychology insights.",
-          "descriptionAfterTrade": "What you knew, thought and felt at entry, as you remember it. Not needed to save.",
           "emotionEditorAtEntry": "Choose every emotion you feel as you enter, or None of these.",
           "emotionEditorAfterTrade": "Choose every emotion you felt as you entered, as you remember it, or None of these.",
+          "contextTitle": "Entry context",
+          "notesEvidenceTitle": "Notes & evidence",
           "notesTitle": "Entry notes",
           "notesHint": "Anything else you noticed around entry.",
-          "evidenceTitle": "Before-entry evidence",
-          "evidenceHint": "A chart from before or at entry. It is context and never changes the result."
+          "evidenceTitle": "Before-entry evidence"
         },
         "planRows": {
           "actualRisk": {

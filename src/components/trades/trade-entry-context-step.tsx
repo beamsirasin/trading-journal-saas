@@ -12,7 +12,6 @@ import type { ContextDraft, EmotionsDraft } from './at-entry-draft';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   ChoiceGroup,
-  Helper,
   InlineAction,
   StateText,
   TextAreaField,
@@ -44,8 +43,13 @@ export type EntryContextValues = Pick<
  * 1R set in Risk & target; Actual Risk is retired from capture, so this step
  * asks no second risk value in either recording moment.
  *
- * DIRECT WHERE A TAP WOULD BE WASTED. Confidence is one tap on the step
- * itself, and the text answers are typed where they are asked. Only the
+ * THREE GROUPS: Entry mindset (Confidence, Entry Emotion), Entry context (why
+ * this trade, timeframe, session) and Notes & evidence. The stage's one
+ * subtitle is the step header's; nothing here repeats it.
+ *
+ * DIRECT WHERE A TAP WOULD BE WASTED. Confidence is one tap on a light
+ * five-point scale on the step itself, and the text answers are typed where
+ * they are asked. Only the
  * emotion question — a long multi-choice list — opens a focused editor from a
  * launcher row, which reads back what was chosen.
  *
@@ -113,11 +117,7 @@ export function TradeEntryContextStep({
 
   return (
     <div data-entry-context-step={mode} className="flex min-w-0 flex-col gap-4">
-      <p className="text-muted-foreground text-sm">
-        {atEntry ? e('descriptionAtEntry') : e('descriptionAfterTrade')}
-      </p>
-
-      {/* 1–2 — ENTRY MINDSET: how sure, and how it felt. */}
+      {/* ENTRY MINDSET: how sure, and how it felt. */}
       <GroupCard title={a('steps.cards.mindset')}>
         <ChoiceGroup
           idPrefix={`${idPrefix}-confidence`}
@@ -125,8 +125,7 @@ export function TradeEntryContextStep({
           value={confidence === null ? null : String(confidence)}
           status={c('notAnswered')}
           columns={5}
-          compact
-          fit="split"
+          appearance="segmented"
           aside={
             <InlineAction ariaLabel={c('confidence.removeAria')} onClick={() => onConfidence(null)}>
               {c('removeAnswer')}
@@ -138,7 +137,6 @@ export function TradeEntryContextStep({
             label: t(`create.confidence.level.${level.key}`),
           }))}
         />
-        <Helper>{atEntry ? c('confidence.hint') : a('confidence.hint')}</Helper>
         <TradeLauncherRow
           id={`${idPrefix}-entry-emotions`}
           rowRef={emotionRow}
@@ -153,8 +151,8 @@ export function TradeEntryContextStep({
         />
       </GroupCard>
 
-      {/* 3 — WHY THIS TRADE: the thesis, in the trader's words. */}
-      <GroupCard title={a('steps.cards.thesis')}>
+      {/* ENTRY CONTEXT: the thesis in the trader's words, then where and when. */}
+      <GroupCard title={e('contextTitle')}>
         <TextAreaField
           id={`${idPrefix}-context-reason`}
           label={cx('reason')}
@@ -162,10 +160,6 @@ export function TradeEntryContextStep({
           onChange={(reason) => onChange({ reason })}
           placeholder={cx('reasonPlaceholder')}
         />
-      </GroupCard>
-
-      {/* 4 — MARKET CONTEXT: two short answers, side by side on a wide screen. */}
-      <GroupCard title={a('steps.groups.market')}>
         <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
           <TextField
             id={`${idPrefix}-context-timeframe`}
@@ -184,35 +178,34 @@ export function TradeEntryContextStep({
         </div>
       </GroupCard>
 
-      {/* 5 — ENTRY NOTES: the Trade's notes, asked as the entry-time note they are. */}
-      <GroupCard title={e('notesTitle')}>
+      {/*
+        NOTES & EVIDENCE: the Trade's notes, asked as the entry-time note they
+        are, and before-entry evidence — one concept whose first item is the
+        chart link.
+      */}
+      <GroupCard title={e('notesEvidenceTitle')}>
         <TextAreaField
           id={`${idPrefix}-context-notes`}
-          label={cx('notes')}
+          label={e('notesTitle')}
           value={values.notes}
           onChange={(notes) => onChange({ notes })}
           placeholder={e('notesHint')}
         />
-      </GroupCard>
-
-      {/* 6 — BEFORE-ENTRY EVIDENCE: one concept; the chart link is its first item. */}
-      <GroupCard
-        title={e('evidenceTitle')}
-        aside={
-          values.tradingviewUrl.trim() === '' ? <StateText>{c('notAnswered')}</StateText> : null
-        }
-        data-entry-evidence=""
-      >
-        <Helper>{e('evidenceHint')}</Helper>
-        <TextField
-          id={`${idPrefix}-context-chart`}
-          label={cx('chart')}
-          value={values.tradingviewUrl}
-          onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
-          inputMode="url"
-          placeholder="https://www.tradingview.com/x/…"
-          error={errors.tradingviewUrl}
-        />
+        <div data-entry-evidence="" className="flex min-w-0 flex-col gap-2">
+          <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h4 className="text-foreground text-sm font-medium">{e('evidenceTitle')}</h4>
+            {values.tradingviewUrl.trim() === '' ? <StateText>{c('notAnswered')}</StateText> : null}
+          </div>
+          <TextField
+            id={`${idPrefix}-context-chart`}
+            label={cx('chart')}
+            value={values.tradingviewUrl}
+            onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
+            inputMode="url"
+            placeholder="https://www.tradingview.com/x/…"
+            error={errors.tradingviewUrl}
+          />
+        </div>
       </GroupCard>
 
       {/*

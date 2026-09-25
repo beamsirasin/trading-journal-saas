@@ -1084,7 +1084,7 @@ describe('Record Open — Entry Context & Evidence', () => {
     fireEvent.change(screen.getByLabelText('Why this trade'), { target: { value: 'Retest.' } });
     fireEvent.change(screen.getByLabelText('Timeframe'), { target: { value: '15m' } });
     fireEvent.change(screen.getByLabelText('Session'), { target: { value: 'London' } });
-    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Tight spread.' } });
+    fireEvent.change(screen.getByLabelText('Entry notes'), { target: { value: 'Tight spread.' } });
     fireEvent.change(screen.getByLabelText('Chart link'), {
       target: { value: 'https://www.tradingview.com/x/abc123/' },
     });

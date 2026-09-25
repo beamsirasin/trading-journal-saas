@@ -108,8 +108,7 @@ describe('Entry Context — what the step holds', () => {
     expect(screen.getByLabelText('Why this trade')).toHaveValue('');
     expect(screen.getByLabelText('Timeframe')).toHaveValue('');
     expect(screen.getByLabelText('Session')).toHaveValue('');
-    expect(screen.getByLabelText('Notes')).toHaveValue('');
-    expect(screen.getByRole('heading', { name: 'Entry notes' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Entry notes')).toHaveValue('');
     const evidence = document.querySelector<HTMLElement>('[data-entry-evidence]')!;
     expect(within(evidence).getByRole('heading', { name: 'Before-entry evidence' })).toBeVisible();
     expect(within(evidence).getByLabelText('Chart link')).toHaveValue('');
@@ -133,6 +132,47 @@ describe('Entry Context — what the step holds', () => {
     expect(
       screen.getByRole('button', { name: `Edit ${WORDING[mode].emotions}` }),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+  THREE GROUPS, ONE SUBTITLE. The step header carries the stage's subtitle, so
+  the step itself repeats no intro and no helper line; its questions sit in
+  Entry mindset, Entry context, and Notes & evidence, and all stay direct —
+  only Entry Emotion opens an editor.
+*/
+describe('Entry Context — layout', () => {
+  it.each(MODES)('groups its questions in three groups, with no intro copy (%s)', (mode) => {
+    renderStep(mode);
+    const step = document.querySelector<HTMLElement>('[data-entry-context-step]')!;
+    const groups = [...step.querySelectorAll<HTMLElement>(':scope > section')];
+    expect(groups.map((group) => group.querySelector('h3')?.textContent)).toEqual([
+      'Entry mindset',
+      'Entry context',
+      'Notes & evidence',
+    ]);
+    const [mindset, context, notes] = groups as [HTMLElement, HTMLElement, HTMLElement];
+    expect(
+      within(mindset).getByRole('group', { name: WORDING[mode].confidence }),
+    ).toBeInTheDocument();
+    expect(mindset.querySelector('[data-entry-emotions]')).not.toBeNull();
+    for (const label of ['Why this trade', 'Timeframe', 'Session']) {
+      expect(within(context).getByLabelText(label)).toBeInTheDocument();
+    }
+    expect(within(notes).getByLabelText('Entry notes')).toBeInTheDocument();
+    expect(within(notes).getByLabelText('Chart link')).toBeInTheDocument();
+    // No paragraph of intro or helper copy inside the step.
+    expect(step.querySelector(':scope > p')).toBeNull();
+    expect(step).not.toHaveTextContent(/not needed to save|never changes/i);
+    // The clarified prompts.
+    expect(screen.getByLabelText('Why this trade')).toHaveAttribute(
+      'placeholder',
+      'What made this trade worth taking?',
+    );
+    expect(screen.getByLabelText('Entry notes')).toHaveAttribute(
+      'placeholder',
+      'Anything else you noticed around entry.',
+    );
   });
 });
 
