@@ -448,7 +448,16 @@ html[lang='th'] .text-label {
   --card-foreground: #f6f6f6;
   --popover: #181818;
   --popover-foreground: #f6f6f6;
-  --primary: #3498b8;
+  /*
+    THE BRAND BLUE, DARK. One family with Light: base #3B6FFE (oklch hue 265°).
+    The base is the GRAPHIC accent — ring, progress, chrome ring — where 3:1 is
+    the bar: 4.53:1 on the canvas, 4.14:1 on the card, 3.52:1 on #262626. As
+    TEXT it falls short on the card (4.14:1), so `--primary` / `--brand` are
+    its lighter sibling #548cff (same hue, oklch L 0.68): 6.08:1 on the canvas,
+    5.56:1 on the card, 4.74:1 on #262626, and a #0d0d0d label on it 6.08:1 —
+    which is why a Dark primary button keeps its near-black label.
+  */
+  --primary: #548cff;
   --primary-foreground: #0d0d0d;
   --secondary: #262626;
   --secondary-foreground: #f6f6f6;
@@ -463,21 +472,21 @@ html[lang='th'] .text-label {
   --input: rgb(255 255 255 / 0.12);
   /* Form control boundary: 3.7:1 on card, 4.1:1 on canvas (DESIGN.md §17). */
   --control-border: #737373;
-  --ring: #3498b8;
+  --ring: #3b6ffe;
 
   --surface: #0d0d0d;
   --surface-raised: #262626;
   --sidebar: #181818;
   --sidebar-border: rgb(255 255 255 / 0.08);
-  --brand: #3498b8;
+  --brand: #548cff;
   /*
     STEP PROGRESS — the phone step rail. Its own three tokens so each theme can
     tune it without moving `--brand` or `--muted` for everything else. Dark
-    keeps exactly what it always drew: the brand, the brand at 45% for a step
-    already passed, and the muted surface for the rail.
+    draws the base brand blue #3B6FFE (a graphic: 4.53:1 on the canvas), the
+    same at 45% for a step already passed, and the muted surface for the rail.
   */
-  --progress-active: var(--brand);
-  --progress-complete: color-mix(in oklab, var(--brand) 45%, transparent);
+  --progress-active: #3b6ffe;
+  --progress-complete: color-mix(in oklab, #3b6ffe 45%, transparent);
   --progress-rail: var(--muted);
   --positive: #2fa97a;
   --negative: #ef6362;
@@ -526,12 +535,12 @@ html[lang='th'] .text-label {
    * Measured on this theme's pill (#262626):
    *
    *   13.99:1 label
-   *   4.56:1 icon (needs 3:1 as non-text)
+   *   4.74:1 icon #548cff (needs 3:1 as non-text)
    *   16.43:1 label on the bare sidebar, visible mid layout-spring
-   *   5.35:1 icon on the bare sidebar
+   *   5.56:1 icon on the bare sidebar
    */
   --shell-nav-active-foreground: #f6f6f6;
-  --shell-nav-active-icon: #3498b8;
+  --shell-nav-active-icon: #548cff;
   --shell-nav-rest-foreground: #a1a1a1;
   --shell-chrome: #181818;
   --shell-chrome-foreground: #f6f6f6;
@@ -540,8 +549,8 @@ html[lang='th'] .text-label {
   --shell-chrome-border: rgb(255 255 255 / 0.08);
   --shell-chrome-nav-active-surface: #262626;
   --shell-chrome-nav-active-foreground: #f6f6f6;
-  --shell-chrome-nav-active-icon: #3498b8;
-  --shell-chrome-ring: #3498b8;
+  --shell-chrome-nav-active-icon: #548cff;
+  --shell-chrome-ring: #3b6ffe;
 }
 
 /* 1. Explicit user choice — highest priority. Must come last. */
@@ -554,7 +563,15 @@ html[lang='th'] .text-label {
   --card-foreground: #0b1220;
   --popover: #ffffff;
   --popover-foreground: #0b1220;
-  --primary: #1d4ed8;
+  /*
+    THE BRAND BLUE, LIGHT. The same family as Dark: base #3B6FFE. The base is
+    the GRAPHIC accent — ring, progress — clearing 3:1 with room (4.29:1 on the
+    card, 4.11:1 on the page). As TEXT, or under a white label, it falls just
+    short (4.29:1), so `--primary` / `--brand` are its deeper sibling #2857e5
+    (same hue, oklch L 0.52): a white label on it 5.86:1, as text 5.86:1 on the
+    card, 5.60:1 on the page and 4.68:1 on the `accent` tint.
+  */
+  --primary: #2857e5;
   --primary-foreground: #ffffff;
   --secondary: #e9edf7;
   --secondary-foreground: #0b1220;
@@ -569,25 +586,23 @@ html[lang='th'] .text-label {
   --input: #dde4f0;
   /* Form control boundary: 3.6:1 on card, 3.5:1 on canvas (DESIGN.md §17). */
   --control-border: #7b879b;
-  --ring: #1d4ed8;
+  --ring: #3b6ffe;
 
   --surface: #e9edf7;
   --surface-raised: #ffffff;
   --sidebar: #eef2f9;
   --sidebar-border: #e2e8f3;
-  --brand: #0e7490;
+  --brand: #2857e5;
   /*
-    STEP PROGRESS, LIGHT. `--brand` here is a deep cyan chosen to read as TEXT,
-    and as a 6px bar on a near-white page it sat heavy, with a cool blue-grey
-    rail beneath it that belonged to the dark palette's weight. The active
-    segment takes the product's own teal (`#3498b8`, the dark theme's brand) —
-    softer, and still 3.2:1 on the page and 3.3:1 on the card, clear of the
-    3:1 a graphic needs. A passed step is that teal at 45%; the rail is a
-    light, nearly neutral grey, so the three states read as active, done and
-    not yet, without the rail competing with either.
+    STEP PROGRESS, LIGHT. `--brand` here is the deep sibling chosen to read as
+    TEXT; as a 6px bar it would sit heavy. The active segment takes the base
+    brand blue #3B6FFE — the same bar Dark draws — at 4.11:1 on the page and
+    4.29:1 on the card, clear of the 3:1 a graphic needs. A passed step is that
+    blue at 45%; the rail is a light, nearly neutral grey, so the three states
+    read as active, done and not yet, without the rail competing with either.
   */
-  --progress-active: #3498b8;
-  --progress-complete: color-mix(in oklab, #3498b8 45%, transparent);
+  --progress-active: #3b6ffe;
+  --progress-complete: color-mix(in oklab, #3b6ffe 45%, transparent);
   --progress-rail: #e8eaef;
   --positive: #047857;
   --negative: #be123c;
@@ -632,12 +647,12 @@ html[lang='th'] .text-label {
    * Measured on this theme's pill (#d5dbe7):
    *
    *   13.48:1 label
-   *   4.82:1 icon (needs 3:1 as non-text)
+   *   4.22:1 icon #2857e5 (needs 3:1 as non-text)
    *   16.68:1 label on the bare sidebar, visible mid layout-spring
-   *   5.97:1 icon on the bare sidebar
+   *   5.22:1 icon on the bare sidebar
    */
   --shell-nav-active-foreground: #0b1220;
-  --shell-nav-active-icon: #1d4ed8;
+  --shell-nav-active-icon: #2857e5;
   --shell-nav-rest-foreground: #55657f;
   --shell-chrome: #181818;
   --shell-chrome-foreground: #f6f6f6;
@@ -646,8 +661,8 @@ html[lang='th'] .text-label {
   --shell-chrome-border: rgb(255 255 255 / 0.08);
   --shell-chrome-nav-active-surface: #262626;
   --shell-chrome-nav-active-foreground: #f6f6f6;
-  --shell-chrome-nav-active-icon: #3498b8;
-  --shell-chrome-ring: #3498b8;
+  --shell-chrome-nav-active-icon: #548cff;
+  --shell-chrome-ring: #3b6ffe;
 }
 
 .dark {
@@ -659,7 +674,16 @@ html[lang='th'] .text-label {
   --card-foreground: #f6f6f6;
   --popover: #181818;
   --popover-foreground: #f6f6f6;
-  --primary: #3498b8;
+  /*
+    THE BRAND BLUE, DARK. One family with Light: base #3B6FFE (oklch hue 265°).
+    The base is the GRAPHIC accent — ring, progress, chrome ring — where 3:1 is
+    the bar: 4.53:1 on the canvas, 4.14:1 on the card, 3.52:1 on #262626. As
+    TEXT it falls short on the card (4.14:1), so `--primary` / `--brand` are
+    its lighter sibling #548cff (same hue, oklch L 0.68): 6.08:1 on the canvas,
+    5.56:1 on the card, 4.74:1 on #262626, and a #0d0d0d label on it 6.08:1 —
+    which is why a Dark primary button keeps its near-black label.
+  */
+  --primary: #548cff;
   --primary-foreground: #0d0d0d;
   --secondary: #262626;
   --secondary-foreground: #f6f6f6;
@@ -674,21 +698,21 @@ html[lang='th'] .text-label {
   --input: rgb(255 255 255 / 0.12);
   /* Form control boundary: 3.7:1 on card, 4.1:1 on canvas (DESIGN.md §17). */
   --control-border: #737373;
-  --ring: #3498b8;
+  --ring: #3b6ffe;
 
   --surface: #0d0d0d;
   --surface-raised: #262626;
   --sidebar: #181818;
   --sidebar-border: rgb(255 255 255 / 0.08);
-  --brand: #3498b8;
+  --brand: #548cff;
   /*
     STEP PROGRESS — the phone step rail. Its own three tokens so each theme can
     tune it without moving `--brand` or `--muted` for everything else. Dark
     keeps exactly what it always drew: the brand, the brand at 45% for a step
     already passed, and the muted surface for the rail.
   */
-  --progress-active: var(--brand);
-  --progress-complete: color-mix(in oklab, var(--brand) 45%, transparent);
+  --progress-active: #3b6ffe;
+  --progress-complete: color-mix(in oklab, #3b6ffe 45%, transparent);
   --progress-rail: var(--muted);
   --positive: #2fa97a;
   --negative: #ef6362;
@@ -731,12 +755,12 @@ html[lang='th'] .text-label {
    * Measured on this theme's pill (#262626):
    *
    *   13.99:1 label
-   *   4.56:1 icon (needs 3:1 as non-text)
+   *   4.74:1 icon #548cff (needs 3:1 as non-text)
    *   16.43:1 label on the bare sidebar, visible mid layout-spring
-   *   5.35:1 icon on the bare sidebar
+   *   5.56:1 icon on the bare sidebar
    */
   --shell-nav-active-foreground: #f6f6f6;
-  --shell-nav-active-icon: #3498b8;
+  --shell-nav-active-icon: #548cff;
   --shell-nav-rest-foreground: #a1a1a1;
   --shell-chrome: #181818;
   --shell-chrome-foreground: #f6f6f6;
@@ -745,8 +769,8 @@ html[lang='th'] .text-label {
   --shell-chrome-border: rgb(255 255 255 / 0.08);
   --shell-chrome-nav-active-surface: #262626;
   --shell-chrome-nav-active-foreground: #f6f6f6;
-  --shell-chrome-nav-active-icon: #3498b8;
-  --shell-chrome-ring: #3498b8;
+  --shell-chrome-nav-active-icon: #548cff;
+  --shell-chrome-ring: #3b6ffe;
 }
 
 @layer base {
@@ -1049,11 +1073,11 @@ html[lang='th'] .text-label {
    * is told nothing about which face it is on; pointing those at the chrome
    * family here is what makes ONE component render correctly on both. The
    * light theme is why they cannot simply be inherited: its page-level active
-   * label is #0b1220 and its icon #1d4ed8, both tuned for a near-white pill,
+   * label is #0b1220 and its icon #2857e5, both tuned for a near-white pill,
    * and both would be all but invisible on this near-black one.
    *
    * The chrome variants are measured against the chrome pill (#212227)
-   * instead: 14.45:1 for the label and 4.78:1 for the icon, identical in both
+   * instead: 14.45:1 for the label and 4.97:1 for the #548cff icon, identical in both
    * themes because the chrome surface itself is now identical in both.
    *
    * `--ring` too: the light-mode page ring is tuned against a near-white

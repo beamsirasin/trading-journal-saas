@@ -78,7 +78,7 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `foreground`        | `#f6f6f6` | `#0b1220` |
 | `card`              | `#181818` | `#ffffff` |
 | `popover`           | `#181818` | `#ffffff` |
-| `primary`           | `#3498b8` | `#1d4ed8` |
+| `primary`           | `#548cff` | `#2857e5` |
 | `secondary`         | `#262626` | `#e9edf7` |
 | `muted`             | `#262626` | `#e9edf7` |
 | `muted-foreground`  | `#a1a1a1` | `#55657f` |
@@ -87,8 +87,8 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `destructive`       | `#ef6362` | `#be123c` |
 | `border`            | white 8%  | `#dde4f0` |
 | `input`             | white 12% | `#dde4f0` |
-| `ring`              | `#3498b8` | `#1d4ed8` |
-| `brand`             | `#3498b8` | `#0e7490` |
+| `ring`              | `#3b6ffe` | `#3b6ffe` |
+| `brand`             | `#548cff` | `#2857e5` |
 | `surface`           | `#0d0d0d` | `#e9edf7` |
 | `surface-raised`    | `#262626` | `#ffffff` |
 | `positive`          | `#2fa97a` | `#047857` |
@@ -101,6 +101,8 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `chart-2`           | `#3b82f6` | `#1d4ed8` |
 | `chart-3`           | `#c2650f` | `#c2570f` |
 | `chart-4`           | `#b06ef0` | `#7c3aed` |
+
+**Brand blue (2026-09-26).** One accent family in both themes, base `#3b6ffe`. The base is the graphic accent — `ring`, the step progress (`progress-active`, and 45% of it for a passed step) and the chrome ring — where 3:1 is the bar. Where the accent is text or a fill under text, a same-hue sibling carries it: Light `#2857e5` (a white label on it 5.86:1; as text 5.86:1 on the card), Dark `#548cff` (as text 5.56:1 on the card; a `#0d0d0d` label on it 6.08:1). `break-even`, `info` and the chart series are semantic or data colours and did not move.
 
 `positive` and `negative` are never the only signal for a value's direction — sign, arrow, or label must carry it too, for red-green colour blindness.
 
