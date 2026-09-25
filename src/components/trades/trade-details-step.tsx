@@ -983,7 +983,7 @@ function ConceptRow({
           className={cn(
             'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors motion-reduce:transition-none lg:size-9',
             iconTone === 'accent'
-              ? 'bg-primary/10 text-primary'
+              ? 'bg-primary/10 text-primary-text'
               : iconTone === 'positive'
                 ? 'bg-positive/10 text-positive'
                 : iconTone === 'negative'

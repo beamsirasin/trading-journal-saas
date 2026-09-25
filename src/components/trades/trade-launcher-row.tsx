@@ -98,7 +98,9 @@ export function TradeLauncherRow({
           data-launcher-icon={answered ? 'accent' : 'neutral'}
           className={cn(
             'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors motion-reduce:transition-none lg:size-9',
-            answered ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground lg:bg-card',
+            answered
+              ? 'bg-primary/10 text-primary-text'
+              : 'bg-muted text-muted-foreground lg:bg-card',
           )}
         >
           <Icon className="size-5" />

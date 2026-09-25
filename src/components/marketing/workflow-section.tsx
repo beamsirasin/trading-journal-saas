@@ -40,7 +40,7 @@ export function WorkflowSection() {
             <li key={key} className="flex gap-4">
               <span
                 aria-hidden="true"
-                className="border-border bg-card text-brand numeric flex size-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
+                className="border-border bg-card text-primary-text numeric flex size-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold"
               >
                 {index + 1}
               </span>

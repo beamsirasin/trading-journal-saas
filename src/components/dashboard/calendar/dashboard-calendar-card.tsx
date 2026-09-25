@@ -119,7 +119,7 @@ export function DashboardCalendarCard({
         */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+            <span className="bg-primary/10 text-primary-text flex size-9 shrink-0 items-center justify-center rounded-lg">
               <CalendarRange className="size-4.5" aria-hidden="true" />
             </span>
             <h2 id={headingId} className="text-card-title min-w-0 truncate">

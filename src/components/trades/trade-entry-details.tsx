@@ -172,7 +172,7 @@ export function TradeEntryDetails({ trade }: { trade: TradeDetail }) {
                   href={trade.tradingviewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary underline-offset-4 hover:underline"
+                  className="text-primary-text underline-offset-4 hover:underline"
                 >
                   {trade.tradingviewUrl}
                 </a>

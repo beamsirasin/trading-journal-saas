@@ -178,7 +178,7 @@ export function TradeSymbolPicker({
           onClick={add}
           className="border-control-border bg-background hover:bg-accent focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg border border-dashed px-4 text-left outline-none focus-visible:ring-2"
         >
-          <Plus className="text-primary size-4 shrink-0" aria-hidden="true" />
+          <Plus className="text-primary-text size-4 shrink-0" aria-hidden="true" />
           <span className="text-foreground min-w-0 truncate text-base font-medium">
             {labels.addTyped(trimmed)}
           </span>
@@ -239,7 +239,7 @@ export function TradeSymbolPicker({
                     </span>
                     {chosen ? (
                       <>
-                        <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+                        <Check className="text-primary-text size-4 shrink-0" aria-hidden="true" />
                         <span className="sr-only">{labels.selected}</span>
                       </>
                     ) : null}

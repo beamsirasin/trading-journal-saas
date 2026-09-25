@@ -148,7 +148,7 @@ function PasswordForm({ onChanged }: { onChanged: () => void }) {
     <form onSubmit={submit} noValidate className="flex max-w-xl flex-col gap-4">
       <div>
         <h3 className="text-card-title flex items-center gap-2">
-          <KeyRound className="text-primary size-5" aria-hidden="true" />
+          <KeyRound className="text-primary-text size-5" aria-hidden="true" />
           {t('title')}
         </h3>
         <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('description')}</p>
@@ -233,7 +233,7 @@ function SessionRow({
     <li className="border-border flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <MonitorSmartphone className="text-primary size-5 shrink-0" aria-hidden="true" />
+          <MonitorSmartphone className="text-primary-text size-5 shrink-0" aria-hidden="true" />
           <p className="text-foreground font-medium break-words">{label}</p>
           {session.isCurrent ? <Badge variant="positive">{t('sessions.current')}</Badge> : null}
         </div>
@@ -346,7 +346,7 @@ export function SecuritySection({
     <div className="bg-card border-border flex min-w-0 flex-col gap-8 rounded-lg border p-5 sm:p-6">
       <div>
         <h3 className="text-card-title flex items-center gap-2">
-          <ShieldCheck className="text-primary size-5" aria-hidden="true" />
+          <ShieldCheck className="text-primary-text size-5" aria-hidden="true" />
           {t('methods.title')}
         </h3>
         <p className="text-muted-foreground mt-1 text-sm">{t('methods.description')}</p>
@@ -374,7 +374,7 @@ export function SecuritySection({
         ) : (
           <div>
             <h3 className="text-card-title flex items-center gap-2">
-              <KeyRound className="text-primary size-5" aria-hidden="true" />
+              <KeyRound className="text-primary-text size-5" aria-hidden="true" />
               {t('password.title')}
             </h3>
             <p className="text-muted-foreground mt-1 text-sm leading-relaxed">

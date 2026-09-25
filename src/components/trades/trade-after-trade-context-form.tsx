@@ -361,7 +361,7 @@ export function TradeAfterTradeContextForm({
           data-trade-closed=""
           className="border-border bg-muted/30 flex min-w-0 items-start gap-3 rounded-lg border p-4"
         >
-          <CheckCircle2 className="text-primary mt-0.5 size-5 shrink-0" aria-hidden="true" />
+          <CheckCircle2 className="text-primary-text mt-0.5 size-5 shrink-0" aria-hidden="true" />
           <div className="flex min-w-0 flex-col gap-0.5">
             <p className="text-foreground text-sm font-semibold">{s('page.closedTitle')}</p>
             <p className="text-muted-foreground text-sm">

@@ -242,7 +242,7 @@ function OptionCard({
     >
       <span
         aria-hidden="true"
-        className="bg-brand/10 text-brand flex size-12 shrink-0 items-center justify-center rounded-2xl"
+        className="bg-brand/10 text-primary-text flex size-12 shrink-0 items-center justify-center rounded-2xl"
       >
         <Icon className="size-6" />
       </span>
@@ -265,7 +265,7 @@ function OptionCard({
               key={chip}
               className="text-subtle-foreground inline-flex min-w-0 items-center gap-1 text-xs"
             >
-              <CheckCircle2 aria-hidden="true" className="text-brand size-3.5 shrink-0" />
+              <CheckCircle2 aria-hidden="true" className="text-primary-text size-3.5 shrink-0" />
               <span className="min-w-0 break-words">{t(`${timing}.chips.${chip}`)}</span>
             </span>
           ))}

@@ -92,7 +92,7 @@ export function RiskPerformanceCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
-            <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+            <span className="bg-primary/10 text-primary-text flex size-8 shrink-0 items-center justify-center rounded-lg">
               <Wallet className="size-4" aria-hidden="true" />
             </span>
             {/* "Modeled balance and drawdown for {account}" named the two

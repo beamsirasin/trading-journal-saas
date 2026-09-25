@@ -215,7 +215,7 @@ export function CheckoutExperience({
         className="border-border bg-card min-w-0 rounded-xl border p-5 sm:p-6"
       >
         <div className="flex items-start gap-3">
-          <CreditCard className="text-primary size-5 shrink-0" aria-hidden="true" />
+          <CreditCard className="text-primary-text size-5 shrink-0" aria-hidden="true" />
           <div>
             <h2 id="payment-heading" className="text-card-title">
               {t('mockPaymentTitle')}

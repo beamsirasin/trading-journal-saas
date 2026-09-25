@@ -132,7 +132,7 @@ export function AccountSwitcher({
               </span>
               {isCurrent ? (
                 <span className="flex shrink-0 items-center gap-1">
-                  <Check className="text-primary size-4" aria-hidden="true" />
+                  <Check className="text-primary-text size-4" aria-hidden="true" />
                   <span className="sr-only">{t('currentAccount')}</span>
                 </span>
               ) : null}

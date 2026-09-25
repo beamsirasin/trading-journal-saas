@@ -88,7 +88,7 @@ export default async function VerifyEmailPendingPage({
           <div className="flex flex-col items-center gap-2">
             <Link
               href="/login"
-              className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center text-sm underline underline-offset-4"
+              className="text-primary-text inline-flex min-h-11 min-w-11 items-center justify-center text-sm underline underline-offset-4"
             >
               {t('backToLogin')}
             </Link>

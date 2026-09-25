@@ -118,7 +118,7 @@ export function ExecutionGapSection({
         */}
         <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+            <span className="bg-primary/10 text-primary-text flex size-8 shrink-0 items-center justify-center rounded-lg">
               <GitCompareArrows className="size-4" aria-hidden="true" />
             </span>
             <h2 id={headingId} className="text-card-title min-w-0 truncate">

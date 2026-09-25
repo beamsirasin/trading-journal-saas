@@ -15,7 +15,7 @@ export async function DataExportSection({ role }: { role: WorkspaceRole }) {
           <article className="border-border flex min-w-0 flex-col items-start gap-4 rounded-lg border p-4">
             <div className="min-w-0">
               <h3 className="text-foreground flex items-center gap-2 font-semibold">
-                <Braces className="text-primary size-5 shrink-0" aria-hidden="true" />
+                <Braces className="text-primary-text size-5 shrink-0" aria-hidden="true" />
                 {t('json.title')}
               </h3>
               <p id="json-export-description" className="text-muted-foreground mt-2 text-sm">
@@ -36,7 +36,7 @@ export async function DataExportSection({ role }: { role: WorkspaceRole }) {
           <article className="border-border flex min-w-0 flex-col items-start gap-4 rounded-lg border p-4">
             <div className="min-w-0">
               <h3 className="text-foreground flex items-center gap-2 font-semibold">
-                <FileArchive className="text-primary size-5 shrink-0" aria-hidden="true" />
+                <FileArchive className="text-primary-text size-5 shrink-0" aria-hidden="true" />
                 {t('csv.title')}
               </h3>
               <p id="csv-export-description" className="text-muted-foreground mt-2 text-sm">

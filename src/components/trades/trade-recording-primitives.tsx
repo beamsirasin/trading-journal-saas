@@ -215,7 +215,7 @@ export function JournalLauncher({
       onClick={onClick}
       className="border-border hover:bg-accent focus-visible:ring-ring flex min-h-24 min-w-0 items-start gap-3 rounded-xl border p-4 text-left outline-none focus-visible:ring-2"
     >
-      <span className="text-primary mt-0.5 shrink-0">{icon}</span>
+      <span className="text-primary-text mt-0.5 shrink-0">{icon}</span>
       <span className="min-w-0">
         <span className="block text-sm font-semibold">{label}</span>
         <span className="text-muted-foreground mt-1 line-clamp-2 block text-sm">

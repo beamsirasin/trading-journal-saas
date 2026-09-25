@@ -195,7 +195,7 @@ export function RealDashboard({
       <div className="mt-4 flex justify-end">
         <Link
           href="/app/analytics"
-          className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+          className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
         >
           {t('viewFullAnalytics')} <ArrowRight className="size-4" aria-hidden="true" />
         </Link>
@@ -312,7 +312,7 @@ function NeedsAttentionPanel({
             carry: a mark plus a three-word title needs ~11rem, not 19, and
             every rem it gives back goes to the counts row beside it. */}
         <div className="flex min-w-0 items-center gap-2.5 lg:w-[12rem] lg:shrink-0 xl:w-[13rem]">
-          <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+          <span className="bg-primary/10 text-primary-text flex size-8 shrink-0 items-center justify-center rounded-lg">
             <ListChecks className="size-4" aria-hidden="true" />
           </span>
           {/*
@@ -383,7 +383,7 @@ function NeedsAttentionPanel({
           </dl>
           <Link
             href="/app/trades"
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring -mr-2 inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring -mr-2 inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
@@ -404,7 +404,7 @@ export function DashboardDataError() {
       <CardContent>
         <Link
           href="/app"
-          className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
+          className="bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
         >
           {t('error.retry')}
         </Link>

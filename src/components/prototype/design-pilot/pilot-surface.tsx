@@ -221,7 +221,7 @@ export function InlineAction({
       className={cn(
         'focus-visible:ring-ring relative rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2',
         'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
-        tone === 'destructive' ? 'text-destructive' : 'text-primary',
+        tone === 'destructive' ? 'text-destructive' : 'text-primary-text',
       )}
     >
       {children}

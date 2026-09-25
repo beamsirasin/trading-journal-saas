@@ -265,7 +265,7 @@ function Chip({
           : 'border-input bg-background text-foreground hover:bg-accent',
       )}
     >
-      {selected ? <Check className="text-primary size-3.5" aria-hidden="true" /> : null}
+      {selected ? <Check className="text-primary-text size-3.5" aria-hidden="true" /> : null}
       {children}
     </button>
   );

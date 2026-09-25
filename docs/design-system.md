@@ -72,37 +72,40 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 
 ### Palette
 
-| Token               | Dark      | Light     |
-| ------------------- | --------- | --------- |
-| `background`        | `#0d0d0d` | `#f8fafd` |
-| `foreground`        | `#f6f6f6` | `#0b1220` |
-| `card`              | `#181818` | `#ffffff` |
-| `popover`           | `#181818` | `#ffffff` |
-| `primary`           | `#548cff` | `#2857e5` |
-| `secondary`         | `#262626` | `#e9edf7` |
-| `muted`             | `#262626` | `#e9edf7` |
-| `muted-foreground`  | `#a1a1a1` | `#55657f` |
-| `subtle-foreground` | `#8a8a8a` | `#7b879b` |
-| `accent`            | `#262626` | `#dfe6f4` |
-| `destructive`       | `#ef6362` | `#be123c` |
-| `border`            | white 8%  | `#dde4f0` |
-| `input`             | white 12% | `#dde4f0` |
-| `ring`              | `#3b6ffe` | `#3b6ffe` |
-| `brand`             | `#548cff` | `#2857e5` |
-| `surface`           | `#0d0d0d` | `#e9edf7` |
-| `surface-raised`    | `#262626` | `#ffffff` |
-| `positive`          | `#2fa97a` | `#047857` |
-| `negative`          | `#ef6362` | `#be123c` |
-| `break-even`        | `#5b7ef7` | `#1d4ed8` |
-| `zone-edge`         | `#d472c4` | `#a8339a` |
-| `warning`           | `#f59e0b` | `#92400e` |
-| `info`              | `#56b6f7` | `#0369a1` |
-| `chart-1`           | `#0f9e8e` | `#0891b2` |
-| `chart-2`           | `#3b82f6` | `#1d4ed8` |
-| `chart-3`           | `#c2650f` | `#c2570f` |
-| `chart-4`           | `#b06ef0` | `#7c3aed` |
+| Token                | Dark                  | Light                 |
+| -------------------- | --------------------- | --------------------- |
+| `background`         | `#0d0d0d`             | `#f8fafd`             |
+| `foreground`         | `#f6f6f6`             | `#0b1220`             |
+| `card`               | `#181818`             | `#ffffff`             |
+| `popover`            | `#181818`             | `#ffffff`             |
+| `primary`            | `#3b6ffe`             | `#3b6ffe`             |
+| `primary-foreground` | `#020617`             | `#020617`             |
+| `primary-text`       | `#548cff`             | `#2857e5`             |
+| `primary-hover`      | `#3b6ffe` + 12% white | `#3b6ffe` + 12% white |
+| `secondary`          | `#262626`             | `#e9edf7`             |
+| `muted`              | `#262626`             | `#e9edf7`             |
+| `muted-foreground`   | `#a1a1a1`             | `#55657f`             |
+| `subtle-foreground`  | `#8a8a8a`             | `#7b879b`             |
+| `accent`             | `#262626`             | `#dfe6f4`             |
+| `destructive`        | `#ef6362`             | `#be123c`             |
+| `border`             | white 8%              | `#dde4f0`             |
+| `input`              | white 12%             | `#dde4f0`             |
+| `ring`               | `#3b6ffe`             | `#3b6ffe`             |
+| `brand`              | `#3b6ffe`             | `#3b6ffe`             |
+| `surface`            | `#0d0d0d`             | `#e9edf7`             |
+| `surface-raised`     | `#262626`             | `#ffffff`             |
+| `positive`           | `#2fa97a`             | `#047857`             |
+| `negative`           | `#ef6362`             | `#be123c`             |
+| `break-even`         | `#5b7ef7`             | `#1d4ed8`             |
+| `zone-edge`          | `#d472c4`             | `#a8339a`             |
+| `warning`            | `#f59e0b`             | `#92400e`             |
+| `info`               | `#56b6f7`             | `#0369a1`             |
+| `chart-1`            | `#0f9e8e`             | `#0891b2`             |
+| `chart-2`            | `#3b82f6`             | `#1d4ed8`             |
+| `chart-3`            | `#c2650f`             | `#c2570f`             |
+| `chart-4`            | `#b06ef0`             | `#7c3aed`             |
 
-**Brand blue (2026-09-26).** One accent family in both themes, base `#3b6ffe`. The base is the graphic accent — `ring`, the step progress (`progress-active`, and 45% of it for a passed step) and the chrome ring — where 3:1 is the bar. Where the accent is text or a fill under text, a same-hue sibling carries it: Light `#2857e5` (a white label on it 5.86:1; as text 5.86:1 on the card), Dark `#548cff` (as text 5.56:1 on the card; a `#0d0d0d` label on it 6.08:1). `break-even`, `info` and the chart series are semantic or data colours and did not move.
+**Brand blue (2026-09-26).** The brand fill is `#3b6ffe` in BOTH themes — `primary`, `brand`, `ring`, the step progress, the active nav icons and the chrome ring — so a CTA and the active progress step are the same blue in Light and Dark. Contrast is solved at the foreground, never by moving the fill: a CTA label is `primary-foreground` `#020617` (4.70:1 on the fill; white would be 4.29:1), its hover is `primary-hover` (the fill lifted 12% toward white, 5.65:1 with the label), and where the blue is TEXT — links, inline actions, selected text, zone labels — components use `text-primary-text`: Light `#2857e5` (5.86:1 on the card), Dark `#548cff` (5.56:1 on the card). Never use `text-primary` for text. `break-even`, `info` and the chart series are semantic or data colours and did not move.
 
 `positive` and `negative` are never the only signal for a value's direction — sign, arrow, or label must carry it too, for red-green colour blindness.
 

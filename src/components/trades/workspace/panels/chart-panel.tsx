@@ -52,7 +52,7 @@ export function TradeChartPanel({ trade }: { trade: TradeDetail }) {
             href={`/api/trades/${trade.tradeId}/chart-attachment`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary focus-visible:ring-ring inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm text-xs font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+            className="text-primary-text focus-visible:ring-ring inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm text-xs font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
           >
             {tTrades('detail.openChartImage')}
             <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
@@ -67,7 +67,7 @@ export function TradeChartPanel({ trade }: { trade: TradeDetail }) {
             target="_blank"
             rel="noopener noreferrer"
             data-trade-chart-link=""
-            className="text-primary focus-visible:ring-ring inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm text-sm font-semibold break-all underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+            className="text-primary-text focus-visible:ring-ring inline-flex min-h-11 w-fit items-center gap-1.5 rounded-sm text-sm font-semibold break-all underline-offset-4 outline-none hover:underline focus-visible:ring-2"
           >
             {tTrades('detail.openChart')}
             <ExternalLink className="size-4 shrink-0" aria-hidden="true" />

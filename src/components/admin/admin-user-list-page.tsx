@@ -74,7 +74,7 @@ export function AdminUserListPage({
             query === '' ? null : (
               <Link
                 href="/admin/users"
-                className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+                className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
               >
                 {c.clearSearch}
               </Link>

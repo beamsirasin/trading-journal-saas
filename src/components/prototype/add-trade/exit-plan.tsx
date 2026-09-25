@@ -270,7 +270,7 @@ export function ExitPlanRow({
           aria-hidden="true"
           className={cn(
             'flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors',
-            isRecorded ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+            isRecorded ? 'bg-primary/10 text-primary-text' : 'bg-muted text-muted-foreground',
           )}
         >
           <Route className="size-3.5" />
@@ -561,12 +561,16 @@ function PickPlan({
           fourth option row.
         */}
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          <Button variant="ghost" className="text-primary min-h-11 px-2" onClick={onCreate}>
+          <Button variant="ghost" className="text-primary-text min-h-11 px-2" onClick={onCreate}>
             <Plus className="size-4" aria-hidden="true" />
             Create new exit plan
           </Button>
           {customizable ? (
-            <Button variant="ghost" className="text-primary min-h-11 px-2" onClick={onCustomize}>
+            <Button
+              variant="ghost"
+              className="text-primary-text min-h-11 px-2"
+              onClick={onCustomize}
+            >
               <SlidersHorizontal className="size-4" aria-hidden="true" />
               Customize for this trade
             </Button>

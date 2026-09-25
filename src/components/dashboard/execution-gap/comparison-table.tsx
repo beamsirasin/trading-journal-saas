@@ -245,7 +245,7 @@ function ExclusionNote({ exclusions }: { exclusions: ComparisonExclusions }) {
       {reasons.join(' · ')}.{' '}
       <Link
         href="/app/trades"
-        className="text-primary hover:text-primary/80 focus-visible:ring-ring rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-2"
+        className="text-primary-text hover:text-primary-text/80 focus-visible:ring-ring rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-2"
       >
         {t('excluded.link')}
       </Link>

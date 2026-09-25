@@ -87,7 +87,7 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
           separate product decision and is deliberately left exactly as it is.
         */}
         <div className="flex min-w-0 items-start gap-2.5">
-          <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+          <span className="bg-primary/10 text-primary-text flex size-8 shrink-0 items-center justify-center rounded-lg">
             <Icon className="size-4" aria-hidden="true" />
           </span>
           <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -123,7 +123,7 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
             // one page would be indistinguishable in a screen reader's link list.
             aria-label={t('viewAnalyticsLabel', { pillar: t(`${card.pillar}.title`) })}
             data-insight-analytics={card.analyticsView}
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring -ml-2 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring -ml-2 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {t('viewAnalytics')} <ArrowRight className="size-4" aria-hidden="true" />
           </Link>

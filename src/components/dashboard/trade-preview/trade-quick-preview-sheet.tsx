@@ -175,7 +175,7 @@ export function TradeQuickPreviewSheet({
           <Link
             href={`/app/trades?trade=${trade.tradeId}`}
             data-trade-preview-open-journal=""
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {t('openInJournal')} <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
@@ -407,7 +407,7 @@ function ChartPanel({ trade }: { trade: TradeQuickPreviewModel }) {
           href={trade.tradingviewUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 w-fit items-center gap-2 rounded-md px-3 text-sm font-semibold break-all outline-none focus-visible:ring-2"
+          className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 w-fit items-center gap-2 rounded-md px-3 text-sm font-semibold break-all outline-none focus-visible:ring-2"
         >
           {t('openTradingView')} <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
         </a>

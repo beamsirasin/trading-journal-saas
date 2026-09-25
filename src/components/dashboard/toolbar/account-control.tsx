@@ -191,7 +191,7 @@ function AccountOption({
       </span>
       {selected ? (
         <span className="flex shrink-0 items-center gap-1">
-          <Check className="text-primary size-4" aria-hidden="true" />
+          <Check className="text-primary-text size-4" aria-hidden="true" />
           <span className="sr-only">{t('current')}</span>
         </span>
       ) : null}

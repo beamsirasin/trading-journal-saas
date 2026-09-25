@@ -232,7 +232,7 @@ export function NestedEditor({
       <button
         type="button"
         onClick={onBack}
-        className="text-primary focus-visible:ring-ring -ml-1 inline-flex min-h-11 items-center gap-1 self-start rounded-sm px-1 text-sm font-medium outline-none focus-visible:ring-2"
+        className="text-primary-text focus-visible:ring-ring -ml-1 inline-flex min-h-11 items-center gap-1 self-start rounded-sm px-1 text-sm font-medium outline-none focus-visible:ring-2"
       >
         <ChevronLeft className="size-4" aria-hidden="true" />
         {backLabel}
@@ -264,7 +264,7 @@ export function ContextualAction({
       type="button"
       onClick={onClick}
       className={cn(
-        'text-primary focus-visible:ring-ring relative self-start rounded-sm text-sm font-medium',
+        'text-primary-text focus-visible:ring-ring relative self-start rounded-sm text-sm font-medium',
         'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
         'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
         className,

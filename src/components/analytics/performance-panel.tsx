@@ -59,7 +59,7 @@ export function PerformancePanel({
             </span>
             <Link
               href="/app/trades"
-              className="text-primary min-h-11 shrink-0 content-center font-medium underline-offset-4 hover:underline"
+              className="text-primary-text min-h-11 shrink-0 content-center font-medium underline-offset-4 hover:underline"
             >
               {t('reviewPending')}
             </Link>

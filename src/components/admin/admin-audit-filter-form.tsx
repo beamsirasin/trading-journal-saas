@@ -207,7 +207,7 @@ export function AdminAuditFilterForm({
         <div>
           <Link
             href={pathname}
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             <RotateCcw className="size-4" aria-hidden="true" /> {copy.resetFilters}
           </Link>

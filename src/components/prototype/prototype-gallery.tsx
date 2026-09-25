@@ -325,7 +325,7 @@ export function PrototypeGallery() {
                     href={screen.path}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-primary inline-flex items-center gap-1.5 text-sm underline-offset-4 hover:underline"
+                    className="text-primary-text inline-flex items-center gap-1.5 text-sm underline-offset-4 hover:underline"
                   >
                     Open at browser width
                     <ExternalLink className="size-3.5" aria-hidden="true" />

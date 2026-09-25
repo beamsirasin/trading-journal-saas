@@ -103,7 +103,7 @@ function ChoiceCard({
         'focus-visible:ring-ring outline-none focus-visible:ring-2',
       )}
     >
-      <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg min-[600px]:size-11">
+      <span className="bg-primary/10 text-primary-text flex size-10 shrink-0 items-center justify-center rounded-lg min-[600px]:size-11">
         <Icon className="size-5" aria-hidden="true" />
       </span>
 
@@ -123,7 +123,7 @@ function ChoiceCard({
         aria-hidden="true"
       />
       <ArrowRight
-        className="text-primary mt-2.5 hidden size-5 shrink-0 transition-transform duration-150 group-hover/card:translate-x-0.5 motion-reduce:transition-none min-[600px]:block"
+        className="text-primary-text mt-2.5 hidden size-5 shrink-0 transition-transform duration-150 group-hover/card:translate-x-0.5 motion-reduce:transition-none min-[600px]:block"
         aria-hidden="true"
       />
     </a>

@@ -74,7 +74,7 @@ export function TradeEmotionChips({
                     )}
                   >
                     {selected ? (
-                      <Check className="text-primary size-3.5" aria-hidden="true" />
+                      <Check className="text-primary-text size-3.5" aria-hidden="true" />
                     ) : null}
                     {emotion.label}
                   </button>
@@ -99,7 +99,7 @@ export function TradeEmotionChips({
               : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground border-dashed',
           )}
         >
-          {isNone ? <Check className="text-primary size-3.5" aria-hidden="true" /> : null}
+          {isNone ? <Check className="text-primary-text size-3.5" aria-hidden="true" /> : null}
           {noneLabel}
         </button>
         {value === null ? (

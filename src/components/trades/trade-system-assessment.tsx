@@ -394,7 +394,9 @@ export function SystemAssessmentLauncher({
         <span
           className={cn(
             'flex size-8 shrink-0 items-center justify-center rounded-lg',
-            launcherLines.length ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+            launcherLines.length
+              ? 'bg-primary/10 text-primary-text'
+              : 'bg-muted text-muted-foreground',
           )}
         >
           <Scale className="size-4" aria-hidden="true" />

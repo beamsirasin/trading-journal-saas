@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 const variantClasses = {
   neutral: 'bg-muted text-muted-foreground border-border',
   /** Identity accent — not shadcn's `accent`, which is a hover surface. */
-  brand: 'bg-brand/10 text-brand border-brand/25',
+  brand: 'bg-brand/10 text-primary-text border-brand/25',
   positive: 'bg-positive/10 text-positive border-positive/25',
   negative: 'bg-negative/10 text-negative border-negative/25',
   breakEven: 'bg-break-even/20 text-foreground border-break-even/40',

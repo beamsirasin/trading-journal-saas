@@ -42,7 +42,7 @@ export function FeaturesSection() {
                 key={key}
                 className="bg-card border-border hover:border-brand/40 flex flex-col gap-3 rounded-lg border p-5 transition-colors"
               >
-                <span className="bg-brand/10 text-brand flex size-10 items-center justify-center rounded-lg">
+                <span className="bg-brand/10 text-primary-text flex size-10 items-center justify-center rounded-lg">
                   <Icon className="size-5" aria-hidden="true" />
                 </span>
                 <h3 className="text-card-title">{t(`items.${key}.title`)}</h3>

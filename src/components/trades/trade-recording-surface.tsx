@@ -113,7 +113,7 @@ export function QuietAction({
       aria-expanded={expanded}
       aria-controls={controls}
       className={cn(
-        'text-primary focus-visible:ring-ring relative min-w-0 rounded-sm text-left text-sm font-medium',
+        'text-primary-text focus-visible:ring-ring relative min-w-0 rounded-sm text-left text-sm font-medium',
         'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
         'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
         className,
@@ -488,7 +488,7 @@ export function SegmentedChoice<T extends string>({
                 )}
               >
                 {checked ? (
-                  <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+                  <Check className="text-primary-text size-4 shrink-0" aria-hidden="true" />
                 ) : null}
                 <span className="min-w-0 truncate">{option.label}</span>
               </label>
@@ -631,7 +631,7 @@ export function JournalLauncherSurface({
                 aria-hidden="true"
                 className={cn(
                   'flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors',
-                  populated ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                  populated ? 'bg-primary/10 text-primary-text' : 'bg-muted text-muted-foreground',
                 )}
               >
                 <area.Icon className="size-3.5" />

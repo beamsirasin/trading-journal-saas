@@ -41,7 +41,7 @@ export function AdminShell({
             <span className="text-foreground text-base font-semibold tracking-tight">
               {adminCopy.shell.brand}
             </span>
-            <span className="bg-primary/10 text-primary rounded-full px-2.5 py-1 text-xs font-semibold">
+            <span className="bg-primary/10 text-primary-text rounded-full px-2.5 py-1 text-xs font-semibold">
               {adminCopy.shell.badge}
             </span>
             <nav aria-label={adminCopy.shell.badge}>

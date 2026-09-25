@@ -279,7 +279,7 @@ function JournalAreaButton({ area, onOpen }: { area: JournalArea; onOpen: () => 
         aria-hidden="true"
         className={cn(
           'flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors',
-          populated ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+          populated ? 'bg-primary/10 text-primary-text' : 'bg-muted text-muted-foreground',
         )}
       >
         <area.Icon className="size-3.5" />

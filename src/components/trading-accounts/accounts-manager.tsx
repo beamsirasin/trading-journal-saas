@@ -459,7 +459,7 @@ function ArchivedAccountCard({
                   </p>
                   <Link
                     href="/app/plan"
-                    className="text-primary text-xs font-medium underline-offset-2 hover:underline"
+                    className="text-primary-text text-xs font-medium underline-offset-2 hover:underline"
                   >
                     {tEntitlements('banner.viewPlans')}
                   </Link>

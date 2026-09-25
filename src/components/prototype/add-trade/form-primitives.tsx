@@ -227,7 +227,7 @@ export function QuietAction({
         // zoom on a 320px screen an unbreakable one is 473px that pushes the
         // page sideways. Wrapping costs nothing at ordinary type — none of them
         // wrap there — and turns the zoom case into a second line.
-        'text-primary focus-visible:ring-ring relative min-w-0 rounded-sm text-left text-sm font-medium',
+        'text-primary-text focus-visible:ring-ring relative min-w-0 rounded-sm text-left text-sm font-medium',
         'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
         'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
         className,
@@ -456,7 +456,7 @@ export function PrimaryAmountField({
             compact ? 'min-h-11' : 'min-h-[3.5rem]',
           )}
         >
-          <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+          <Check className="text-primary-text size-4 shrink-0" aria-hidden="true" />
           <p className="text-foreground min-w-0 flex-1 text-sm">{readOut}</p>
           {readOutAction}
         </div>
@@ -544,7 +544,7 @@ export function OutcomeChoice({
                 )}
               >
                 {checked ? (
-                  <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+                  <Check className="text-primary-text size-4 shrink-0" aria-hidden="true" />
                 ) : null}
                 <span className="min-w-0 whitespace-normal">{option.label}</span>
               </label>
@@ -612,7 +612,7 @@ export function ChoiceGroup<T extends string>({
                 {/* Selection is a filled surface PLUS a border and a check —
                     never colour alone. */}
                 {checked ? (
-                  <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+                  <Check className="text-primary-text size-4 shrink-0" aria-hidden="true" />
                 ) : null}
                 <span className="min-w-0 truncate">{option.label}</span>
               </label>

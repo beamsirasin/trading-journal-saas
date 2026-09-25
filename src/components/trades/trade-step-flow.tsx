@@ -161,7 +161,7 @@ export function TradeStepFlow({
                         ? 'border-primary bg-primary text-primary-foreground'
                         : item.summary === null
                           ? 'border-control-border text-muted-foreground'
-                          : 'border-primary text-primary',
+                          : 'border-primary text-primary-text',
                   )}
                 >
                   {item.errors > 0 ? <CircleAlert className="size-3.5" /> : index + 1}

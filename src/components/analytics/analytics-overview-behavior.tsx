@@ -101,7 +101,7 @@ export function BehaviorZone({
 
       <Link
         href={exploreHref}
-        className="text-primary mt-4 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline"
+        className="text-primary-text mt-4 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline"
       >
         {t('overview.explore')}
       </Link>

@@ -109,7 +109,7 @@ export function TradeChoiceList<T extends string>({
                   ? 'text-positive'
                   : option.tone === 'negative'
                     ? 'text-negative'
-                    : 'text-primary',
+                    : 'text-primary-text',
               )}
             />
           </button>

@@ -18,7 +18,7 @@ export function TradeRecordingModeChange() {
     <Link
       href="/app/trades/new"
       data-recording-mode-change=""
-      className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+      className="text-primary-text focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
     >
       {tMode('change')}
     </Link>

@@ -619,7 +619,7 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
           // clickable. The href still carries it for copy-link and new-tab.
           <a
             href={trade.chartUrl}
-            className="text-primary focus-visible:ring-ring mt-1 inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-sm text-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+            className="text-primary-text focus-visible:ring-ring mt-1 inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-sm text-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2"
           >
             View chart
             <ExternalLink className="size-3.5" aria-hidden="true" />

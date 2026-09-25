@@ -373,7 +373,7 @@ function TradeIdeaView({
             className="border-border bg-muted/20 hover:bg-accent/50 focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-xl border px-3 py-2 text-left outline-none focus-visible:ring-2"
           >
             <span className="text-muted-foreground min-w-0 flex-1 text-sm">No chart attached</span>
-            <span className="text-primary text-sm font-medium">Attach</span>
+            <span className="text-primary-text text-sm font-medium">Attach</span>
             <ChevronRight className="text-subtle-foreground size-4 shrink-0" aria-hidden="true" />
           </button>
         ) : (
@@ -418,7 +418,7 @@ function AttachedChartSummary({
       ) : (
         <span
           aria-hidden="true"
-          className="bg-primary/10 text-primary flex size-12 shrink-0 items-center justify-center rounded-lg"
+          className="bg-primary/10 text-primary-text flex size-12 shrink-0 items-center justify-center rounded-lg"
         >
           <Link2 className="size-5" />
         </span>
@@ -434,7 +434,7 @@ function AttachedChartSummary({
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="text-primary focus-visible:ring-ring relative rounded-sm text-xs font-medium underline-offset-4 outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] hover:underline focus-visible:ring-2"
+            className="text-primary-text focus-visible:ring-ring relative rounded-sm text-xs font-medium underline-offset-4 outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] hover:underline focus-visible:ring-2"
           >
             View
           </a>
@@ -442,7 +442,7 @@ function AttachedChartSummary({
             ref={launcherRef}
             type="button"
             onClick={onViewReplacement}
-            className="text-primary focus-visible:ring-ring relative rounded-sm text-xs font-medium underline-offset-4 outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] hover:underline focus-visible:ring-2"
+            className="text-primary-text focus-visible:ring-ring relative rounded-sm text-xs font-medium underline-offset-4 outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] hover:underline focus-visible:ring-2"
           >
             Replace
           </button>
@@ -504,7 +504,7 @@ function ChartAttachmentView({
         <div className="border-border bg-muted/20 rounded-xl border p-3">
           <div className="mb-2 flex items-center gap-2">
             <span
-              className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg"
+              className="bg-primary/10 text-primary-text flex size-9 shrink-0 items-center justify-center rounded-lg"
               aria-hidden="true"
             >
               <Upload className="size-4" />
@@ -756,10 +756,14 @@ function SelectionRow({
         value={value}
         checked={checked}
         onChange={() => onChange(value)}
-        className="border-input text-primary focus-visible:ring-ring size-4 shrink-0 accent-current focus-visible:ring-2"
+        className="border-input text-primary-text focus-visible:ring-ring size-4 shrink-0 accent-current focus-visible:ring-2"
       />
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {checked ? <Check className="text-primary size-4 shrink-0" aria-hidden="true" /> : trailing}
+      {checked ? (
+        <Check className="text-primary-text size-4 shrink-0" aria-hidden="true" />
+      ) : (
+        trailing
+      )}
     </label>
   );
 }

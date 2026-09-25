@@ -70,7 +70,7 @@ export function RecentTradesCard({
         */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+            <span className="bg-primary/10 text-primary-text flex size-9 shrink-0 items-center justify-center rounded-lg">
               <History className="size-4.5" aria-hidden="true" />
             </span>
             <h2 id={headingId} className="text-card-title min-w-0 truncate">
@@ -79,7 +79,7 @@ export function RecentTradesCard({
           </div>
           <Link
             href="/app/trades"
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary-text hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {t('recent.viewAll')} <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
@@ -96,7 +96,7 @@ export function RecentTradesCard({
             </p>
             <Link
               href="/app/trades/new"
-              className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring mt-1 inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
+              className="bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:ring-ring mt-1 inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
             >
               {t('recent.logTrade')}
             </Link>

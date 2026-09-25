@@ -1088,7 +1088,7 @@ export function TradeCreateForm({
                   {t('prerequisite.noSetupDescription')}{' '}
                   <Link
                     href={`/app/strategies?strategy=${selectedStrategy.strategyId}`}
-                    className="text-primary inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline"
+                    className="text-primary-text inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline"
                   >
                     {t('prerequisite.manageStrategies')}
                   </Link>
@@ -1433,7 +1433,7 @@ function PlanRepresentationToggle({
       <button
         type="button"
         onClick={onOpen}
-        className="border-border text-muted-foreground hover:border-primary hover:text-primary inline-flex min-h-11 w-fit items-center gap-1.5 rounded-md border border-dashed px-3 text-sm font-medium"
+        className="border-border text-muted-foreground hover:border-primary hover:text-primary-text inline-flex min-h-11 w-fit items-center gap-1.5 rounded-md border border-dashed px-3 text-sm font-medium"
       >
         <Plus aria-hidden="true" size={14} />
         {addLabel}

@@ -81,7 +81,7 @@ export default async function LoginPage({
           {t('noAccount')}{' '}
           <Link
             href="/register"
-            className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+            className="text-primary-text inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
           >
             {t('createOne')}
           </Link>

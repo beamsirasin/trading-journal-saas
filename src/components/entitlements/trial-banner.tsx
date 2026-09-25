@@ -44,7 +44,7 @@ export async function TrialBanner({ entitlement }: { entitlement: EffectiveEntit
         <p className="text-muted-foreground">{t('overLimitNotice.body')}</p>
         <Link
           href="/app/plan"
-          className="text-primary ml-auto inline-flex min-h-11 items-center underline underline-offset-4"
+          className="text-primary-text ml-auto inline-flex min-h-11 items-center underline underline-offset-4"
         >
           {t('banner.viewPlans')}
         </Link>
@@ -64,7 +64,7 @@ export async function TrialBanner({ entitlement }: { entitlement: EffectiveEntit
         <p className="text-muted-foreground">{t('expiredNotice.body')}</p>
         <Link
           href="/app/plan"
-          className="text-primary ml-auto inline-flex min-h-11 items-center underline underline-offset-4"
+          className="text-primary-text ml-auto inline-flex min-h-11 items-center underline underline-offset-4"
         >
           {t('expiredNotice.viewPlans')}
         </Link>
@@ -100,7 +100,7 @@ export async function TrialBanner({ entitlement }: { entitlement: EffectiveEntit
       {usage === null ? null : <span className="text-muted-foreground">{usage}</span>}
       <Link
         href="/app/plan"
-        className="text-primary ml-auto inline-flex min-h-11 items-center underline underline-offset-4"
+        className="text-primary-text ml-auto inline-flex min-h-11 items-center underline underline-offset-4"
       >
         {t('banner.viewPlans')}
       </Link>

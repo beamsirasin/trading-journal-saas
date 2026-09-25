@@ -94,7 +94,7 @@ export function LogTradeAction({
           // than interrupting it. Full width, because a phone row is a thumb
           // target.
           'bg-primary text-primary-foreground flex min-h-[3.25rem] items-center gap-3 rounded-lg px-3 text-base font-semibold',
-          'hover:bg-primary/90 active:scale-[0.99]',
+          'hover:bg-primary-hover active:scale-[0.99]',
           'transition-[background-color,transform] duration-150 ease-(--motion-ease-standard)',
           'motion-reduce:transition-none motion-reduce:active:scale-100',
         )}

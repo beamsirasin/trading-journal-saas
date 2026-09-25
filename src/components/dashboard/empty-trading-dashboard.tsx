@@ -25,7 +25,7 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
       <ActiveTradingAccountSummaryCard account={account} />
 
       <div className="border-border bg-card flex flex-col items-start gap-3 rounded-lg border p-6 sm:flex-row sm:items-center sm:gap-4">
-        <Rocket className="text-primary size-6 shrink-0" aria-hidden="true" />
+        <Rocket className="text-primary-text size-6 shrink-0" aria-hidden="true" />
         <div className="flex flex-col gap-1">
           <p className="text-foreground text-sm font-medium">{t('noTradesTitle')}</p>
           <p className="text-muted-foreground text-sm leading-relaxed">
@@ -179,7 +179,7 @@ export function NoActiveTradingAccountRecovery() {
       </p>
       <Link
         href="/app/accounts"
-        className="text-primary-foreground bg-primary hover:bg-primary/90 inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
+        className="text-primary-foreground bg-primary hover:bg-primary-hover inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
       >
         {t('noActiveAccountCta')}
       </Link>

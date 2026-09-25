@@ -132,7 +132,7 @@ export function InlineAction({
       {...(expanded === undefined ? {} : { 'aria-expanded': expanded })}
       {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
       className={cn(
-        'text-primary focus-visible:ring-ring relative rounded-sm text-left text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2',
+        'text-primary-text focus-visible:ring-ring relative rounded-sm text-left text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2',
         'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
       )}
     >
@@ -683,7 +683,7 @@ export function Chip({
           : 'border-control-border bg-background text-foreground hover:bg-accent',
       )}
     >
-      {selected ? <Check className="text-primary size-3.5" aria-hidden="true" /> : null}
+      {selected ? <Check className="text-primary-text size-3.5" aria-hidden="true" /> : null}
       {children}
     </button>
   );

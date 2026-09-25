@@ -592,7 +592,7 @@ function ExitSummaryRow({
           data-exit-edit={index + 1}
           aria-label={`Edit exit ${index + 1}`}
           className={cn(
-            'text-primary focus-visible:ring-ring relative shrink-0 rounded-sm px-1.5 text-xs font-medium',
+            'text-primary-text focus-visible:ring-ring relative shrink-0 rounded-sm px-1.5 text-xs font-medium',
             'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
             'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
           )}

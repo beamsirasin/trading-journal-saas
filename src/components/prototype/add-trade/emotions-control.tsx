@@ -119,7 +119,7 @@ export function EmotionsControl({
                     )}
                   >
                     {selected ? (
-                      <Check className="text-primary size-3.5" aria-hidden="true" />
+                      <Check className="text-primary-text size-3.5" aria-hidden="true" />
                     ) : null}
                     {emotionLabel(key)}
                   </button>
@@ -151,7 +151,7 @@ export function EmotionsControl({
               : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground border-dashed',
           )}
         >
-          {isNone ? <Check className="text-primary size-3.5" aria-hidden="true" /> : null}
+          {isNone ? <Check className="text-primary-text size-3.5" aria-hidden="true" /> : null}
           None of these
         </button>
 

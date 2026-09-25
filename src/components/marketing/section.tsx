@@ -76,7 +76,7 @@ export function SectionIntro({
       )}
     >
       {eyebrow === undefined ? null : (
-        <span className="text-brand text-label uppercase" aria-hidden="true">
+        <span className="text-primary-text text-label uppercase" aria-hidden="true">
           {eyebrow}
         </span>
       )}

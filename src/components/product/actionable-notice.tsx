@@ -39,7 +39,7 @@ export function ActionableNotice({
       </span>
       <Link
         href={href}
-        className="text-primary inline-flex min-h-11 items-center underline-offset-4 hover:underline"
+        className="text-primary-text inline-flex min-h-11 items-center underline-offset-4 hover:underline"
       >
         {actionLabel}
       </Link>

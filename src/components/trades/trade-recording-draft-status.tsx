@@ -178,7 +178,7 @@ export function RecordingDraftStatus({
           type="button"
           data-recording-draft-load-latest=""
           onClick={onLoadLatest}
-          className="text-primary focus-visible:ring-ring min-h-11 rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+          className="text-primary-text focus-visible:ring-ring min-h-11 rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
         >
           {t('loadLatest')}
         </button>
@@ -187,7 +187,7 @@ export function RecordingDraftStatus({
         <button
           type="button"
           onClick={onDismissNotice}
-          className="text-primary focus-visible:ring-ring min-h-11 rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+          className="text-primary-text focus-visible:ring-ring min-h-11 rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
         >
           {t('dismiss')}
         </button>
@@ -309,7 +309,7 @@ export function RecordingDraftResumeNotice({ draftScope }: { draftScope: Recordi
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
         <Link
           href={`/app/trades/new?timing=${draft.mode}`}
-          className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+          className="text-primary-text focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
         >
           {t('resume.continue')}
         </Link>
