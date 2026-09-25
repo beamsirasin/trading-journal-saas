@@ -2333,8 +2333,7 @@
             "exits": "Exit history",
             "read": "Your read on the trade",
             "readDescription": "Not needed to save. Answers given now are recorded as recalled after the trade.",
-            "context": "Trade idea, chart and price levels",
-            "closing": "How it closed"
+            "context": "Trade idea, chart and price levels"
           },
           "times": {
             "entry": "Entry time",
@@ -2391,7 +2390,6 @@
             "editorDescription": "Choose the exit plan you had for this trade. Closing this panel keeps a real change."
           },
           "exits": {
-            "summaryEmpty": "No exits recorded",
             "summaryCount": "{count, plural, one {# exit recorded} other {# exits recorded}}",
             "description": "Optional supporting detail. Your final net P&L stays the trade's result.",
             "empty": "No exits recorded. You can save the trade without them.",
@@ -2418,7 +2416,18 @@
             "adopt": "Use recorded exits as final result",
             "adopted": "Final net P&L set to {amount} from your recorded exits.",
             "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving.",
-            "limitReached": "A trade can hold up to {limit} exits."
+            "limitReached": "A trade can hold up to {limit} exits.",
+            "status": {
+              "none": "No exits recorded",
+              "singleFull": "Closed in one exit",
+              "count": "{count, plural, one {# exit recorded} other {# exits recorded}}",
+              "allRecorded": "All exits recorded",
+              "accounted": "{percent}% accounted for",
+              "remaining": "{percent}% remaining to account for",
+              "allocationUnknown": "some exit allocation is unknown",
+              "incomplete": "exit history incomplete",
+              "notSure": "not sure every exit is recorded"
+            }
           },
           "conditions": {
             "hint": "Answer the ones you remember. Skipped ones and ones you don't remember are never counted as not met.",

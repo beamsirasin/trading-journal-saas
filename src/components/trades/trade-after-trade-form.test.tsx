@@ -2442,55 +2442,121 @@ describe('psychology', () => {
 });
 
 /*
-  STEP 5 SAYS WHAT THE TRADER ACTUALLY DID, IN ORDER OF WEIGHT: the whole
-  trade's Final Net P&L leads; Trader R sits beneath it as a smaller,
-  Calculated readout; the outcome is its own answer that the P&L never fills
-  in; and the final exit time and exit history follow as supporting detail.
+  STEP 5 SAYS WHAT THE TRADER ACTUALLY DID. The outcome leads as the trader's
+  own Win / BE / Loss, which the P&L never fills in. Then one close card: the
+  authoritative Final Net P&L, Trader R as a smaller Calculated readout, the
+  final exit time and the exit history, whose status reads while collapsed.
 */
-describe('Step 5 — Trader result hierarchy', () => {
-  it('leads with Final Net P&L, derives Trader R, and keeps the outcome and exits apart', () => {
+describe('Step 5 — Trader result', () => {
+  function result() {
+    const step = stepSection('result');
+    return {
+      step,
+      outcome: step.querySelector<HTMLElement>('[data-result-outcome]')!,
+      panel: step.querySelector<HTMLElement>('[data-result-panel]')!,
+      status: () => step.querySelector<HTMLElement>('[data-exit-history-status]')!,
+    };
+  }
+
+  it('leads with the outcome, then one close card holding the result and its breakdown', () => {
     renderForm();
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
-    const step = stepSection('result');
-    const blocks = [
-      step.querySelector('[data-result-panel]'),
-      step.querySelector('[data-result-outcome]'),
-      step.querySelector('[data-result-closing]'),
-    ];
-    for (const block of blocks) expect(block).not.toBeNull();
-    const [panel, outcome, closing] = blocks as HTMLElement[];
-    // In the order of weight, in the document too.
-    expect(
-      panel!.compareDocumentPosition(outcome!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      outcome!.compareDocumentPosition(closing!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const { step, outcome, panel } = result();
+    expect(outcome.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // The result card holds the lead figure and what it comes to — nothing else.
-    expect(within(panel!).getByLabelText('Final net P&L')).toBeInTheDocument();
-    expect(panel!.querySelector('[data-exit-time]')).toBeNull();
+    // The close card: P&L, then calculated R, then exit time and exit history.
+    const pnl = within(panel).getByLabelText('Final net P&L');
+    const r = panel.querySelector<HTMLElement>('[data-actual-r]')!;
+    const exitTime = panel.querySelector<HTMLElement>('[data-exit-time]')!;
+    const history = panel.querySelector<HTMLElement>('[data-exit-history]')!;
+    for (const [a, b] of [
+      [pnl, r],
+      [r, exitTime],
+      [exitTime, history],
+    ] as const) {
+      expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
     type('Final net P&L', '80', panel);
-    const r = panel!.querySelector<HTMLElement>('[data-actual-r]')!;
     expect(r).toHaveAttribute('data-actual-r-variant', 'derived');
     expect(r).toHaveTextContent('Calculated');
     expect(r).toHaveTextContent('+1.60R');
     // The outcome is never set from the P&L.
-    expect(outcome!.querySelector('[data-trader-outcome]')).toHaveAttribute(
+    expect(outcome.querySelector('[data-trader-outcome]')).toHaveAttribute(
       'data-trader-outcome',
       'unanswered',
     );
-    expect(
-      within(outcome!).getByText('Your own call. It is never set from the P&L.'),
-    ).toBeVisible();
-
-    // Supporting detail follows: the exit time, then the exit history.
-    expect(closing!.querySelector('[data-exit-time]')).not.toBeNull();
-    expect(within(closing!).getByText('Exit history')).toBeInTheDocument();
-    // The whole step is optional, so no field repeats an Optional tag.
     expect(within(step).queryByText('Optional')).toBeNull();
+  });
+
+  it('offers Win / BE / Loss as direct text answers, each chosen in its own tone', () => {
+    renderForm();
+    goTo('result');
+    const { outcome } = result();
+    const group = within(outcome).getByRole('group', { name: 'Your outcome' });
+    // No radio-circle markers: the label is the answer.
+    for (const label of group.querySelectorAll('label')) {
+      expect(label.querySelector('.rounded-full')).toBeNull();
+    }
+    for (const [name, tone] of [
+      ['Win', 'positive'],
+      ['BE', 'break-even'],
+      ['Loss', 'negative'],
+    ] as const) {
+      fireEvent.click(within(group).getByRole('radio', { name }));
+      const chosen = group.querySelector<HTMLElement>(
+        `label[for="${within(group).getByRole('radio', { name }).id}"]`,
+      )!;
+      // Shape and a check, not colour alone.
+      expect(chosen.className).toContain(`border-${tone}`);
+      expect(chosen.className).toContain('ring-1');
+      expect(chosen.querySelector('svg')).not.toBeNull();
+      // The others stay neutral.
+      for (const other of group.querySelectorAll('label')) {
+        if (other !== chosen) expect(other.className).toContain('border-control-border');
+      }
+    }
+  });
+
+  it('reads the exit history status while collapsed, never implying the Trade is open', () => {
+    renderForm();
+    goTo('result');
+    const { status } = result();
+    expect(status()).toHaveAttribute('data-exit-history-status', 'none');
+    expect(status()).toHaveTextContent('No exits recorded');
+
+    // A full close in one exit.
+    openExitHistory();
+    const only = recordExit({ pnl: '80' });
+    fireEvent.click(within(only).getByRole('radio', { name: 'All remaining' }));
+    expect(status()).toHaveAttribute('data-exit-history-status', 'single_full');
+    expect(status()).toHaveTextContent('Closed in one exit · 100% accounted for');
+
+    // Partial exits: the share accounted for, and what is left to account for.
+    fireEvent.click(within(only).getByRole('radio', { name: 'Part' }));
+    type(/% of original position/, '40', only);
+    recordExit({ pnl: '30', percent: '20' });
+    expect(status()).toHaveTextContent('2 exits recorded · 60% accounted for');
+    expect(status()).toHaveTextContent('40% remaining to account for');
+    fireEvent.click(screen.getByRole('radio', { name: 'Some exits are missing' }));
+    expect(status()).toHaveTextContent('exit history incomplete');
+
+    // An unstated share is unknown, never estimated.
+    recordExit({ pnl: '10' });
+    expect(status()).toHaveAttribute('data-accounted-bps', 'unknown');
+    expect(status()).toHaveTextContent('some exit allocation is unknown');
+    expect(status()).not.toHaveTextContent('remaining');
+
+    // Complete: every exit recorded and the whole position accounted for.
+    type(
+      /% of original position/,
+      '40',
+      document.querySelectorAll<HTMLElement>('[data-after-exit]')[2]!,
+    );
+    fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
+    expect(status()).toHaveTextContent('All exits recorded · 100% accounted for');
+    expect(status()).not.toHaveTextContent(/still open|remaining to close/i);
   });
 });
 

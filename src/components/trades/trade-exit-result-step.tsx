@@ -548,12 +548,18 @@ export function TraderOutcomeField({
   value,
   contradicts,
   hint,
+  appearance = 'cards',
   onChange,
 }: {
   idPrefix: string;
   value: OutcomeValue | null;
   /** A host's own shorter wording of the outcome hint. */
   hint?: string;
+  /**
+   * `buttons`: three direct text answers with no radio marker, each chosen
+   * one in its own semantic tone — Win positive, BE break-even, Loss negative.
+   */
+  appearance?: 'cards' | 'buttons';
   /** The choice runs against the Final Net P&L sign — a quiet notice, never a block. */
   contradicts: boolean;
   onChange: (value: OutcomeValue | null) => void;
@@ -569,17 +575,26 @@ export function TraderOutcomeField({
         status={c('notAnswered')}
         columns={3}
         fit="row"
+        appearance={appearance}
         aside={
           <InlineAction ariaLabel={a('result.removeOutcomeAria')} onClick={() => onChange(null)}>
             {c('removeAnswer')}
           </InlineAction>
         }
         onChange={(outcome: OutcomeValue) => onChange(outcome)}
-        options={[
-          { value: 'win', label: a('result.win') },
-          { value: 'break_even', label: a('result.breakEven') },
-          { value: 'loss', label: a('result.loss') },
-        ]}
+        options={
+          appearance === 'buttons'
+            ? [
+                { value: 'win', label: a('result.win'), tone: 'positive' },
+                { value: 'break_even', label: a('result.breakEven'), tone: 'break_even' },
+                { value: 'loss', label: a('result.loss'), tone: 'negative' },
+              ]
+            : [
+                { value: 'win', label: a('result.win') },
+                { value: 'break_even', label: a('result.breakEven') },
+                { value: 'loss', label: a('result.loss') },
+              ]
+        }
       />
       <Helper>{hint ?? a('result.outcomeHint')}</Helper>
       {contradicts ? (

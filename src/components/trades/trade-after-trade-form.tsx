@@ -68,11 +68,13 @@ import {
   type AfterTradeExitDraft,
   type AfterTradeField,
 } from './after-trade-draft';
+import { exitHistoryStatus, formatShare, type ExitHistoryStatus } from './exit-history-status';
 import type { PlanOutcomeDraftError } from './plan-outcome-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
 import {
   ChoiceGroup,
+  Disclosure,
   Helper,
   InlineAction,
   Notice,
@@ -92,7 +94,7 @@ import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import type { RecordingSaveControls } from './trade-recording-form';
-import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
+import { GroupCard } from './trade-recording-step-parts';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
 import { TradeSetupChecklistStep } from './trade-setup-checklist-step';
@@ -461,6 +463,7 @@ export function TradeAfterTradeForm({
   const activeRead = activeAfterTradeClassification(draft, options);
   const staleRead = staleSelections(draft, options);
   const recordedExits = draft.exits.filter(meaningfulExit);
+  const exitStatus = exitHistoryStatus(draft.exits, draft.completeness);
 
   /*
     WHICH ERRORS SPEAK. Before a Save attempt only a malformed value the trader
@@ -1235,14 +1238,32 @@ export function TradeAfterTradeForm({
         'gap-4',
         <>
           {/*
-            CANONICAL STAGE 5 — the same Final Net P&L, Trader R, outcome, final
-            exit time and exit history controls Close Trade uses, read in the
-            order of what the trader actually did: the whole trade's result
-            first, what it comes to in R beneath it, then the trader's own
-            judgement, and last the supporting detail of how it closed. Record
-            Closed never asks for a Part / All Remaining scope here: it
-            reconstructs a trade that is already closed.
+            CANONICAL STAGE 5 — the same outcome, Final Net P&L, Trader R, final
+            exit time and exit history controls Close Trade uses, read as what
+            the trader actually did:
+
+            1. THE OUTCOME LEADS — the trader's own Win / BE / Loss, an explicit
+               judgement that the P&L never fills in.
+            2. ONE CLOSE CARD — the whole trade's Final Net P&L (authoritative),
+               what it comes to in R (calculated), when it finally closed, and
+               the exit history as its supporting breakdown, whose status reads
+               on the collapsed row: a full close in one exit, or how much of
+               the position the recorded exits account for.
+
+            Record Closed never asks for a Part / All Remaining scope for the
+            Trade here: it reconstructs a trade that is already closed.
           */}
+          <GroupCard data-result-outcome="">
+            <TraderOutcomeField
+              idPrefix="after-outcome"
+              value={draft.outcome}
+              contradicts={outcomeNotice !== undefined}
+              hint={a('result.outcomeHintShort')}
+              appearance="buttons"
+              onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
+            />
+          </GroupCard>
+
           <GroupCard filled data-result-panel="">
             <FinalPnlField
               id="after-finalPnl"
@@ -1281,75 +1302,66 @@ export function TradeAfterTradeForm({
               when it has no value. Never a fabricated 0R.
             */}
             <ActualRReadoutRow readout={validation.actualR} variant="derived" />
-          </GroupCard>
 
-          {/* The trader's own judgement — a separate answer, never set from the P&L. */}
-          <GroupCard data-result-outcome="">
-            <TraderOutcomeField
-              idPrefix="after-outcome"
-              value={draft.outcome}
-              contradicts={outcomeNotice !== undefined}
-              hint={a('result.outcomeHintShort')}
-              onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
-            />
-          </GroupCard>
-
-          {/* HOW IT CLOSED: supporting detail, below the result and never competing with it. */}
-          <div data-result-closing="" className="flex min-w-0 flex-col gap-3 pt-2">
-            <h3 className="text-muted-foreground text-sm font-semibold">{a('sections.closing')}</h3>
-            <ExitTimeField
-              id="after-exitedAt"
-              label={a('times.exit')}
-              value={draft.exitedAt}
-              timezone={timezone}
-              locale={locale}
-              error={errorText('exitedAt')}
-              lastRecordedExit={
-                latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
-              }
-              optionalMarker={false}
-              onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-            />
-            {/* Exit history: optional supporting evidence, never the result */}
-            <FoldedGroup
-              id="after-exits-toggle"
-              title={a('sections.exits')}
-              summary={
-                exitErrorCount > 0 ? (
-                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                    {c('summary.hasErrors', { count: exitErrorCount })}
-                  </span>
-                ) : recordedExits.length === 0 ? (
-                  a('exits.summaryEmpty')
-                ) : (
-                  a('exits.summaryCount', { count: recordedExits.length })
-                )
-              }
-              open={exitsOpen || exitErrorCount > 0}
-              onToggle={() => setExitsOpen((open) => !open)}
+            {/* HOW IT CLOSED: the supporting breakdown of the same result. */}
+            <div
+              data-result-closing=""
+              className="border-border flex min-w-0 flex-col gap-3 border-t pt-4"
             >
-              <ExitHistoryFields
-                draft={draft}
-                currency={currency}
-                errorText={errorText}
-                subtotal={validation.exitSubtotalMinor}
-                discrepancy={
-                  discrepancy?.kind === 'exit_discrepancy'
-                    ? {
-                        subtotal: formatMoney(discrepancy.subtotalMinor),
-                        final: formatMoney(discrepancy.finalPnlMinor),
-                      }
-                    : null
+              <ExitTimeField
+                id="after-exitedAt"
+                label={a('times.exit')}
+                value={draft.exitedAt}
+                timezone={timezone}
+                locale={locale}
+                error={errorText('exitedAt')}
+                lastRecordedExit={
+                  latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
                 }
-                formatMoney={formatMoney}
-                onAdd={() => apply((current) => addExit(current, generateId()))}
-                onRemove={(id) => apply((current) => removeExit(current, id))}
-                onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
-                onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+                optionalMarker={false}
+                onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
               />
-            </FoldedGroup>
-          </div>
+              <div data-exit-history="" className="-mx-3 min-w-0">
+                <Disclosure
+                  id="after-exits-toggle"
+                  title={a('sections.exits')}
+                  summary={
+                    <>
+                      {exitErrorCount > 0 ? (
+                        <span className="text-destructive flex min-w-0 items-center gap-1.5">
+                          <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                          {c('summary.hasErrors', { count: exitErrorCount })}
+                        </span>
+                      ) : null}
+                      <ExitHistoryStatusLine status={exitStatus} />
+                    </>
+                  }
+                  open={exitsOpen || exitErrorCount > 0}
+                  onToggle={() => setExitsOpen((open) => !open)}
+                >
+                  <ExitHistoryFields
+                    draft={draft}
+                    currency={currency}
+                    errorText={errorText}
+                    subtotal={validation.exitSubtotalMinor}
+                    discrepancy={
+                      discrepancy?.kind === 'exit_discrepancy'
+                        ? {
+                            subtotal: formatMoney(discrepancy.subtotalMinor),
+                            final: formatMoney(discrepancy.finalPnlMinor),
+                          }
+                        : null
+                    }
+                    formatMoney={formatMoney}
+                    onAdd={() => apply((current) => addExit(current, generateId()))}
+                    onRemove={(id) => apply((current) => removeExit(current, id))}
+                    onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+                    onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+                  />
+                </Disclosure>
+              </div>
+            </div>
+          </GroupCard>
         </>,
       )}
 
@@ -1505,6 +1517,59 @@ export function TradeAfterTradeForm({
         </>,
       )}
     </TradeStepFlow>
+  );
+}
+
+/**
+ * THE EXIT HISTORY'S OWN STATUS, readable on the collapsed row: a full close in
+ * one exit, or how many exits and how much of the position they account for,
+ * with the trader's explicit completeness answer. It describes the history,
+ * never the Trade — the Trade is already closed. An unstated share is said to
+ * be unknown, never estimated. Spans only: it sits inside the row's button.
+ */
+function ExitHistoryStatusLine({ status }: { status: ExitHistoryStatus }) {
+  const s = useTranslations('trades.create.recording.contractAfter.exits.status');
+  const bps = status.accountedBps;
+  const parts: string[] = [];
+  if (status.kind === 'none') {
+    parts.push(s('none'));
+  } else {
+    parts.push(
+      status.completeness === 'complete'
+        ? s('allRecorded')
+        : status.kind === 'single_full'
+          ? s('singleFull')
+          : s('count', { count: status.count }),
+    );
+    parts.push(
+      bps === null ? s('allocationUnknown') : s('accounted', { percent: formatShare(bps) }),
+    );
+    if (status.completeness === 'incomplete') parts.push(s('incomplete'));
+    if (status.completeness === 'unknown') parts.push(s('notSure'));
+  }
+  const remaining = status.kind !== 'none' && bps !== null && bps < 10_000 ? 10_000 - bps : null;
+  return (
+    <span
+      data-exit-history-status={status.kind}
+      data-accounted-bps={bps ?? 'unknown'}
+      className="flex min-w-0 flex-col gap-1.5"
+    >
+      <span className="block">{parts.join(' · ')}</span>
+      {status.kind === 'none' || bps === null ? null : (
+        <span
+          aria-hidden="true"
+          className="bg-muted block h-1.5 w-full max-w-60 overflow-hidden rounded-full"
+        >
+          <span
+            className="bg-primary block h-full rounded-full"
+            style={{ width: `${Math.min(bps, 10_000) / 100}%` }}
+          />
+        </span>
+      )}
+      {remaining === null ? null : (
+        <span className="block text-xs">{s('remaining', { percent: formatShare(remaining) })}</span>
+      )}
+    </span>
   );
 }
 

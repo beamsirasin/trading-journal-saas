@@ -382,7 +382,7 @@ export function SelectField({
  * untoned group is unchanged, and a toned option is neutral until it is
  * chosen — the hue marks the SELECTION, never the existence of the choice.
  */
-export type ChoiceTone = 'positive' | 'negative';
+export type ChoiceTone = 'positive' | 'negative' | 'break_even';
 
 export function RadioMark({
   checked,
@@ -403,7 +403,9 @@ export function RadioMark({
             ? 'border-positive bg-positive'
             : tone === 'negative'
               ? 'border-negative bg-negative'
-              : 'border-primary bg-primary'
+              : tone === 'break_even'
+                ? 'border-break-even bg-break-even'
+                : 'border-primary bg-primary'
           : 'border-control-border',
         className,
       )}
@@ -470,8 +472,13 @@ export function ChoiceGroup<T extends string>({
    * answer tile per option, five across at every width, each with its own
    * radio marker above the label so the recorded answer reads as an answer,
    * never as a mode or filter. Same radios, states and keyboard behaviour.
+   *
+   * `buttons` is a short row of direct text answers — Win / BE / Loss — with
+   * no radio marker. Unchosen they are neutral; the chosen one takes its
+   * option's tone as a tinted fill, a full-strength border ring, emphasised
+   * text and a check, so the answer survives greyscale (DESIGN.md §9.4).
    */
-  appearance?: 'cards' | 'scale';
+  appearance?: 'cards' | 'scale' | 'buttons';
   /**
    * The group sits under a heading that already asks the question, so the
    * legend stays for the accessible name and drops out of the picture.
@@ -480,7 +487,8 @@ export function ChoiceGroup<T extends string>({
 }) {
   const name = useId();
   const scale = appearance === 'scale';
-  const stacked = !scale && fit !== undefined && columns === 5;
+  const buttons = appearance === 'buttons';
+  const stacked = !scale && !buttons && fit !== undefined && columns === 5;
   const errorId = `${idPrefix}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
@@ -495,31 +503,37 @@ export function ChoiceGroup<T extends string>({
         <div
           className={cn(
             'grid min-w-0 gap-2',
-            scale
+            buttons
               ? columns === 5
-                ? 'grid-cols-5 gap-1.5'
+                ? 'grid-cols-5'
                 : columns === 3
-                  ? 'grid-cols-3 gap-1.5'
-                  : 'grid-cols-2 gap-1.5'
-              : fit === 'row'
+                  ? 'grid-cols-3'
+                  : 'grid-cols-2'
+              : scale
                 ? columns === 5
-                  ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
+                  ? 'grid-cols-5 gap-1.5'
                   : columns === 3
-                    ? 'grid-cols-3'
-                    : 'grid-cols-2'
-                : fit === 'split'
+                    ? 'grid-cols-3 gap-1.5'
+                    : 'grid-cols-2 gap-1.5'
+                : fit === 'row'
                   ? columns === 5
-                    ? 'grid-cols-3 gap-1.5 min-[380px]:grid-cols-5 min-[560px]:gap-2'
+                    ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
                     : columns === 3
-                      ? 'grid-cols-2 min-[420px]:grid-cols-3'
+                      ? 'grid-cols-3'
                       : 'grid-cols-2'
-                  : columns === 5
-                    ? 'grid-cols-1 min-[560px]:grid-cols-5'
-                    : columns === 3
-                      ? 'grid-cols-1 min-[420px]:grid-cols-3'
-                      : options.some((option) => option.description !== undefined)
-                        ? 'grid-cols-1 min-[420px]:grid-cols-2'
-                        : 'grid-cols-2',
+                  : fit === 'split'
+                    ? columns === 5
+                      ? 'grid-cols-3 gap-1.5 min-[380px]:grid-cols-5 min-[560px]:gap-2'
+                      : columns === 3
+                        ? 'grid-cols-2 min-[420px]:grid-cols-3'
+                        : 'grid-cols-2'
+                    : columns === 5
+                      ? 'grid-cols-1 min-[560px]:grid-cols-5'
+                      : columns === 3
+                        ? 'grid-cols-1 min-[420px]:grid-cols-3'
+                        : options.some((option) => option.description !== undefined)
+                          ? 'grid-cols-1 min-[420px]:grid-cols-2'
+                          : 'grid-cols-2',
           )}
         >
           {options.map((option, index) => {
@@ -541,13 +555,15 @@ export function ChoiceGroup<T extends string>({
                   htmlFor={id}
                   className={cn(
                     'flex h-full min-w-0 cursor-pointer gap-2.5 rounded-md border px-3 transition-colors motion-reduce:transition-none',
-                    scale
-                      ? 'min-h-12 flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-center'
-                      : stacked
-                        ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
-                        : compact
-                          ? 'min-h-11 items-center py-2'
-                          : 'min-h-12 items-start py-2.5',
+                    buttons
+                      ? 'min-h-12 items-center justify-center gap-1.5 px-2 py-2 text-center'
+                      : scale
+                        ? 'min-h-12 flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-center'
+                        : stacked
+                          ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
+                          : compact
+                            ? 'min-h-11 items-center py-2'
+                            : 'min-h-12 items-start py-2.5',
                     'peer-focus-visible:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
                     /*
                       SELECTED, WITH A DIRECTION WHERE THERE IS ONE. The tint is
@@ -557,34 +573,68 @@ export function ChoiceGroup<T extends string>({
                       banner. The label is always the word, so the state
                       survives greyscale and colour blindness (DESIGN.md §9.4).
                     */
-                    checked
+                    buttons && checked
                       ? option.tone === 'positive'
-                        ? 'border-positive/45 bg-positive/8'
+                        ? 'border-positive bg-positive/12 ring-positive ring-1 ring-inset'
                         : option.tone === 'negative'
-                          ? 'border-negative/45 bg-negative/8'
-                          : 'border-foreground/60 bg-accent'
-                      : cn(
-                          'bg-background hover:bg-accent',
-                          error === undefined ? 'border-control-border' : 'border-destructive',
-                        ),
+                          ? 'border-negative bg-negative/12 ring-negative ring-1 ring-inset'
+                          : option.tone === 'break_even'
+                            ? 'border-break-even bg-break-even/12 ring-break-even ring-1 ring-inset'
+                            : 'border-foreground bg-accent ring-foreground ring-1 ring-inset'
+                      : checked
+                        ? option.tone === 'positive'
+                          ? 'border-positive/45 bg-positive/8'
+                          : option.tone === 'negative'
+                            ? 'border-negative/45 bg-negative/8'
+                            : option.tone === 'break_even'
+                              ? 'border-break-even/45 bg-break-even/8'
+                              : 'border-foreground/60 bg-accent'
+                        : cn(
+                            'bg-background hover:bg-accent',
+                            error === undefined ? 'border-control-border' : 'border-destructive',
+                          ),
                   )}
                 >
-                  <RadioMark
-                    checked={checked}
-                    tone={option.tone}
-                    className={scale ? 'size-3.5' : compact || stacked ? '' : 'mt-0.5'}
-                  />
+                  {buttons ? (
+                    checked ? (
+                      <Check
+                        aria-hidden="true"
+                        className={cn(
+                          'size-4 shrink-0',
+                          option.tone === 'positive'
+                            ? 'text-positive'
+                            : option.tone === 'negative'
+                              ? 'text-negative'
+                              : option.tone === 'break_even'
+                                ? 'text-break-even'
+                                : 'text-foreground',
+                        )}
+                      />
+                    ) : null
+                  ) : (
+                    <RadioMark
+                      checked={checked}
+                      tone={option.tone}
+                      className={scale ? 'size-3.5' : compact || stacked ? '' : 'mt-0.5'}
+                    />
+                  )}
                   <span className="min-w-0">
                     <span
                       className={cn(
                         'block break-words',
-                        scale ? 'text-xs leading-tight min-[420px]:text-sm' : 'text-sm',
+                        scale
+                          ? 'text-xs leading-tight min-[420px]:text-sm'
+                          : buttons
+                            ? 'text-[0.9375rem]'
+                            : 'text-sm',
                         checked ? 'font-semibold' : 'font-medium',
                         checked && option.tone === 'positive'
                           ? 'text-positive'
                           : checked && option.tone === 'negative'
                             ? 'text-negative'
-                            : 'text-foreground',
+                            : checked && option.tone === 'break_even'
+                              ? 'text-break-even'
+                              : 'text-foreground',
                       )}
                     >
                       {option.label}
