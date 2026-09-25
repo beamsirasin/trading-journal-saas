@@ -227,6 +227,7 @@ describe('trades/schemas — valid input', () => {
       targetPrice: '1.1100',
       exitPlan: { state: 'no_rule' },
       finalPnlMinor: '-2500',
+      finalPnlStatedTotal: true,
       traderOutcome: 'win',
       exitHistoryCompleteness: 'incomplete',
       exits: [
@@ -241,6 +242,34 @@ describe('trades/schemas — valid input', () => {
     expect(result.success).toBe(true);
   });
 
+  /*
+    A FINAL NET P&L NEEDS EXACTLY ONE SOURCE (decisions 57–58): the exits'
+    own sum, or a stated total — never a bare figure, never both claims.
+  */
+  it.each([
+    ['a bare Final Net P&L', { finalPnlMinor: '8000' }, 'final_pnl_requires_source'],
+    [
+      'both sources at once',
+      { finalPnlMinor: '8000', finalPnlAdoptedFromExits: true, finalPnlStatedTotal: true },
+      'final_pnl_one_source',
+    ],
+    [
+      'a stated total with no figure',
+      { finalPnlStatedTotal: true },
+      'final_pnl_source_requires_figure',
+    ],
+    [
+      'an adoption with no figure',
+      { finalPnlAdoptedFromExits: true },
+      'final_pnl_source_requires_figure',
+    ],
+  ] as const)('refuses %s on a Record Closed Save', (_label, overrides, message) => {
+    const result = CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), ...overrides });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.message)).toContain(message);
+  });
+
   it('normalizes blank historical facts to NULL without converting zero', () => {
     const result = CreateCompletedTradeSchema.safeParse({
       ...baseCompletedInput(),
@@ -248,6 +277,7 @@ describe('trades/schemas — valid input', () => {
       exitedAt: '',
       plannedRiskMinor: '',
       finalPnlMinor: '0',
+      finalPnlStatedTotal: true,
       exits: [{ exitScope: 'part', realizedPnlMinor: '' }],
     });
     expect(result.success).toBe(true);

@@ -205,6 +205,7 @@ describe('round trips', () => {
       outcome: 'loss',
       exitedAt: '2026-09-16T20:00',
       closeMode: 'in_parts',
+      partsResult: 'each_exit',
       exits: [
         {
           id: 'leg',
@@ -603,8 +604,10 @@ describe('version 1 drafts', () => {
       enteredAt: '2026-09-16T09:00',
       exitedAt: '2026-09-16T11:00',
       risk: '100',
-      // The v1 exits carry the result now (decision 57): the close is in parts.
+      // Exits beside a typed total (decisions 57–58): both kept, no way chosen.
       closeMode: 'in_parts',
+      partsResult: 'unanswered',
+      statedTotal: '120',
       confidence: 50,
       emotions: { answer: 'none', keys: [] },
       context: { timeframe: '15m', session: 'London', reason: 'Retest', notes: 'Kept my stop' },
@@ -660,17 +663,65 @@ describe('a stored After Trade draft from before the closing model (decision 57)
       lastCarried: null,
     });
     const raw = JSON.parse(envelope) as { afterTrade: Record<string, unknown> };
-    const { closeMode: _m, fullClose: _f, ...legacy } = raw.afterTrade;
+    const {
+      closeMode: _m,
+      fullClose: _f,
+      partsResult: _p,
+      statedTotal: _t,
+      ...legacy
+    } = raw.afterTrade;
     raw.afterTrade = { ...legacy, completeness: 'unanswered', ...afterTrade };
     return JSON.stringify(raw);
   }
 
-  it('turns a typed Final Net P&L with no exits into a full close', () => {
+  it('keeps the chosen way of recording a close in parts through a reload', () => {
+    const envelope: RecordingDraftEnvelope = {
+      version: RECORDING_DRAFT_VERSION,
+      activeMode: 'after_trade',
+      mutationKey: KEY,
+      updatedAt: NOW.toISOString(),
+      atEntry: null,
+      afterTrade: {
+        ...createAfterTradeDraft(ACCOUNT),
+        closeMode: 'in_parts' as const,
+        partsResult: 'total_only' as const,
+        statedTotal: '80',
+      },
+      lastCarried: null,
+    };
+    const parsed = parseRecordingDraft(serializeRecordingDraft(envelope), NOW);
+    if (parsed.status !== 'recovered') throw new Error('expected recovery');
+    expect(parsed.envelope.afterTrade).toMatchObject({
+      closeMode: 'in_parts',
+      partsResult: 'total_only',
+      statedTotal: '80',
+    });
+  });
+
+  it('reads a decision-57 close in parts as recorded exit by exit', () => {
+    const raw = JSON.parse(storedWith({})) as { afterTrade: Record<string, unknown> };
+    raw.afterTrade = {
+      ...raw.afterTrade,
+      closeMode: 'in_parts',
+      fullClose: { pnl: '', price: '', reason: '' },
+    };
+    const parsed = parseRecordingDraft(JSON.stringify(raw), NOW);
+    if (parsed.status !== 'recovered') throw new Error('expected recovery');
+    expect(parsed.envelope.afterTrade).toMatchObject({
+      closeMode: 'in_parts',
+      partsResult: 'each_exit',
+      statedTotal: '',
+    });
+  });
+
+  it('keeps a typed Final Net P&L with no exits, choosing no way of closing', () => {
     const parsed = parseRecordingDraft(storedWith({ finalPnl: '80' }), NOW);
     if (parsed.status !== 'recovered') throw new Error('expected recovery');
     expect(parsed.envelope.afterTrade).toMatchObject({
-      closeMode: 'all_at_once',
+      closeMode: 'unanswered',
+      partsResult: 'unanswered',
       fullClose: { pnl: '80', price: '', reason: '' },
+      statedTotal: '80',
     });
     expect(parsed.envelope.afterTrade).not.toHaveProperty('finalPnl');
   });
@@ -690,7 +741,12 @@ describe('a stored After Trade draft from before the closing model (decision 57)
       NOW,
     );
     if (parsed.status !== 'recovered') throw new Error('expected recovery');
-    expect(parsed.envelope.afterTrade).toMatchObject({ closeMode: 'in_parts', exits: [exit] });
+    expect(parsed.envelope.afterTrade).toMatchObject({
+      closeMode: 'in_parts',
+      partsResult: 'unanswered',
+      exits: [exit],
+      statedTotal: '80',
+    });
     expect(parsed.envelope.afterTrade).not.toHaveProperty('completeness');
   });
 });
@@ -772,6 +828,7 @@ describe('inactive-mode work a Save would remove (contract §23)', () => {
       withAfterTrade({
         outcome: 'win',
         closeMode: 'in_parts',
+        partsResult: 'each_exit',
         exits: [
           { id: 'e', scope: '', pnl: '', closedPercent: '', exitedAt: '', price: '', reason: 'r' },
         ],

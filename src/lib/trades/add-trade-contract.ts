@@ -169,6 +169,29 @@ export interface ExitHistoryReconciliation {
 }
 
 /**
+ * DO THE EXITS PROVE THE WHOLE POSITION CLOSED? (decision 57)
+ *
+ * Only an All remaining exit — it closes whatever was left — or stated shares
+ * of the original position that total exactly 100%. An exit with no stated
+ * share makes the allocation unknown, never assumed; nothing is estimated.
+ */
+export function exitsProveClose(
+  exits: readonly {
+    readonly exitScope?: string | null;
+    readonly closedBps?: number | null;
+  }[],
+): boolean {
+  if (exits.length === 0) return false;
+  if (exits.some((exit) => exit.exitScope === 'all_remaining')) return true;
+  let total = 0;
+  for (const exit of exits) {
+    if (exit.closedBps == null) return false;
+    total += exit.closedBps;
+  }
+  return total === 10_000;
+}
+
+/**
  * EXIT HISTORY AGAINST FINAL NET P&L (contract §11).
  *
  * Adoption and discrepancy both need an explicitly Complete history in which

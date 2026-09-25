@@ -24,6 +24,7 @@ import {
   buildAfterTradePayload,
   createAfterTradeDraft,
   setCloseMode,
+  setPartsResult,
   updateExit,
   updateFullClose,
   type AfterTradeDraft,
@@ -1062,7 +1063,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         draft: AfterTradeDraft,
         legs: readonly Partial<Omit<AfterTradeDraft['exits'][number], 'id'>>[],
       ) {
-        let next = setCloseMode(draft, 'in_parts');
+        let next = setPartsResult(setCloseMode(draft, 'in_parts'), 'each_exit');
         legs.forEach((leg, index) => {
           next = updateExit(addExit(next, `leg-${index}`), `leg-${index}`, leg);
         });
@@ -1180,7 +1181,11 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       // Normal saves still work, and store no Actual Risk.
       const opened = await createTradeAction(openPayload());
       const closed = await createCompletedTradeAction(
-        completedPayload(fw, { plannedRiskMinor: '5000', finalPnlMinor: '7500' }),
+        completedPayload(fw, {
+          plannedRiskMinor: '5000',
+          finalPnlMinor: '7500',
+          finalPnlStatedTotal: true,
+        }),
       );
       if (!opened.ok || !closed.ok) throw new Error('normal saves failed');
       for (const tradeId of [opened.data.tradeId, closed.data.tradeId]) {
@@ -1196,6 +1201,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         exitedAt,
         plannedRiskMinor: '5000',
         finalPnlMinor: '10000',
+        finalPnlStatedTotal: true,
         traderOutcome: 'win',
       });
       const first = await createCompletedTradeAction(input);
@@ -1243,6 +1249,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
           exitedAt: '',
           plannedRiskMinor: '',
           finalPnlMinor: '400',
+          finalPnlStatedTotal: true,
           plannedRewardMinor: '',
           targetPrice: '',
           exits: [],
@@ -1271,7 +1278,11 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
     it('accepts an outcome that contradicts the P&L sign — a notice, never a block', async () => {
       const { fw } = await freshFixture();
       const result = await createCompletedTradeAction(
-        completedPayload(fw, { finalPnlMinor: '-250', traderOutcome: 'win' }),
+        completedPayload(fw, {
+          finalPnlMinor: '-250',
+          finalPnlStatedTotal: true,
+          traderOutcome: 'win',
+        }),
       );
       expect(result).toMatchObject({ ok: true, data: { traderOutcome: 'win' } });
     });

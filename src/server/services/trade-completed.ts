@@ -9,6 +9,7 @@ import type { SetupConditionAnswer } from '@/lib/setup-conditions/snapshots';
 import { getChartAttachmentStorage } from '@/lib/storage/chart-attachment-storage';
 import { systemClock, type Clock } from '@/lib/time';
 import {
+  exitsProveClose,
   RECORDING_CONTRACT_ADD_TRADE_V1,
   type ActualRiskAnswer,
   type PlannedRiskState,
@@ -102,8 +103,13 @@ export interface CreateCompletedTradeInput {
   readonly contextPositionSize?: string | null;
   readonly exitPlan?: CreateTradeExitPlanChoice | undefined;
   readonly finalPnlMinor?: bigint | null;
-  /** The trader chose "Use recorded exits as final result"; re-checked here, never trusted. */
+  /** The Final Net P&L is the exits' sum; re-checked here, never trusted. */
   readonly finalPnlAdoptedFromExits?: true | undefined;
+  /**
+   * The Final Net P&L is the trader's stated total for a Trade closed in parts
+   * (decision 58). Refused beside exits that already give a total.
+   */
+  readonly finalPnlStatedTotal?: true | undefined;
   readonly traderOutcome?: OutcomeValue | undefined;
   readonly exitHistoryCompleteness?: ExitHistoryCompleteness | undefined;
   readonly exits?: readonly CompletedTradeExitInput[];
@@ -152,7 +158,8 @@ export type CreateCompletedTradeErrorCode =
   | 'invalid_completed_exit_coverage'
   | 'invalid_exit_shape'
   | 'invalid_exit_time'
-  | 'invalid_plan_outcome';
+  | 'invalid_plan_outcome'
+  | 'final_pnl_source_invalid';
 
 export type CreateCompletedTradeResult =
   | {
@@ -271,12 +278,19 @@ function adoptionHolds(input: CreateCompletedTradeInput): boolean {
   if (final === null || exits.length === 0 || input.exitHistoryCompleteness !== 'complete') {
     return false;
   }
+  // The exits must prove the whole position closed (decision 57).
+  if (!exitsProveClose(exits)) return false;
   let subtotal = 0n;
   for (const exit of exits) {
     if (exit.realizedPnlMinor == null) return false;
     subtotal += exit.realizedPnlMinor;
   }
   return subtotal === final;
+}
+
+/** The exits prove the close and every one states its P&L: they give the total themselves. */
+function exitsGiveTotal(exits: readonly CompletedTradeExitInput[]): boolean {
+  return exitsProveClose(exits) && exits.every((exit) => exit.realizedPnlMinor != null);
 }
 
 /** The closed result, exactly as the trader gave it. */
@@ -286,6 +300,21 @@ function composeClosedColumns(
 ): { readonly ok: true; readonly value: ContractClosedColumns } | CompletedFailureResult {
   const finalPnlMinor = input.finalPnlMinor ?? null;
   const adopted = input.finalPnlAdoptedFromExits === true;
+  const stated = input.finalPnlStatedTotal === true;
+  /*
+    ONE RESULT SOURCE (decisions 57–58). A new Record Closed Trade's Final Net
+    P&L is either the exits' own sum (adopted, re-checked) or the trader's
+    stated total for a close in parts whose exits cannot give one. A bare
+    figure, both claims, or a stated total beside exits that already add up
+    to a result would be two authorities — refused, never stored.
+  */
+  if (adopted && stated) return { ok: false, code: 'final_pnl_source_invalid' };
+  if ((adopted || stated) !== (finalPnlMinor !== null)) {
+    return { ok: false, code: 'final_pnl_source_invalid' };
+  }
+  if (stated && exitsGiveTotal(input.exits ?? [])) {
+    return { ok: false, code: 'final_pnl_source_invalid' };
+  }
   if (adopted && !adoptionHolds(input)) return { ok: false, code: 'exit_history_not_adoptable' };
   const riskAtEntryMinor = input.plannedRiskMinor ?? null;
   let canonicalActualR: string | null = null;

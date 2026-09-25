@@ -7,7 +7,7 @@
 > decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49, the
 > recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52,
 > stage-placement amendment 53 and Planned Risk amendment 54 (2026-09-23), and the capture-order,
-> Actual Risk and closing-model amendments 55–57 (2026-09-24/25) are recorded in the
+> Actual Risk, closing-model and result-authority amendments 55–58 (2026-09-24/25) are recorded in the
 > [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
@@ -600,7 +600,8 @@ Final Net P&L และ Trader Outcome ควรถูก prompt อย่าง
 
 **Amended 2026-09-25 (decision 57) for new Record Closed capture:** Record Closed has one result
 source — how the Trade closed. Final Net P&L is derived from the close (a full close's P&L, or the
-sum of the exits once they prove the whole position closed) and is never typed beside it; "Use
+sum of the exits once they prove the whole position closed) and is never typed beside it — except
+that a close in parts whose exits are not known may state its final total instead (decision 58); "Use
 recorded exits as final result", the explicit completeness question and the discrepancy notice
 below no longer apply to it. The text below still governs Close Existing Open Trade and every
 Trade saved with a stated Final Net P&L.
@@ -744,7 +745,9 @@ Final Net P&L และ Trader Outcome ควรถูก prompt อย่าง
 
 **Decision 57:** in Record Closed the Final Net P&L is not a separate input — it is derived from how
 the Trade closed (a full close's P&L, or the sum of the exits once they prove the whole position
-closed). A partial close saves with no Final Net P&L.
+closed), or — for a close in parts whose exits are not known — the trader's stated total
+(decision 58). A close in parts recorded exit by exit that does not yet prove the close saves with
+no Final Net P&L.
 
 Risk at Entry, Final Net P&L และเวลาใน historical capture อาจเว้นว่างเมื่อไม่ทราบหรือไม่ได้บันทึก โดยไม่ต้องมี explicit Unknown control (ดู §24)
 
@@ -1818,10 +1821,7 @@ One closing model for Record Closed, 2026-09-25 (item 57):
     completeness question and the subtotal-vs-Final-P&L discrepancy notice are withdrawn from
     Record Closed — they existed only because two result sources did.
 
-    **The service is unchanged, and says so.** `createCompletedTrade` still accepts a stated Final
-    Net P&L (`manual_total`) from other callers — seed data, fixtures and the historical shape — and
-    still re-checks an adopted one against the exits. The Record Closed form never sends a stated
-    one. Refusing `manual_total` in that service is a separate, explicit decision.
+    **Server enforcement** of the single source is decision 58.
 
     **Scope.** This amends §11 for **new Record Closed capture** only. Close Existing Open Trade
     (the canonical Final Close, `recordContractExit`) keeps its stated Final Net P&L for All
@@ -1831,3 +1831,40 @@ One closing model for Record Closed, 2026-09-25 (item 57):
     written before this decision is read once: its exits become a close in parts; a typed Final Net
     P&L with no exits becomes a full close with that P&L; a typed Final Net P&L beside exits is not
     kept. Amends §11 and §13. (§11, §13, Recording lifecycle)
+
+One result authority per Record Closed Trade, 2026-09-25 (item 58):
+
+58. **A new Record Closed Trade has exactly one result authority, and the server enforces it.**
+    Decision 57 stands; this completes it.
+
+    **Closed in parts, only the final result known.** A trader may know the Trade closed in parts
+    and its final net result without knowing each exit's P&L. _Closed in parts_ therefore asks
+    _How do you want to record the result?_:
+
+    - **Record each exit** — decision 57's exit-derived flow: legs, allocation status, and Final
+      Net P&L = the sum of the exits once they prove the close and every exit states its P&L
+      (`final_pnl_source = 'exit_history'`).
+    - **I only know the final result** — one Final Net P&L input (_Use this when you know the final
+      result but not each exit separately._). No exit is made up, no allocation is asked or
+      warned about, Trader R = Final Net P&L ÷ Risk, and the result is stored as the trader's own
+      (`final_pnl_source = 'manual_total'`).
+
+    The three authorities — a full close's P&L, an exit-derived partial result, a stated total for
+    a close in parts — are mutually exclusive. Only the chosen way is shown and saved; switching
+    keeps each way's answers in the draft but never saves two. A draft keeps the chosen way through
+    a reload; a draft written before this decision is read without choosing one for the trader
+    (exits alone were recorded exit by exit; exits beside a typed total, or a typed total alone,
+    keep every value and leave the way Unanswered).
+
+    **The server refuses a bypass.** A Record Closed Save's Final Net P&L must carry exactly one
+    claim: `finalPnlAdoptedFromExits` (re-checked: history Complete, the exits prove the close —
+    an All remaining exit or shares totalling 100% — every exit has P&L, and the sum equals the
+    figure) or `finalPnlStatedTotal` (refused beside exits that prove the close with every P&L
+    known, since those already give a result). A bare figure, both claims, or a claim without a
+    figure is refused (`final_pnl_source_invalid`, or `exit_history_not_adoptable`) and nothing is
+    written. This replaces decision 57's note that the service accepted a bare stated figure.
+
+    **Unchanged.** Close Existing Open Trade (the canonical Final Close) keeps its stated Final Net
+    P&L for All Remaining. Saved Trades are read as stored — a manual total beside disagreeing
+    exits included — and keep the saved-record correction and adoption paths. No schema change.
+    Amends §11 and §13. (§11, §13)

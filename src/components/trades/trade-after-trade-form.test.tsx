@@ -457,10 +457,12 @@ function payload() {
   return createCompletedTradeActionMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
 }
 
-/** Step 5: "Closed in parts", ready for exit legs. */
+/** Step 5: "Closed in parts", recorded exit by exit — ready for exit legs. */
 function openExitHistory() {
   goTo('result');
   fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
+  const each = screen.getByRole('radio', { name: 'Record each exit' });
+  if (!(each as HTMLInputElement).checked) fireEvent.click(each);
 }
 
 /** Step 5: "Closed all at once", with this P&L for the close — the Trade's result. */
@@ -2584,6 +2586,41 @@ describe('Step 5 — the close is the result', () => {
     closeAllAtOnce('80');
     expect(result().r()).toHaveAttribute('data-actual-r', 'unavailable');
     expect(result().r()).toHaveTextContent('Trader R needs your risk at entry.');
+  });
+
+  it('closed in parts, only the final result known: a stated +80 with its own provenance', async () => {
+    renderForm();
+    fillIdentity();
+    withRisk50();
+    fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
+    expect(
+      screen.getByRole('group', { name: 'How do you want to record the result?' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'I only know the final result' }));
+    const { panel, final, r, status } = result();
+    // One Final Net P&L input, explained; no exits, no allocation status.
+    expect(
+      within(panel).getByText(/Use this when you know the final result but not each exit/),
+    ).toBeInTheDocument();
+    expect(status()).toBeNull();
+    expect(panel.querySelector('[data-after-exit]')).toBeNull();
+    fireEvent.change(within(panel).getByLabelText('Final net P&L'), { target: { value: '80' } });
+    expect(final()).toHaveAttribute('data-final-result', 'final');
+    expect(final().querySelector('[data-final-pnl-provenance]')).toHaveAttribute(
+      'data-final-pnl-provenance',
+      'stated_total',
+    );
+    expect(final()).toHaveTextContent('Stated by you');
+    expect(within(final()).getByText('+80.00 USD')).toBeInTheDocument();
+    expect(r()).toHaveTextContent('+1.60R');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      finalPnlMinor: '8000',
+      finalPnlStatedTotal: true,
+      exits: [],
+    });
+    expect(payload()).not.toHaveProperty('finalPnlAdoptedFromExits');
   });
 
   it('keeps each way of closing when switching, and shows only the chosen one', () => {

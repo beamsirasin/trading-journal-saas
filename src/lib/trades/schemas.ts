@@ -1098,6 +1098,12 @@ const CompletedTradeObjectSchema = z
      * records Final Net P&L as adopted from exit history.
      */
     finalPnlAdoptedFromExits: z.literal(true).optional(),
+    /**
+     * ONE RESULT SOURCE (decision 58). The trader states the whole-Trade total
+     * directly for a Trade closed in parts whose exits cannot derive it. A
+     * claim the service checks: never beside a total the exits already give.
+     */
+    finalPnlStatedTotal: z.literal(true).optional(),
     /** The trader's own classification. Absent = Unanswered. */
     traderOutcome: z.enum(OUTCOME_VALUES).optional(),
     /** Absent = Unanswered; asked only once an exit is recorded. */
@@ -1182,6 +1188,21 @@ function addAfterTradeContractIssues(
 
   if (data.exits.length === 0 && data.exitHistoryCompleteness !== undefined) {
     issue('exit_completeness_requires_history', ['exitHistoryCompleteness']);
+  }
+
+  /*
+    A FINAL NET P&L NEEDS EXACTLY ONE SOURCE (decisions 57–58): adopted from
+    exits that prove the close, or stated as the total of a Trade closed in
+    parts. Neither claim without a figure; never both; never a bare figure.
+  */
+  const adopted = data.finalPnlAdoptedFromExits === true;
+  const stated = data.finalPnlStatedTotal === true;
+  if (adopted && stated) issue('final_pnl_one_source', ['finalPnlStatedTotal']);
+  if ((adopted || stated) && data.finalPnlMinor == null) {
+    issue('final_pnl_source_requires_figure', ['finalPnlMinor']);
+  }
+  if (data.finalPnlMinor != null && !adopted && !stated) {
+    issue('final_pnl_requires_source', ['finalPnlMinor']);
   }
 }
 

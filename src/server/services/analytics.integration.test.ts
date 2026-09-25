@@ -1734,7 +1734,10 @@ describe('analytics service (real PostgreSQL)', () => {
       plannedRiskMinor: 100n,
       targetState: 'fixed',
       plannedRewardMinor: 400n,
+      // The one exit closes the whole position: the result is its P&L (decision 57).
       finalPnlMinor: 300n,
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
       enteredAt: new Date('2026-08-01T09:00:00.000Z'),
       exitedAt,
       exits: [{ closedBps: 10_000, realizedPnlMinor: 300n }],

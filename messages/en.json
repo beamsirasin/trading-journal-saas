@@ -2577,8 +2577,19 @@
               "waitingForPnl": "Enter the P&L for the close.",
               "waitingForEveryPnl": "Waiting for the P&L of every exit.",
               "waitingForAllocation": "Waiting until the exits account for the whole position.",
-              "waitingForRemaining": "Waiting for the remaining exit."
-            }
+              "waitingForRemaining": "Waiting for the remaining exit.",
+              "waitingForPartsChoice": "Choose how you want to record the result.",
+              "waitingForStatedTotal": "Enter the final net P&L.",
+              "fromFullClose": "From the close",
+              "fromExits": "Sum of your exits",
+              "fromStatedTotal": "Stated by you"
+            },
+            "partsQuestion": "How do you want to record the result?",
+            "partsRemoveAria": "Remove how you record the result answer",
+            "eachExit": "Record each exit",
+            "totalOnly": "I only know the final result",
+            "statedTotal": "Final net P&L",
+            "statedTotalHint": "Use this when you know the final result but not each exit separately. After costs; use a minus sign for a loss."
           }
         },
         "setupStep": {
@@ -2837,7 +2848,8 @@
       "invalid_exit_plan": "That exit plan is no longer available. Choose another plan and try again.",
       "invalid_plan_outcome": "That plan outcome no longer fits this trade's plan. Check the answer and try again.",
       "actual_risk_retired": "Actual risk is no longer recorded. Reload the page and save again.",
-      "contract_close_required": "This trade closes through Record partial exit or Close trade."
+      "contract_close_required": "This trade closes through Record partial exit or Close trade.",
+      "final_pnl_source_invalid": "This final net P&L has no single source. Record how the trade closed, or state the total for a trade closed in parts."
     },
     "workspace": {
       "filterError": {

@@ -70,6 +70,13 @@ export type CompletenessAnswer = 'unanswered' | ExitHistoryCompleteness;
  */
 export type CloseMode = 'unanswered' | 'all_at_once' | 'in_parts';
 
+/**
+ * HOW A CLOSE IN PARTS IS RECORDED (decision 58) — the result's one source:
+ * each exit (the result is their sum once they prove the close), or only the
+ * final result the trader knows (a stated total; no exits are made up).
+ */
+export type PartsResult = 'unanswered' | 'each_exit' | 'total_only';
+
 /** The single close of "Closed all at once": one All remaining exit. */
 export interface FullCloseDraft {
   readonly pnl: string;
@@ -127,8 +134,12 @@ export interface AfterTradeDraft {
   readonly closeMode: CloseMode;
   /** "Closed all at once": the one close. Kept while "in parts" is chosen. */
   readonly fullClose: FullCloseDraft;
-  /** "Closed in parts": the exit legs. Kept while "all at once" is chosen. */
+  /** "Closed in parts": the exit legs. Kept while another way is chosen. */
   readonly exits: readonly AfterTradeExitDraft[];
+  /** "Closed in parts": how its result is recorded. */
+  readonly partsResult: PartsResult;
+  /** "I only know the final result": the trader's stated whole-Trade total. */
+  readonly statedTotal: string;
   readonly classification: AfterTradeClassificationDraft;
   /** Recalled Entry Confidence; no default. */
   readonly confidence: number | null;
@@ -163,6 +174,8 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
     closeMode: 'unanswered',
     fullClose: { pnl: '', price: '', reason: '' },
     exits: [],
+    partsResult: 'unanswered',
+    statedTotal: '',
     classification: { strategy: 'unanswered', strategyId: '', setupByStrategy: {}, conditions: {} },
     confidence: null,
     emotions: { answer: 'unanswered', keys: [] },
@@ -279,6 +292,15 @@ export function setCloseMode(draft: AfterTradeDraft, closeMode: CloseMode): Afte
   return { ...draft, closeMode };
 }
 
+/** Choosing how a close in parts is recorded; each way keeps its own answers. */
+export function setPartsResult(draft: AfterTradeDraft, partsResult: PartsResult): AfterTradeDraft {
+  return { ...draft, partsResult };
+}
+
+export function setStatedTotal(draft: AfterTradeDraft, statedTotal: string): AfterTradeDraft {
+  return { ...draft, statedTotal };
+}
+
 export function updateFullClose(
   draft: AfterTradeDraft,
   patch: Partial<FullCloseDraft>,
@@ -309,28 +331,47 @@ export function closingExits(draft: AfterTradeDraft): readonly AfterTradeExitDra
       },
     ];
   }
-  if (draft.closeMode === 'in_parts') return draft.exits.filter(meaningfulExit);
+  // Only "Record each exit" saves exit legs; a stated total makes none up.
+  if (draft.closeMode === 'in_parts' && draft.partsResult === 'each_exit') {
+    return draft.exits.filter(meaningfulExit);
+  }
   return [];
 }
 
 /**
- * A DRAFT SAVED BEFORE THE CLOSING MODEL (decision 57), read once: its exits
- * become "in parts"; a typed Final Net P&L with no exits becomes "all at
- * once" with that P&L; otherwise the question is Unanswered. A typed Final
- * Net P&L beside exits has no place in the one-source model and is not kept.
+ * A DRAFT SAVED BEFORE THE CLOSING MODEL (decisions 57–58), read once. Every
+ * typed value is kept; no way of closing is chosen that the trader did not:
+ *
+ * - exits and no typed total: a close in parts recorded exit by exit — the
+ *   only thing those exits could have been;
+ * - exits beside a typed total: a close in parts whose recording is left
+ *   Unanswered, holding both the exits and the total until the trader picks;
+ * - a typed total alone: Unanswered, the total kept in both places a trader
+ *   could put it (the full close's P&L and the stated total);
+ * - nothing: Unanswered.
  */
 export function closingFromLegacy(legacy: {
   readonly finalPnl: string;
   readonly exits: readonly AfterTradeExitDraft[];
-}): Pick<AfterTradeDraft, 'closeMode' | 'fullClose' | 'exits'> {
+}): Pick<AfterTradeDraft, 'closeMode' | 'fullClose' | 'exits' | 'partsResult' | 'statedTotal'> {
   const blank: FullCloseDraft = { pnl: '', price: '', reason: '' };
+  const total = legacy.finalPnl.trim() === '' ? '' : legacy.finalPnl;
   if (legacy.exits.some(meaningfulExit)) {
-    return { closeMode: 'in_parts', fullClose: blank, exits: legacy.exits };
+    return {
+      closeMode: 'in_parts',
+      fullClose: blank,
+      exits: legacy.exits,
+      partsResult: total === '' ? 'each_exit' : 'unanswered',
+      statedTotal: total,
+    };
   }
-  if (legacy.finalPnl.trim() !== '') {
-    return { closeMode: 'all_at_once', fullClose: { ...blank, pnl: legacy.finalPnl }, exits: [] };
-  }
-  return { closeMode: 'unanswered', fullClose: blank, exits: legacy.exits };
+  return {
+    closeMode: 'unanswered',
+    fullClose: { ...blank, pnl: total },
+    exits: legacy.exits,
+    partsResult: 'unanswered',
+    statedTotal: total,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -616,6 +657,7 @@ export const AFTER_TRADE_STATIC_FIELDS = [
   'direction',
   'enteredAt',
   'exitedAt',
+  'finalPnl',
   'risk',
   'targetProfit',
   'targetPrice',
@@ -638,6 +680,8 @@ export type AfterTradeSection = 'trade' | 'result' | 'plan' | 'exits' | 'context
 export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSection {
   if (field.startsWith('exit:') || field === 'exits') return 'exits';
   switch (field) {
+    case 'finalPnl':
+      return 'result';
     case 'risk':
     case 'targetProfit':
     case 'targetPrice':
@@ -732,6 +776,9 @@ export interface AfterTradeValidation {
  */
 export interface ClosingState {
   readonly mode: CloseMode;
+  readonly partsResult: PartsResult;
+  /** Where the Final Net P&L comes from, when there is one. */
+  readonly source: 'full_close' | 'exit_legs' | 'stated_total' | null;
   readonly exitCount: number;
   /** Share of the position the exits account for; `null` is unknown. */
   readonly accountedBps: number | null;
@@ -963,9 +1010,28 @@ export function validateAfterTradeDraft(
   const everyPnl = exitPnl.length > 0 && exitPnl.every((pnl) => pnl !== null);
   const knownPnl = exitPnl.filter((pnl): pnl is bigint => pnl !== null);
   const sum = knownPnl.reduce((total, pnl) => total + pnl, 0n);
-  const finalPnlMinor = closed && everyPnl ? sum.toString() : null;
+  let finalPnlMinor = closed && everyPnl ? sum.toString() : null;
+  let source: ClosingState['source'] =
+    finalPnlMinor === null ? null : draft.closeMode === 'all_at_once' ? 'full_close' : 'exit_legs';
+  // "I only know the final result": the trader's own total, and nothing else.
+  if (draft.closeMode === 'in_parts' && draft.partsResult === 'total_only') {
+    finalPnlMinor = null;
+    source = null;
+    if (draft.statedTotal.trim() !== '') {
+      const stated = parseTradeMoneyInput(draft.statedTotal, context.currency, {
+        allowNegative: true,
+        allowZero: true,
+      });
+      if (stated.ok) {
+        finalPnlMinor = stated.value;
+        source = 'stated_total';
+      } else errors.finalPnl = 'invalid_money';
+    }
+  }
   const closing: ClosingState = {
     mode: draft.closeMode,
+    partsResult: draft.partsResult,
+    source,
     exitCount: recorded.length,
     accountedBps: coverage.accountedBps,
     closed,
@@ -1043,6 +1109,7 @@ export function orderedAfterTradeErrorFields(
     'direction',
     'enteredAt',
     'exitedAt',
+    'finalPnl',
     'risk',
     'targetProfit',
     'targetPrice',
@@ -1274,7 +1341,11 @@ export function buildAfterTradePayload(
       history is Complete exactly when the exits prove the position closed.
     */
     finalPnlMinor: validation.finalPnlMinor,
-    ...(validation.finalPnlMinor === null ? {} : { finalPnlAdoptedFromExits: true }),
+    ...(validation.closing.source === 'stated_total'
+      ? { finalPnlStatedTotal: true }
+      : validation.finalPnlMinor === null
+        ? {}
+        : { finalPnlAdoptedFromExits: true }),
     ...(draft.outcome === null ? {} : { traderOutcome: draft.outcome }),
     ...(recordedExits.length > 0 && validation.closing.closed
       ? { exitHistoryCompleteness: 'complete' }

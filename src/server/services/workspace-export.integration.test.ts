@@ -637,6 +637,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       symbol: 'XAUUSD',
       direction: 'long',
       finalPnlMinor: 1_000n,
+      finalPnlStatedTotal: true,
       notes: 'Entry note, before the trade.',
       tradingviewUrl: 'https://www.tradingview.com/x/Entry0001/',
       afterTradeNote: 'Exited on fear, "too early", again.',

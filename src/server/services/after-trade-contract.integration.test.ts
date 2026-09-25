@@ -259,7 +259,11 @@ describe('Add Trade contract After Trade (real database)', () => {
 
     it('replays the same mutation key into exactly one Trade', async () => {
       const fw = await freshFramework();
-      const request = input(fw, { finalPnlMinor: 1_500n, traderOutcome: 'win' });
+      const request = input(fw, {
+        finalPnlMinor: 1_500n,
+        finalPnlStatedTotal: true,
+        traderOutcome: 'win',
+      });
       const first = await createCompletedTrade(workspaceId, actorUserId, request);
       const replay = await createCompletedTrade(workspaceId, actorUserId, request);
       expect(first).toMatchObject({ ok: true, alreadyCreated: false });
@@ -277,7 +281,11 @@ describe('Add Trade contract After Trade (real database)', () => {
 
     it('refuses the same key with different answers, and never overwrites the saved Trade', async () => {
       const fw = await freshFramework();
-      const request = input(fw, { finalPnlMinor: 1_500n, traderOutcome: 'win' });
+      const request = input(fw, {
+        finalPnlMinor: 1_500n,
+        finalPnlStatedTotal: true,
+        traderOutcome: 'win',
+      });
       const first = await createCompletedTrade(workspaceId, actorUserId, request);
       if (!first.ok) throw new Error('first save failed');
       // An edit made after a Save whose answer was lost, retried with the old key.
@@ -360,7 +368,11 @@ describe('Add Trade contract After Trade (real database)', () => {
 
       it('refuses an identical Save Closed Trade replay as unverifiable, and changes nothing', async () => {
         const fw = await freshFramework();
-        const request = input(fw, { finalPnlMinor: 1_500n, traderOutcome: 'win' });
+        const request = input(fw, {
+          finalPnlMinor: 1_500n,
+          finalPnlStatedTotal: true,
+          traderOutcome: 'win',
+        });
         const first = await createCompletedTrade(workspaceId, actorUserId, request);
         if (!first.ok) throw new Error('first save failed');
         const before = await unfingerprinted(first.tradeId);
@@ -420,7 +432,7 @@ describe('Add Trade contract After Trade (real database)', () => {
 
     it('still honours an honest replay of a fingerprinted Trade', async () => {
       const fw = await freshFramework();
-      const request = input(fw, { finalPnlMinor: 900n });
+      const request = input(fw, { finalPnlMinor: 900n, finalPnlStatedTotal: true });
       const first = await createCompletedTrade(workspaceId, actorUserId, request);
       if (!first.ok) throw new Error('first save failed');
       expect(await createCompletedTrade(workspaceId, actorUserId, request)).toMatchObject({
@@ -462,12 +474,180 @@ describe('Add Trade contract After Trade (real database)', () => {
     });
   });
 
+  /*
+    ONE RESULT SOURCE PER NEW TRADE (decisions 57–58). A Record Closed Final
+    Net P&L is either the exits' own sum — adopted, and only when they prove
+    the close — or the trader's stated total for a close in parts whose exits
+    cannot give one. A bare figure, both claims, or a stated total beside
+    exits that already add up to a result is refused, and nothing is written.
+  */
+  describe('the Final Net P&L has exactly one source', () => {
+    async function refused(overrides: Partial<CreateCompletedTradeInput>, code: string) {
+      const fw = await freshFramework();
+      const request = input(fw, overrides);
+      expect(await createCompletedTrade(workspaceId, actorUserId, request)).toEqual({
+        ok: false,
+        code,
+      });
+      expect(
+        await db.select().from(trades).where(eq(trades.mutationKey, request.mutationKey)),
+      ).toEqual([]);
+    }
+
+    it('saves a full close of +80 from its one exit as the result, +1.60R', async () => {
+      const fw = await freshFramework();
+      const result = await save(fw, {
+        plannedRiskMinor: 5_000n,
+        finalPnlMinor: 8_000n,
+        finalPnlAdoptedFromExits: true,
+        exitHistoryCompleteness: 'complete',
+        exits: [{ exitScope: 'all_remaining', realizedPnlMinor: 8_000n }],
+      });
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        netPnlMinor: 8_000n,
+        finalPnlSource: 'exit_history',
+        actualR: '1.6000',
+      });
+    });
+
+    it('saves exits of +20, +15 and +45 closing the position as +80', async () => {
+      const fw = await freshFramework();
+      const result = await save(fw, {
+        plannedRiskMinor: 5_000n,
+        finalPnlMinor: 8_000n,
+        finalPnlAdoptedFromExits: true,
+        exitHistoryCompleteness: 'complete',
+        exits: [
+          { exitScope: 'part', closedBps: 3_000, realizedPnlMinor: 2_000n },
+          { exitScope: 'part', closedBps: 3_000, realizedPnlMinor: 1_500n },
+          { exitScope: 'all_remaining', realizedPnlMinor: 4_500n },
+        ],
+      });
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        netPnlMinor: 8_000n,
+        finalPnlSource: 'exit_history',
+        actualR: '1.6000',
+      });
+      expect(await readExits(result.tradeId)).toHaveLength(3);
+    });
+
+    it('saves a stated total of +80 as manual, +1.60R, inventing no exits', async () => {
+      const fw = await freshFramework();
+      const result = await save(fw, {
+        plannedRiskMinor: 5_000n,
+        finalPnlMinor: 8_000n,
+        finalPnlStatedTotal: true,
+      });
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        netPnlMinor: 8_000n,
+        finalPnlSource: 'manual_total',
+        exitHistoryCompleteness: null,
+        actualR: '1.6000',
+      });
+      expect(await readExits(result.tradeId)).toEqual([]);
+    });
+
+    it('refuses a bare Final Net P&L that claims no source', async () => {
+      await refused({ finalPnlMinor: 8_000n }, 'final_pnl_source_invalid');
+    });
+
+    it('refuses both sources at once, and a source with no figure', async () => {
+      await refused(
+        {
+          finalPnlMinor: 8_000n,
+          finalPnlAdoptedFromExits: true,
+          finalPnlStatedTotal: true,
+          exitHistoryCompleteness: 'complete',
+          exits: [{ exitScope: 'all_remaining', realizedPnlMinor: 8_000n }],
+        },
+        'final_pnl_source_invalid',
+      );
+      await refused({ finalPnlStatedTotal: true }, 'final_pnl_source_invalid');
+    });
+
+    it('refuses a stated total beside exits that already give the result', async () => {
+      await refused(
+        {
+          finalPnlMinor: 9_000n,
+          finalPnlStatedTotal: true,
+          exits: [
+            { exitScope: 'part', closedBps: 3_000, realizedPnlMinor: 2_000n },
+            { exitScope: 'all_remaining', realizedPnlMinor: 6_000n },
+          ],
+        },
+        'final_pnl_source_invalid',
+      );
+    });
+
+    it('refuses an exit-derived result the exits do not prove closed', async () => {
+      await refused(
+        {
+          finalPnlMinor: 3_500n,
+          finalPnlAdoptedFromExits: true,
+          exitHistoryCompleteness: 'complete',
+          exits: [
+            { exitScope: 'part', closedBps: 3_000, realizedPnlMinor: 2_000n },
+            { exitScope: 'part', closedBps: 3_000, realizedPnlMinor: 1_500n },
+          ],
+        },
+        'exit_history_not_adoptable',
+      );
+    });
+
+    /*
+      HISTORY IS READ AS STORED. A Trade saved before these decisions with a
+      stated Final Net P&L beside exits that add up to something else keeps
+      both figures, its manual source, and its saved-record correction path.
+    */
+    it('keeps a historical manual total beside disagreeing exits, readable and correctable', async () => {
+      const fw = await freshFramework();
+      const saved = await save(fw, {
+        plannedRiskMinor: 5_000n,
+        exits: [
+          { exitScope: 'part', closedBps: 5_000, realizedPnlMinor: 2_000n },
+          { exitScope: 'all_remaining', realizedPnlMinor: 4_000n },
+        ],
+      });
+      // Written as the earlier contract stored it: no service path makes this now.
+      await db
+        .update(trades)
+        .set({
+          netPnlMinor: 9_000n,
+          finalPnlSource: 'manual_total',
+          exitHistoryCompleteness: 'complete',
+          actualR: '1.8000',
+        })
+        .where(eq(trades.id, saved.tradeId));
+      expect(await readTrade(saved.tradeId)).toMatchObject({
+        netPnlMinor: 9_000n,
+        finalPnlSource: 'manual_total',
+        actualR: '1.8000',
+      });
+      expect((await readExits(saved.tradeId)).map((exit) => exit.realizedPnlMinor)).toEqual([
+        2_000n,
+        4_000n,
+      ]);
+      // The saved-record correction still applies to it.
+      expect(
+        await editHistoricalFinalResult(workspaceId, actorUserId, saved.tradeId, 8_500n),
+      ).toMatchObject({ ok: true, netPnlMinor: 8_500n, finalPnlSource: 'manual_total' });
+      expect(
+        await adoptHistoricalExitSubtotal(workspaceId, actorUserId, saved.tradeId),
+      ).toMatchObject({ ok: true, netPnlMinor: 6_000n, finalPnlSource: 'exit_history' });
+    });
+  });
+
   describe('Final Net P&L, Trader Outcome and Actual R', () => {
     it('stores the trader’s outcome as chosen, even against the P&L sign', async () => {
       const fw = await freshFramework();
-      const winAtLoss = await save(fw, { finalPnlMinor: -2_500n, traderOutcome: 'win' });
+      const winAtLoss = await save(fw, {
+        finalPnlMinor: -2_500n,
+        finalPnlStatedTotal: true,
+        traderOutcome: 'win',
+      });
       const scratch = await save(fw, {
         finalPnlMinor: 1_000n,
+        finalPnlStatedTotal: true,
         plannedRiskMinor: 5_000n,
         traderOutcome: 'break_even',
       });
@@ -488,7 +668,7 @@ describe('Add Trade contract After Trade (real database)', () => {
     it('stores an outcome without a P&L, and a P&L without an outcome', async () => {
       const fw = await freshFramework();
       const outcomeOnly = await save(fw, { traderOutcome: 'loss' });
-      const pnlOnly = await save(fw, { finalPnlMinor: -800n });
+      const pnlOnly = await save(fw, { finalPnlMinor: -800n, finalPnlStatedTotal: true });
       expect(await readTrade(outcomeOnly.tradeId)).toMatchObject({
         netPnlMinor: null,
         traderOutcome: 'loss',
@@ -504,9 +684,10 @@ describe('Add Trade contract After Trade (real database)', () => {
       const fw = await freshFramework();
       const both = await save(fw, {
         finalPnlMinor: 7_500n,
+        finalPnlStatedTotal: true,
         plannedRiskMinor: 5_000n,
       });
-      const noRisk = await save(fw, { finalPnlMinor: 7_500n });
+      const noRisk = await save(fw, { finalPnlMinor: 7_500n, finalPnlStatedTotal: true });
       const noPnl = await save(fw, { plannedRiskMinor: 5_000n });
       expect(both.actualR).toBe('1.5000');
       expect(await readTrade(both.tradeId)).toMatchObject({
@@ -520,7 +701,11 @@ describe('Add Trade contract After Trade (real database)', () => {
 
     it('treats a zero Final Net P&L as a known zero, never as Break-even', async () => {
       const fw = await freshFramework();
-      const result = await save(fw, { finalPnlMinor: 0n, plannedRiskMinor: 5_000n });
+      const result = await save(fw, {
+        finalPnlMinor: 0n,
+        finalPnlStatedTotal: true,
+        plannedRiskMinor: 5_000n,
+      });
       expect(await readTrade(result.tradeId)).toMatchObject({
         netPnlMinor: 0n,
         actualR: '0.0000',
@@ -779,6 +964,7 @@ describe('Add Trade contract After Trade (real database)', () => {
       const fw = await freshFramework();
       const result = await save(fw, {
         finalPnlMinor: 1_000n,
+        finalPnlStatedTotal: true,
         exitHistoryCompleteness: 'complete',
         exits: [{ realizedPnlMinor: 600n }, { realizedPnlMinor: 600n }],
       });
@@ -958,7 +1144,11 @@ describe('Add Trade contract After Trade (real database)', () => {
         finalPnlMinor: 1_500n,
         finalPnlAdoptedFromExits: true,
         exitHistoryCompleteness: 'complete',
-        exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
+        // The last exit closes what was left, so the exits prove the close.
+        exits: [
+          { exitScope: 'part', realizedPnlMinor: 800n },
+          { exitScope: 'all_remaining', realizedPnlMinor: 700n },
+        ],
       });
       expect(await readTrade(adopted.tradeId)).toMatchObject({
         netPnlMinor: 1_500n,
@@ -967,6 +1157,7 @@ describe('Add Trade contract After Trade (real database)', () => {
 
       const manual = await save(fw, {
         finalPnlMinor: 1_500n,
+        finalPnlStatedTotal: true,
         exitHistoryCompleteness: 'complete',
         exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
       });
@@ -994,8 +1185,6 @@ describe('Add Trade contract After Trade (real database)', () => {
           exitHistoryCompleteness: 'complete',
           exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
         },
-        // No Final Net P&L at all.
-        { exitHistoryCompleteness: 'complete', exits: [{ realizedPnlMinor: 800n }] },
       ];
       for (const overrides of cases) {
         const request = input(fw, { ...overrides, finalPnlAdoptedFromExits: true });
@@ -1009,6 +1198,18 @@ describe('Add Trade contract After Trade (real database)', () => {
           .where(eq(trades.mutationKey, request.mutationKey));
         expect(rows).toHaveLength(0);
       }
+      // An adoption claim with no Final Net P&L at all has no single source (decision 58).
+      expect(
+        await createCompletedTrade(
+          workspaceId,
+          actorUserId,
+          input(fw, {
+            finalPnlAdoptedFromExits: true,
+            exitHistoryCompleteness: 'complete',
+            exits: [{ realizedPnlMinor: 800n }],
+          }),
+        ),
+      ).toEqual({ ok: false, code: 'final_pnl_source_invalid' });
     });
 
     it('adopts a Complete exit subtotal only when asked, keeping the selected outcome', async () => {
@@ -1016,6 +1217,7 @@ describe('Add Trade contract After Trade (real database)', () => {
       const result = await save(fw, {
         plannedRiskMinor: 1_000n,
         finalPnlMinor: 1_000n,
+        finalPnlStatedTotal: true,
         traderOutcome: 'break_even',
         exitHistoryCompleteness: 'complete',
         exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
@@ -1084,6 +1286,7 @@ describe('Add Trade contract After Trade (real database)', () => {
       const result = await save(fw, {
         plannedRiskMinor: 1_000n,
         finalPnlMinor: 1_000n,
+        finalPnlStatedTotal: true,
         traderOutcome: 'loss',
       });
       expect(
@@ -1104,7 +1307,9 @@ describe('Add Trade contract After Trade (real database)', () => {
         enteredAt: new Date(exitedAt.getTime() - HOUR),
         exitedAt,
         finalPnlMinor: 1_000n,
-        exits: [{ closedBps: 10_000, realizedPnlMinor: 900n, exitedAt }],
+        finalPnlStatedTotal: true,
+        // An exit with no P&L: it cannot give a total of its own (decision 58).
+        exits: [{ closedBps: 10_000, exitedAt }],
       });
       const [exit] = await readExits(result.tradeId);
       expect(
@@ -1119,7 +1324,11 @@ describe('Add Trade contract After Trade (real database)', () => {
 
     it('refuses the live execution correction that would rebuild the result from exit legs', async () => {
       const fw = await freshFramework();
-      const result = await save(fw, { finalPnlMinor: 1_000n, traderOutcome: 'win' });
+      const result = await save(fw, {
+        finalPnlMinor: 1_000n,
+        finalPnlStatedTotal: true,
+        traderOutcome: 'win',
+      });
       expect(
         await correctTradeExecution(workspaceId, actorUserId, result.tradeId, {
           actualResultMode: 'money',

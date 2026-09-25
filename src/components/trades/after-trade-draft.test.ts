@@ -15,6 +15,8 @@ import {
   hasAfterTradeWork,
   setCloseMode,
   setOutcome,
+  setPartsResult,
+  setStatedTotal,
   setTargetState,
   updateExit,
   updateFullClose,
@@ -45,7 +47,7 @@ function closedInParts(
   draft: AfterTradeDraft,
   legs: readonly Partial<Omit<AfterTradeDraft['exits'][number], 'id'>>[],
 ): AfterTradeDraft {
-  let next = setCloseMode(draft, 'in_parts');
+  let next = setPartsResult(setCloseMode(draft, 'in_parts'), 'each_exit');
   legs.forEach((leg, index) => {
     next = updateExit(addExit(next, `e${index + 1}`), `e${index + 1}`, leg);
   });
@@ -89,7 +91,10 @@ describe('readiness', () => {
 
   it('refuses a final exit before entry and exits that close more than the position', () => {
     let draft = { ...identified(), enteredAt: '2026-09-10T10:00', exitedAt: '2026-09-10T09:00' };
-    draft = addExit(addExit(setCloseMode(draft, 'in_parts'), 'a'), 'b');
+    draft = addExit(
+      addExit(setPartsResult(setCloseMode(draft, 'in_parts'), 'each_exit'), 'a'),
+      'b',
+    );
     draft = updateExit(draft, 'a', { closedPercent: '60' });
     draft = updateExit(draft, 'b', { closedPercent: '60' });
     const { errors } = validateAfterTradeDraft(draft, CONTEXT);
@@ -238,7 +243,7 @@ describe('the close is the result', () => {
     expect(draft.exits).toHaveLength(1);
     expect(payloadOf(draft)?.exits).toHaveLength(1);
     expect(payloadOf(draft)?.exits?.[0]).toMatchObject({ exitScope: 'all_remaining' });
-    draft = setCloseMode(draft, 'in_parts');
+    draft = setPartsResult(setCloseMode(draft, 'in_parts'), 'each_exit');
     expect(draft.fullClose.pnl).toBe('80');
     expect(payloadOf(draft)?.exits?.[0]).toMatchObject({ closedBps: 3_000 });
   });
@@ -250,7 +255,7 @@ describe('the close is the result', () => {
     expect(draft).not.toHaveProperty('completeness');
   });
 
-  it('reads an older draft once: exits become parts, a lone typed P&L a full close', () => {
+  it('reads an older draft once, keeping every typed value and choosing no mode', () => {
     const exit = {
       id: 'x',
       scope: '' as const,
@@ -260,13 +265,24 @@ describe('the close is the result', () => {
       price: '',
       reason: '',
     };
-    expect(closingFromLegacy({ finalPnl: '80', exits: [exit] })).toMatchObject({
+    // Exits alone could only have been recorded exit by exit.
+    expect(closingFromLegacy({ finalPnl: '', exits: [exit] })).toMatchObject({
       closeMode: 'in_parts',
+      partsResult: 'each_exit',
       exits: [exit],
     });
+    // Exits beside a typed total: both kept, no way of recording chosen.
+    expect(closingFromLegacy({ finalPnl: '80', exits: [exit] })).toMatchObject({
+      closeMode: 'in_parts',
+      partsResult: 'unanswered',
+      exits: [exit],
+      statedTotal: '80',
+    });
+    // A typed total alone: kept where either way would hold it, nothing chosen.
     expect(closingFromLegacy({ finalPnl: '80', exits: [] })).toMatchObject({
-      closeMode: 'all_at_once',
+      closeMode: 'unanswered',
       fullClose: { pnl: '80' },
+      statedTotal: '80',
     });
     expect(closingFromLegacy({ finalPnl: '', exits: [] })).toMatchObject({
       closeMode: 'unanswered',
@@ -343,7 +359,10 @@ describe('the Save payload', () => {
   });
 
   it('keeps each exit’s evidence as given, with scope Unknown distinct from Unanswered', () => {
-    let draft = addExit(addExit(setCloseMode(identified(), 'in_parts'), 'a'), 'b');
+    let draft = addExit(
+      addExit(setPartsResult(setCloseMode(identified(), 'in_parts'), 'each_exit'), 'a'),
+      'b',
+    );
     draft = updateExit(draft, 'a', { reason: '  Half at the level ' });
     draft = updateExit(draft, 'b', { scope: 'unknown', price: '2410.5', closedPercent: '25' });
     expect(payloadOf(draft)?.exits).toEqual([
@@ -375,9 +394,79 @@ describe('work', () => {
   });
 });
 
+/*
+  ONE RESULT SOURCE PER TRADE (decision 58). A close in parts is recorded
+  exit by exit (the result is their sum) or, when only the final result is
+  known, as a stated total — never both, and a stated total invents no exits.
+*/
+describe('closed in parts, only the final result known', () => {
+  function totalOnly(total: string): AfterTradeDraft {
+    const parts = setPartsResult(
+      setCloseMode({ ...identified(), riskState: 'defined', risk: '50' }, 'in_parts'),
+      'total_only',
+    );
+    return setStatedTotal(parts, total);
+  }
+
+  it('a stated +80 is the Final Net P&L, +1.60R, with trader-stated provenance', () => {
+    const validation = validateAfterTradeDraft(totalOnly('80'), CONTEXT);
+    expect(validation.finalPnlMinor).toBe('8000');
+    expect(validation.actualR).toEqual({ status: 'known', value: '1.6000' });
+    expect(validation.closing).toMatchObject({ source: 'stated_total', partsResult: 'total_only' });
+    const payload = payloadOf(totalOnly('80'));
+    expect(payload).toMatchObject({ finalPnlMinor: '8000', finalPnlStatedTotal: true });
+    expect(payload).not.toHaveProperty('finalPnlAdoptedFromExits');
+    expect(CreateCompletedTradeSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('invents no exits and asks for no allocation', () => {
+    // Exits recorded earlier "each exit" stay in the draft, never in this Save.
+    let draft = totalOnly('80');
+    draft = setPartsResult(draft, 'each_exit');
+    draft = updateExit(addExit(draft, 'e1'), 'e1', { closedPercent: '30', pnl: '20' });
+    draft = setPartsResult(draft, 'total_only');
+    const payload = payloadOf(draft);
+    expect(payload?.exits).toEqual([]);
+    expect(payload).not.toHaveProperty('exitHistoryCompleteness');
+    expect(draft.exits).toHaveLength(1);
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.closing).toMatchObject({ exitCount: 0, accountedBps: null, closed: false });
+  });
+
+  it('names a malformed stated total at its own field', () => {
+    expect(validateAfterTradeDraft(totalOnly('abc'), CONTEXT).errors).toEqual({
+      finalPnl: 'invalid_money',
+    });
+  });
+
+  it('exit by exit never also sends a stated total, and a stated total never claims the exits', () => {
+    let draft = setStatedTotal(
+      setPartsResult(setCloseMode(identified(), 'in_parts'), 'each_exit'),
+      '999',
+    );
+    draft = updateExit(addExit(draft, 'e1'), 'e1', { scope: 'all_remaining', pnl: '80' });
+    const exits = payloadOf(draft);
+    expect(exits).toMatchObject({ finalPnlMinor: '8000', finalPnlAdoptedFromExits: true });
+    expect(exits).not.toHaveProperty('finalPnlStatedTotal');
+    const stated = payloadOf(setPartsResult(draft, 'total_only'));
+    expect(stated).toMatchObject({ finalPnlMinor: '99900', finalPnlStatedTotal: true, exits: [] });
+    expect(stated).not.toHaveProperty('finalPnlAdoptedFromExits');
+  });
+
+  it('with the way of recording unanswered, claims no result and saves no exits', () => {
+    let draft = setCloseMode(identified(), 'in_parts');
+    draft = updateExit(addExit(draft, 'e1'), 'e1', { scope: 'all_remaining', pnl: '80' });
+    draft = setStatedTotal(draft, '80');
+    const payload = payloadOf(draft);
+    expect(payload).toMatchObject({ finalPnlMinor: null, exits: [] });
+    expect(payload).not.toHaveProperty('finalPnlStatedTotal');
+    expect(payload).not.toHaveProperty('finalPnlAdoptedFromExits');
+  });
+});
+
 describe('the exit limit is the server limit', () => {
   it('stops adding exits at the limit a Save accepts', () => {
-    let draft = setCloseMode(identified(), 'in_parts');
+    let draft = setPartsResult(setCloseMode(identified(), 'in_parts'), 'each_exit');
     for (let index = 0; index < HISTORICAL_EXIT_LIMIT + 5; index += 1) {
       draft = updateExit(addExit(draft, `e${index}`), `e${index}`, { reason: 'r' });
     }

@@ -53,9 +53,11 @@ import {
   setEntryDate,
   setEntryTime,
   setOutcome,
+  setPartsResult,
   setPlanOutcomeAmountText,
   setPlanOutcomeAnswer,
   setRiskState,
+  setStatedTotal,
   setTargetState,
   setTargetValue,
   toggleEmotion,
@@ -261,7 +263,8 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   targetState: 'targetProfit',
   plannedRewardMinor: 'targetProfit',
   targetPrice: 'targetPrice',
-  finalPnlMinor: 'exits',
+  finalPnlMinor: 'finalPnl',
+  finalPnlStatedTotal: 'finalPnl',
   finalPnlAdoptedFromExits: 'exits',
   exits: 'exits',
   exitHistoryCompleteness: 'exits',
@@ -314,6 +317,7 @@ function serverFieldErrorCode(field: AfterTradeField): AfterTradeErrorCode {
       return 'invalid_tradingview_url';
     case 'risk':
     case 'targetProfit':
+    case 'finalPnl':
       return 'invalid_money';
     case 'enteredAt':
     case 'exitedAt':
@@ -462,6 +466,8 @@ export function TradeAfterTradeForm({
       return exit === undefined ? '' : String(exit[part] ?? '');
     }
     switch (field) {
+      case 'finalPnl':
+        return draft.statedTotal;
       case 'enteredAt':
         return draft.enteredAt;
       // Half a final exit time waits for Save before it speaks, like Step 1's entry time.
@@ -1288,7 +1294,38 @@ export function TradeAfterTradeForm({
               />
             ) : null}
 
+            {/*
+              A CLOSE IN PARTS HAS ONE RESULT SOURCE TOO (decision 58): each
+              exit, whose sum is the result once they prove the close — or,
+              when the legs are not known, the final result the trader states.
+              Only the chosen way is shown and saved.
+            */}
             {draft.closeMode === 'in_parts' ? (
+              <ChoiceGroup
+                idPrefix="after-parts-result"
+                legend={a('close.partsQuestion')}
+                value={draft.partsResult === 'unanswered' ? null : draft.partsResult}
+                status={c('notAnswered')}
+                columns={2}
+                compact
+                fit="row"
+                aside={
+                  <InlineAction
+                    ariaLabel={a('close.partsRemoveAria')}
+                    onClick={() => apply((current) => setPartsResult(current, 'unanswered'))}
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(mode) => apply((current) => setPartsResult(current, mode))}
+                options={[
+                  { value: 'each_exit', label: a('close.eachExit') },
+                  { value: 'total_only', label: a('close.totalOnly') },
+                ]}
+              />
+            ) : null}
+
+            {draft.closeMode === 'in_parts' && draft.partsResult === 'each_exit' ? (
               <ExitHistoryFields
                 draft={draft}
                 currency={currency}
@@ -1297,6 +1334,21 @@ export function TradeAfterTradeForm({
                 onAdd={() => apply((current) => addExit(current, generateId()))}
                 onRemove={(id) => apply((current) => removeExit(current, id))}
                 onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+              />
+            ) : null}
+
+            {draft.closeMode === 'in_parts' && draft.partsResult === 'total_only' ? (
+              <TextField
+                id="after-finalPnl"
+                label={a('close.statedTotal')}
+                value={draft.statedTotal}
+                onChange={(value) => apply((current) => setStatedTotal(current, value))}
+                suffix={currency}
+                inputMode="decimal"
+                size="lead"
+                figure
+                hint={a('close.statedTotalHint')}
+                error={errorText('finalPnl')}
               />
             ) : null}
 
@@ -1623,11 +1675,15 @@ function FinalResultReadout({
       ? s('waitingForClose')
       : closing.mode === 'all_at_once'
         ? s('waitingForPnl')
-        : closing.missingPnl
-          ? s('waitingForEveryPnl')
-          : closing.accountedBps === null
-            ? s('waitingForAllocation')
-            : s('waitingForRemaining');
+        : closing.partsResult === 'unanswered'
+          ? s('waitingForPartsChoice')
+          : closing.partsResult === 'total_only'
+            ? s('waitingForStatedTotal')
+            : closing.missingPnl
+              ? s('waitingForEveryPnl')
+              : closing.accountedBps === null
+                ? s('waitingForAllocation')
+                : s('waitingForRemaining');
   return (
     <div
       data-final-result={finalPnlMinor === null ? 'waiting' : 'final'}
@@ -1648,8 +1704,21 @@ function FinalResultReadout({
           <p className="text-muted-foreground text-sm">{waiting}</p>
         </div>
       ) : (
-        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <p className="text-muted-foreground text-sm font-medium">{s('finalPnl')}</p>
+        <div
+          data-final-pnl-provenance={closing.source ?? undefined}
+          className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+        >
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-sm font-medium">{s('finalPnl')}</p>
+            {/* Where the one result came from, said once. */}
+            <p className="text-subtle-foreground text-xs">
+              {closing.source === 'stated_total'
+                ? s('fromStatedTotal')
+                : closing.source === 'exit_legs'
+                  ? s('fromExits')
+                  : s('fromFullClose')}
+            </p>
+          </div>
           <p
             data-final-pnl=""
             className="text-foreground text-2xl leading-none font-semibold tabular-nums"

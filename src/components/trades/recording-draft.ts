@@ -665,11 +665,16 @@ export function inactiveModeWork(
   // The close is the result (decision 57): a full close's P&L reads as the
   // result it is; exit legs are counted as exits.
   const close = closingExits(after);
-  if (after.closeMode === 'all_at_once' && after.fullClose.pnl.trim() !== '') {
+  if (
+    (after.closeMode === 'all_at_once' && after.fullClose.pnl.trim() !== '') ||
+    (after.closeMode === 'in_parts' &&
+      after.partsResult === 'total_only' &&
+      after.statedTotal.trim() !== '')
+  ) {
     items.push({ kind: 'finalPnl' });
   }
   if (after.outcome !== null) items.push({ kind: 'outcome' });
-  if (after.closeMode === 'in_parts' && close.length > 0) {
+  if (after.closeMode === 'in_parts' && after.partsResult === 'each_exit' && close.length > 0) {
     items.push({ kind: 'exits', count: close.length });
   }
   if (after.exitedAt !== '') items.push({ kind: 'exitedAt' });
@@ -777,6 +782,10 @@ const afterTradeSchema = z
   */
     closeMode: z.enum(['unanswered', 'all_at_once', 'in_parts']).optional(),
     fullClose: z.object({ pnl: text, price: text, reason: text }).optional(),
+    // Decision 58. Absent from a decision-57 draft, whose close in parts could
+    // only have been recorded exit by exit.
+    partsResult: z.enum(['unanswered', 'each_exit', 'total_only']).optional(),
+    statedTotal: text.optional(),
     finalPnl: text.optional(),
     finalPnlAdopted: z.literal(true).optional(),
     outcome: z.enum(['win', 'loss', 'break_even']).nullable(),
@@ -820,11 +829,25 @@ const afterTradeSchema = z
       .default({ outcome: null, amount: '' }),
   })
   .transform(
-    ({ closeMode, fullClose, finalPnl, finalPnlAdopted: _adopted, completeness: _c, ...rest }) => ({
+    ({
+      closeMode,
+      fullClose,
+      partsResult,
+      statedTotal,
+      finalPnl,
+      finalPnlAdopted: _adopted,
+      completeness: _c,
+      ...rest
+    }) => ({
       ...rest,
       ...(closeMode === undefined
         ? closingFromLegacy({ finalPnl: finalPnl ?? '', exits: rest.exits })
-        : { closeMode, fullClose: fullClose ?? { pnl: '', price: '', reason: '' } }),
+        : {
+            closeMode,
+            fullClose: fullClose ?? { pnl: '', price: '', reason: '' },
+            partsResult: partsResult ?? (closeMode === 'in_parts' ? 'each_exit' : 'unanswered'),
+            statedTotal: statedTotal ?? '',
+          }),
     }),
   ) satisfies z.ZodType<AfterTradeDraft>;
 

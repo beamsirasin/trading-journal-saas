@@ -539,6 +539,7 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
         direction: 'long',
         plannedRiskMinor: 10_000n,
         finalPnlMinor: 2_000n,
+        finalPnlStatedTotal: true,
         // A small profit the trader calls a scratch: BE, not Win.
         traderOutcome: 'break_even',
         enteredAt: new Date('2026-08-06T09:00:00Z'),
@@ -571,6 +572,7 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
         symbol: 'XAUUSD',
         direction: 'long',
         finalPnlMinor: 3_000n,
+        finalPnlStatedTotal: true,
         traderOutcome: 'win',
         exitedAt: new Date('2026-08-07T10:00:00Z'),
       }),
@@ -587,6 +589,7 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
         direction: 'short',
         plannedRiskMinor: 10_000n,
         finalPnlMinor: 5_000n,
+        finalPnlStatedTotal: true,
       }),
       'undated save',
     );
