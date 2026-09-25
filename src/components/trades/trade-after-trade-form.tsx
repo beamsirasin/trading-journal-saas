@@ -1,6 +1,6 @@
 'use client';
 
-import { CircleAlert, History, Plus, Trash2 } from 'lucide-react';
+import { Check, CircleAlert, History, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   useEffect,
@@ -909,7 +909,6 @@ export function TradeAfterTradeForm({
   const outcomeNotice = validation.notices.find(
     (notice) => notice.kind === 'outcome_contradicts_pnl',
   );
-  const discrepancy = validation.notices.find((notice) => notice.kind === 'exit_discrepancy');
 
   /*
     WHAT EACH STEP HOLDS, IN A LINE. Read-only restatements of answers already
@@ -1264,7 +1263,7 @@ export function TradeAfterTradeForm({
             />
           </GroupCard>
 
-          <GroupCard filled data-result-panel="">
+          <GroupCard filled title={a('sections.tradeResult')} data-result-panel="">
             <FinalPnlField
               id="after-finalPnl"
               value={draft.finalPnl}
@@ -1277,12 +1276,9 @@ export function TradeAfterTradeForm({
                     ? 'adopted'
                     : 'typed'
               }
-              adoptable={validation.canAdoptExitSubtotal}
-              subtotal={
-                validation.exitSubtotalMinor === null
-                  ? null
-                  : formatMoney(validation.exitSubtotalMinor)
-              }
+              // The subtotal and "Use recorded exits" live with the exit history below.
+              adoptable={false}
+              subtotal={null}
               subtotalBlocked={null}
               quiet
               onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
@@ -1303,25 +1299,13 @@ export function TradeAfterTradeForm({
             */}
             <ActualRReadoutRow readout={validation.actualR} variant="derived" />
 
-            {/* HOW IT CLOSED: the supporting breakdown of the same result. */}
-            <div
-              data-result-closing=""
-              className="border-border flex min-w-0 flex-col gap-3 border-t pt-4"
-            >
-              <ExitTimeField
-                id="after-exitedAt"
-                label={a('times.exit')}
-                value={draft.exitedAt}
-                timezone={timezone}
-                locale={locale}
-                error={errorText('exitedAt')}
-                lastRecordedExit={
-                  latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
-                }
-                optionalMarker={false}
-                onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-              />
-              <div data-exit-history="" className="-mx-3 min-w-0">
+            {/*
+              EXIT HISTORY: the supporting breakdown of the same result, in the
+              same card. Its status reads while collapsed; expanded, the exits
+              are divided rows and a read-only reconciliation line closes it.
+            */}
+            <div data-exit-history="" className="border-border min-w-0 border-t pt-2">
+              <div className="-mx-3 min-w-0">
                 <Disclosure
                   id="after-exits-toggle"
                   title={a('sections.exits')}
@@ -1343,16 +1327,31 @@ export function TradeAfterTradeForm({
                     draft={draft}
                     currency={currency}
                     errorText={errorText}
-                    subtotal={validation.exitSubtotalMinor}
-                    discrepancy={
-                      discrepancy?.kind === 'exit_discrepancy'
-                        ? {
-                            subtotal: formatMoney(discrepancy.subtotalMinor),
-                            final: formatMoney(discrepancy.finalPnlMinor),
+                    reconciliation={
+                      validation.exitSubtotalMinor === null
+                        ? null
+                        : {
+                            subtotal: formatMoney(validation.exitSubtotalMinor),
+                            final:
+                              validation.finalPnlMinor === null
+                                ? null
+                                : formatMoney(validation.finalPnlMinor),
+                            matches:
+                              validation.finalPnlMinor === null
+                                ? null
+                                : validation.finalPnlMinor === validation.exitSubtotalMinor,
+                            adoptable: validation.canAdoptExitSubtotal,
                           }
-                        : null
                     }
-                    formatMoney={formatMoney}
+                    onAdopt={() => {
+                      if (validation.exitSubtotalMinor === null) return;
+                      setDraft((current) =>
+                        adoptExitSubtotal(current, validation, (minor) =>
+                          tradeMoneyInputValue(minor, currency),
+                        ),
+                      );
+                      setServerMessage(null);
+                    }}
                     onAdd={() => apply((current) => addExit(current, generateId()))}
                     onRemove={(id) => apply((current) => removeExit(current, id))}
                     onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
@@ -1362,6 +1361,26 @@ export function TradeAfterTradeForm({
               </div>
             </div>
           </GroupCard>
+
+          {/*
+            FINAL EXIT TIME: its own launcher, outside the result card — when
+            the Trade finally closed, not part of what it made.
+          */}
+          <div data-result-exit-time="" className="min-w-0">
+            <ExitTimeField
+              id="after-exitedAt"
+              label={a('times.exit')}
+              value={draft.exitedAt}
+              timezone={timezone}
+              locale={locale}
+              error={errorText('exitedAt')}
+              lastRecordedExit={
+                latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
+              }
+              optionalMarker={false}
+              onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
+            />
+          </div>
         </>,
       )}
 
@@ -1595,9 +1614,8 @@ function ExitHistoryFields({
   draft,
   currency,
   errorText,
-  subtotal,
-  discrepancy,
-  formatMoney,
+  reconciliation,
+  onAdopt,
   onAdd,
   onRemove,
   onChange,
@@ -1606,9 +1624,18 @@ function ExitHistoryFields({
   draft: AfterTradeDraft;
   currency: string;
   errorText: (field: AfterTradeField) => string | undefined;
-  subtotal: string | null;
-  discrepancy: { readonly subtotal: string; readonly final: string } | null;
-  formatMoney: (minor: string) => string;
+  /**
+   * The recorded exits' P&L against the Final Net P&L, formatted — present
+   * only when every recorded exit states its P&L. Read-only: it never changes
+   * the Final Net P&L; "Use recorded exits" does, and only when pressed.
+   */
+  reconciliation: {
+    readonly subtotal: string;
+    readonly final: string | null;
+    readonly matches: boolean | null;
+    readonly adoptable: boolean;
+  } | null;
+  onAdopt: () => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onChange: (id: string, patch: Partial<Omit<AfterTradeExitDraft, 'id'>>) => void;
@@ -1616,6 +1643,7 @@ function ExitHistoryFields({
 }) {
   const a = useTranslations('trades.create.recording.contractAfter');
   const c = useTranslations('trades.create.recording.contractEntry');
+  const pnl = useTranslations('trades.stage5.pnl');
   const hasExits = draft.exits.some(meaningfulExit);
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-3">
@@ -1766,19 +1794,47 @@ function ExitHistoryFields({
         />
       ) : null}
 
-      {subtotal === null ? null : (
-        <p className="text-foreground text-sm tabular-nums">
-          {a('exits.subtotal', { amount: formatMoney(subtotal) })}
-        </p>
-      )}
-      {discrepancy === null ? null : (
-        <Notice
-          icon={
-            <History className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      {reconciliation === null ? null : (
+        <div
+          data-exit-subtotal={
+            reconciliation.matches === null
+              ? 'total'
+              : reconciliation.matches
+                ? 'match'
+                : 'mismatch'
           }
+          className="flex min-w-0 flex-col gap-1.5"
         >
-          {a('exits.discrepancy', discrepancy)}
-        </Notice>
+          {reconciliation.matches === false ? (
+            <Notice
+              icon={
+                <History
+                  className="text-muted-foreground mt-0.5 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+              }
+            >
+              {a('exits.subtotalMismatch', {
+                subtotal: reconciliation.subtotal,
+                final: reconciliation.final ?? '',
+              })}
+            </Notice>
+          ) : (
+            <p className="text-muted-foreground flex min-w-0 items-start gap-1.5 text-sm tabular-nums">
+              {reconciliation.matches ? (
+                <Check className="text-positive mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              ) : null}
+              {reconciliation.matches
+                ? a('exits.subtotalMatches', { amount: reconciliation.subtotal })
+                : a('exits.subtotalTotal', { amount: reconciliation.subtotal })}
+            </p>
+          )}
+          {reconciliation.adoptable ? (
+            <div>
+              <InlineAction onClick={onAdopt}>{pnl('useRecorded')}</InlineAction>
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );

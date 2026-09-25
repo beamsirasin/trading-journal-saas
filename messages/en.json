@@ -2333,7 +2333,8 @@
             "exits": "Exit history",
             "read": "Your read on the trade",
             "readDescription": "Not needed to save. Answers given now are recorded as recalled after the trade.",
-            "context": "Trade idea, chart and price levels"
+            "context": "Trade idea, chart and price levels",
+            "tradeResult": "Trade result"
           },
           "times": {
             "entry": "Entry time",
@@ -2412,7 +2413,6 @@
             "incomplete": "Some exits are missing",
             "unknown": "Not sure",
             "removeCompletenessAria": "Remove answer about exit history",
-            "subtotal": "Recorded exits add up to {amount}.",
             "adopt": "Use recorded exits as final result",
             "adopted": "Final net P&L set to {amount} from your recorded exits.",
             "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving.",
@@ -2429,7 +2429,10 @@
               "notSpecified": "{percent}% allocation is not specified",
               "allocationUnknown": "allocation unknown",
               "allocationUnknownDetail": "Some exits have no % of position, so the allocation is incomplete."
-            }
+            },
+            "subtotalTotal": "Recorded exits total {amount}.",
+            "subtotalMatches": "Recorded exits total {amount}, matching your final net P&L.",
+            "subtotalMismatch": "Recorded exits total {subtotal}; Final net P&L is {final}."
           },
           "conditions": {
             "hint": "Answer the ones you remember. Skipped ones and ones you don't remember are never counted as not met.",

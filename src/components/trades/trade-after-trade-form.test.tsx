@@ -2458,36 +2458,117 @@ describe('Step 5 — Trader result', () => {
     };
   }
 
-  it('leads with the outcome, then one close card holding the result and its breakdown', () => {
+  it('leads with the outcome; one Trade result card holds P&L, Trader R and exit history; exit time stays apart', () => {
     renderForm();
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
     const { step, outcome, panel } = result();
-    expect(outcome.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const exitTime = step.querySelector<HTMLElement>('[data-result-exit-time]')!;
 
-    // The close card: P&L, then calculated R, then exit time and exit history.
+    // 1. The outcome is first in the step.
+    expect(
+      step.querySelector('[data-result-outcome], [data-result-panel], [data-result-exit-time]'),
+    ).toBe(outcome);
+    // 2. One card, titled, holding P&L → Trader R → exit history, in that order.
+    expect(within(panel).getByRole('heading', { name: 'Trade result' })).toBeInTheDocument();
     const pnl = within(panel).getByLabelText('Final net P&L');
     const r = panel.querySelector<HTMLElement>('[data-actual-r]')!;
-    const exitTime = panel.querySelector<HTMLElement>('[data-exit-time]')!;
     const history = panel.querySelector<HTMLElement>('[data-exit-history]')!;
+    expect(history).not.toBeNull();
     for (const [a, b] of [
+      [outcome, panel],
       [pnl, r],
-      [r, exitTime],
-      [exitTime, history],
+      [r, history],
+      [panel, exitTime],
     ] as const) {
       expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+    // 3. The final exit time is its own launcher, outside the card.
+    expect(panel.querySelector('[data-exit-time]')).toBeNull();
+    expect(exitTime.querySelector('[data-exit-time]')).not.toBeNull();
+    expect(within(exitTime).getByRole('button', { name: /Use now/ })).toBeInTheDocument();
+
     type('Final net P&L', '80', panel);
     expect(r).toHaveAttribute('data-actual-r-variant', 'derived');
     expect(r).toHaveTextContent('Calculated');
     expect(r).toHaveTextContent('+1.60R');
+    // Trader R is a readout, never a field.
+    expect(within(r).queryByRole('textbox')).toBeNull();
     // The outcome is never set from the P&L.
     expect(outcome.querySelector('[data-trader-outcome]')).toHaveAttribute(
       'data-trader-outcome',
       'unanswered',
     );
     expect(within(step).queryByText('Optional')).toBeNull();
+  });
+
+  it('shows Trader R as unavailable, never 0R, while the P&L or Risk is missing', () => {
+    renderForm();
+    goTo('result');
+    const r = result().panel.querySelector<HTMLElement>('[data-actual-r]')!;
+    expect(r).toHaveAttribute('data-actual-r', 'unavailable');
+    expect(r).not.toHaveTextContent('0R');
+    type('Final net P&L', '80', result().panel);
+    expect(r).toHaveAttribute('data-actual-r', 'unavailable');
+    expect(r).toHaveTextContent('Trader R needs your risk at entry.');
+  });
+
+  /*
+    THE SUBTOTAL IS READ-ONLY. Once every recorded exit states its P&L, a quiet
+    line totals them against the Final Net P&L — a total, a match, or a
+    mismatch stated as facts. None of them writes the Final Net P&L; only the
+    existing explicit "Use recorded exits" does, when pressed.
+  */
+  describe('the exit subtotal', () => {
+    function subtotal() {
+      return document.querySelector<HTMLElement>('[data-exit-subtotal]');
+    }
+
+    it('is a read-only total while the Final Net P&L is blank', () => {
+      renderForm();
+      goTo('result');
+      openExitHistory();
+      recordExit({ pnl: '50' });
+      recordExit({ pnl: '30' });
+      expect(subtotal()).toHaveAttribute('data-exit-subtotal', 'total');
+      expect(subtotal()).toHaveTextContent('Recorded exits total 80.00 USD.');
+      expect(within(subtotal()!).queryByRole('textbox')).toBeNull();
+      expect(screen.getByLabelText('Final net P&L')).toHaveValue('');
+    });
+
+    it('confirms quietly when it matches the Final Net P&L', () => {
+      renderForm();
+      goTo('result');
+      type('Final net P&L', '80');
+      openExitHistory();
+      recordExit({ pnl: '50' });
+      recordExit({ pnl: '30' });
+      expect(subtotal()).toHaveAttribute('data-exit-subtotal', 'match');
+      expect(subtotal()).toHaveTextContent(
+        'Recorded exits total 80.00 USD, matching your final net P&L.',
+      );
+      expect(screen.queryByRole('button', { name: 'Use recorded exits' })).toBeNull();
+    });
+
+    it('states a mismatch without overwriting the Final Net P&L', () => {
+      renderForm();
+      goTo('result');
+      type('Final net P&L', '80');
+      openExitHistory();
+      recordExit({ pnl: '50' });
+      recordExit({ pnl: '15' });
+      fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
+      expect(subtotal()).toHaveAttribute('data-exit-subtotal', 'mismatch');
+      expect(subtotal()).toHaveTextContent(
+        'Recorded exits total 65.00 USD; Final net P&L is 80.00 USD.',
+      );
+      // The Final Net P&L stays as typed, and its source stays the trader's.
+      expect(screen.getByLabelText('Final net P&L')).toHaveValue('80');
+      expect(pnlSource()).toBe('typed');
+      // Adopting stays an explicit action, offered here and nowhere else.
+      expect(screen.getAllByRole('button', { name: 'Use recorded exits' })).toHaveLength(1);
+    });
   });
 
   it('offers Win / BE / Loss as direct text answers, each chosen in its own tone', () => {
@@ -2671,19 +2752,26 @@ describe('exit history', () => {
     for (const radio of within(group).getAllByRole('radio')) expect(radio).not.toBeChecked();
   });
 
-  it('calls a difference a discrepancy only for a Complete, fully priced history, and never blocks', async () => {
+  it('states a subtotal that differs from Final Net P&L quietly, whatever the completeness, and never blocks', async () => {
     renderForm();
     fillIdentity();
     goTo('result');
     type('Final net P&L', '90');
     openExitHistory();
     recordExit({ pnl: '60' });
-    recordExit({ pnl: '40' });
-    expect(screen.queryByText(/add up to .* but your final net P&L/)).not.toBeInTheDocument();
+    // Not every exit states P&L yet: no subtotal at all.
+    const second = recordExit({ percent: '40' });
+    expect(document.querySelector('[data-exit-subtotal]')).toBeNull();
+    type('P&L for this exit', '40', second);
+    const line = () => document.querySelector<HTMLElement>('[data-exit-subtotal]')!;
+    expect(line()).toHaveAttribute('data-exit-subtotal', 'mismatch');
+    expect(line()).toHaveTextContent(
+      'Recorded exits total 100.00 USD; Final net P&L is 90.00 USD.',
+    );
     fireEvent.click(screen.getByRole('radio', { name: 'Some exits are missing' }));
-    expect(screen.queryByText(/but your final net P&L/)).not.toBeInTheDocument();
+    expect(line()).toHaveAttribute('data-exit-subtotal', 'mismatch');
     fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
-    expect(screen.getByText(/but your final net P&L is/)).toBeInTheDocument();
+    expect(line()).toHaveAttribute('data-exit-subtotal', 'mismatch');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({
