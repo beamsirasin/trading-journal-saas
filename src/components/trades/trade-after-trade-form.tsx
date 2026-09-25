@@ -1523,7 +1523,7 @@ export function TradeAfterTradeForm({
 /**
  * THE EXIT HISTORY'S OWN STATUS, readable on the collapsed row: a full close in
  * one exit, or how many exits and how much of the position they account for,
- * with the trader's explicit completeness answer. It describes the history,
+ * with the trader's explicit completeness answer kept apart from the share. It describes the history,
  * never the Trade — the Trade is already closed. An unstated share is said to
  * be unknown, never estimated. Spans only: it sits inside the row's button.
  */
@@ -1534,23 +1534,43 @@ function ExitHistoryStatusLine({ status }: { status: ExitHistoryStatus }) {
   if (status.kind === 'none') {
     parts.push(s('none'));
   } else {
+    /*
+      TWO SEPARATE CLAIMS. First, whether the exit EVENT LIST is complete —
+      the trader's explicit answer, or the count while it is unanswered.
+      Second, how much of the position's ALLOCATION the recorded exits prove:
+      100% only when their percentages total it or an All remaining exit
+      closes what was left. "These are all the exits" never proves 100%.
+    */
     parts.push(
       status.completeness === 'complete'
         ? s('allRecorded')
-        : status.kind === 'single_full'
-          ? s('singleFull')
-          : s('count', { count: status.count }),
+        : status.completeness === 'incomplete'
+          ? s('someMissing')
+          : status.completeness === 'unknown'
+            ? s('notSure')
+            : status.kind === 'single_full'
+              ? s('singleFull')
+              : s('count', { count: status.count }),
     );
     parts.push(
-      bps === null ? s('allocationUnknown') : s('accounted', { percent: formatShare(bps) }),
+      bps === null
+        ? s('allocationUnknown')
+        : bps === 10_000
+          ? s('accountedFull')
+          : s('accounted', { percent: formatShare(bps) }),
     );
-    if (status.completeness === 'incomplete') parts.push(s('incomplete'));
-    if (status.completeness === 'unknown') parts.push(s('notSure'));
   }
   const remaining = status.kind !== 'none' && bps !== null && bps < 10_000 ? 10_000 - bps : null;
+  const detail =
+    remaining !== null
+      ? s('notSpecified', { percent: formatShare(remaining) })
+      : status.kind !== 'none' && bps === null
+        ? s('allocationUnknownDetail')
+        : null;
   return (
     <span
       data-exit-history-status={status.kind}
+      data-exit-completeness={status.completeness}
       data-accounted-bps={bps ?? 'unknown'}
       className="flex min-w-0 flex-col gap-1.5"
     >
@@ -1566,9 +1586,7 @@ function ExitHistoryStatusLine({ status }: { status: ExitHistoryStatus }) {
           />
         </span>
       )}
-      {remaining === null ? null : (
-        <span className="block text-xs">{s('remaining', { percent: formatShare(remaining) })}</span>
-      )}
+      {detail === null ? null : <span className="block text-xs">{detail}</span>}
     </span>
   );
 }

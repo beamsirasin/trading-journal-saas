@@ -2422,11 +2422,13 @@
               "singleFull": "Closed in one exit",
               "count": "{count, plural, one {# exit recorded} other {# exits recorded}}",
               "allRecorded": "All exits recorded",
-              "accounted": "{percent}% accounted for",
-              "remaining": "{percent}% remaining to account for",
-              "allocationUnknown": "some exit allocation is unknown",
-              "incomplete": "exit history incomplete",
-              "notSure": "not sure every exit is recorded"
+              "someMissing": "Some exits are missing",
+              "notSure": "Not sure all exits are recorded",
+              "accountedFull": "100% accounted for",
+              "accounted": "{percent}% allocation accounted for",
+              "notSpecified": "{percent}% allocation is not specified",
+              "allocationUnknown": "allocation unknown",
+              "allocationUnknownDetail": "Some exits have no % of position, so the allocation is incomplete."
             }
           },
           "conditions": {

@@ -2537,16 +2537,16 @@ describe('Step 5 — Trader result', () => {
     fireEvent.click(within(only).getByRole('radio', { name: 'Part' }));
     type(/% of original position/, '40', only);
     recordExit({ pnl: '30', percent: '20' });
-    expect(status()).toHaveTextContent('2 exits recorded · 60% accounted for');
-    expect(status()).toHaveTextContent('40% remaining to account for');
+    expect(status()).toHaveTextContent('2 exits recorded · 60% allocation accounted for');
+    expect(status()).toHaveTextContent('40% allocation is not specified');
     fireEvent.click(screen.getByRole('radio', { name: 'Some exits are missing' }));
-    expect(status()).toHaveTextContent('exit history incomplete');
+    expect(status()).toHaveTextContent('Some exits are missing · 60% allocation accounted for');
 
     // An unstated share is unknown, never estimated.
     recordExit({ pnl: '10' });
     expect(status()).toHaveAttribute('data-accounted-bps', 'unknown');
-    expect(status()).toHaveTextContent('some exit allocation is unknown');
-    expect(status()).not.toHaveTextContent('remaining');
+    expect(status()).toHaveTextContent('Some exits are missing · allocation unknown');
+    expect(status()).not.toHaveTextContent('not specified');
 
     // Complete: every exit recorded and the whole position accounted for.
     type(
@@ -2557,6 +2557,78 @@ describe('Step 5 — Trader result', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
     expect(status()).toHaveTextContent('All exits recorded · 100% accounted for');
     expect(status()).not.toHaveTextContent(/still open|remaining to close/i);
+  });
+
+  /*
+    EVENT COMPLETENESS IS NOT ALLOCATION. "These are all the exits" says the
+    list of exit events is complete; only the exits' own percentages, or an
+    All remaining exit closing what was left, prove 100% of the position.
+  */
+  describe('exit-list completeness and allocation coverage stay separate', () => {
+    function exits(
+      rows: readonly { percent?: string; scope?: 'Part' | 'All remaining' }[],
+      answer: 'These are all the exits' | 'Some exits are missing' | 'Not sure',
+    ) {
+      renderForm();
+      goTo('result');
+      openExitHistory();
+      for (const row of rows) {
+        const exit = recordExit({
+          pnl: '10',
+          ...(row.percent === undefined ? {} : { percent: row.percent }),
+        });
+        if (row.scope !== undefined) {
+          fireEvent.click(within(exit).getByRole('radio', { name: row.scope }));
+        }
+      }
+      fireEvent.click(screen.getByRole('radio', { name: answer }));
+      return result().status();
+    }
+
+    it('two 30% exits, all recorded: 60% allocation, 40% not specified', () => {
+      const status = exits([{ percent: '30' }, { percent: '30' }], 'These are all the exits');
+      expect(status).toHaveAttribute('data-exit-completeness', 'complete');
+      expect(status).toHaveAttribute('data-accounted-bps', '6000');
+      expect(status).toHaveTextContent('All exits recorded · 60% allocation accounted for');
+      expect(status).toHaveTextContent('40% allocation is not specified');
+      expect(status).not.toHaveTextContent('100%');
+    });
+
+    it('an All remaining final exit, all recorded: 100% accounted for', () => {
+      const status = exits(
+        [{ percent: '30', scope: 'Part' }, { scope: 'All remaining' }],
+        'These are all the exits',
+      );
+      expect(status).toHaveAttribute('data-accounted-bps', '10000');
+      expect(status).toHaveTextContent('All exits recorded · 100% accounted for');
+      expect(status).not.toHaveTextContent('not specified');
+    });
+
+    it('percentages totalling 100%, all recorded: 100% accounted for', () => {
+      const status = exits([{ percent: '60' }, { percent: '40' }], 'These are all the exits');
+      expect(status).toHaveTextContent('All exits recorded · 100% accounted for');
+    });
+
+    it('an unknown percentage keeps the completeness answer and says allocation is unknown', () => {
+      const status = exits([{ percent: '30' }, {}], 'These are all the exits');
+      expect(status).toHaveAttribute('data-exit-completeness', 'complete');
+      expect(status).toHaveAttribute('data-accounted-bps', 'unknown');
+      expect(status).toHaveTextContent('All exits recorded · allocation unknown');
+      expect(status).toHaveTextContent('so the allocation is incomplete');
+      expect(status).not.toHaveTextContent(/accounted for/);
+    });
+
+    it('100% proven by percentages stands even when some exits are missing', () => {
+      expect(exits([{ percent: '100' }], 'Some exits are missing')).toHaveTextContent(
+        'Some exits are missing · 100% accounted for',
+      );
+    });
+
+    it('100% proven by All remaining stands even when not sure', () => {
+      expect(exits([{ scope: 'All remaining' }], 'Not sure')).toHaveTextContent(
+        'Not sure all exits are recorded · 100% accounted for',
+      );
+    });
   });
 });
 
