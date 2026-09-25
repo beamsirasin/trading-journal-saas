@@ -185,7 +185,8 @@ describe('round trips', () => {
       afterTrade: there.afterTrade && {
         ...there.afterTrade,
         symbol: 'GBPUSD',
-        finalPnl: '50',
+        closeMode: 'all_at_once',
+        fullClose: { pnl: '50', price: '', reason: '' },
         outcome: 'win',
       },
     };
@@ -193,7 +194,7 @@ describe('round trips', () => {
     expect(back.atEntry?.symbol).toBe('GBPUSD');
     expect(back.atEntry?.classification.strategy).toBe('none');
     // The After Trade result stays in its own section, never an At Entry answer.
-    expect(back.afterTrade).toMatchObject({ finalPnl: '50', outcome: 'win' });
+    expect(back.afterTrade).toMatchObject({ fullClose: { pnl: '50' }, outcome: 'win' });
   });
 
   it('After Trade → At Entry → After Trade restores After Trade work and never invents At Entry assertions', () => {
@@ -201,10 +202,9 @@ describe('round trips', () => {
       ...createAfterTradeDraft(ACCOUNT),
       symbol: 'NAS100',
       direction: 'short',
-      finalPnl: '-40',
       outcome: 'loss',
       exitedAt: '2026-09-16T20:00',
-      completeness: 'incomplete',
+      closeMode: 'in_parts',
       exits: [
         {
           id: 'leg',
@@ -603,7 +603,8 @@ describe('version 1 drafts', () => {
       enteredAt: '2026-09-16T09:00',
       exitedAt: '2026-09-16T11:00',
       risk: '100',
-      finalPnl: '120',
+      // The v1 exits carry the result now (decision 57): the close is in parts.
+      closeMode: 'in_parts',
       confidence: 50,
       emotions: { answer: 'none', keys: [] },
       context: { timeframe: '15m', session: 'London', reason: 'Retest', notes: 'Kept my stop' },
@@ -628,7 +629,9 @@ describe('version 1 drafts', () => {
     // An unchecked box was saved as Not Met; "Not sure" was preselected; the old
     // actual risk was a denominator; the reward implied no explicit Target answer.
     expect(upgraded?.classification.conditions).toEqual({});
-    expect(upgraded?.completeness).toBe('unanswered');
+    // Completeness is derived from the exits now, never carried as an answer.
+    expect(upgraded).not.toHaveProperty('completeness');
+    expect(upgraded).not.toHaveProperty('finalPnl');
     expect(upgraded).not.toHaveProperty('actualRisk');
     expect(upgraded?.target.state).toBe('unanswered');
     expect(upgraded?.outcome).toBeNull();
@@ -641,7 +644,54 @@ describe('version 1 drafts', () => {
     const parsed = parseRecordingDraft(JSON.stringify(priceDraft), NOW);
     if (parsed.status !== 'recovered') throw new Error('expected recovery');
     expect(parsed.envelope.afterTrade?.exits[0]).toMatchObject({ pnl: '', price: '2410.5' });
-    expect(parsed.envelope.afterTrade?.finalPnl).toBe('');
+    expect(parsed.envelope.afterTrade?.fullClose.pnl).toBe('');
+  });
+});
+
+describe('a stored After Trade draft from before the closing model (decision 57)', () => {
+  function storedWith(afterTrade: Record<string, unknown>) {
+    const envelope = serializeRecordingDraft({
+      version: RECORDING_DRAFT_VERSION,
+      activeMode: 'after_trade',
+      mutationKey: KEY,
+      updatedAt: NOW.toISOString(),
+      atEntry: null,
+      afterTrade: createAfterTradeDraft(ACCOUNT),
+      lastCarried: null,
+    });
+    const raw = JSON.parse(envelope) as { afterTrade: Record<string, unknown> };
+    const { closeMode: _m, fullClose: _f, ...legacy } = raw.afterTrade;
+    raw.afterTrade = { ...legacy, completeness: 'unanswered', ...afterTrade };
+    return JSON.stringify(raw);
+  }
+
+  it('turns a typed Final Net P&L with no exits into a full close', () => {
+    const parsed = parseRecordingDraft(storedWith({ finalPnl: '80' }), NOW);
+    if (parsed.status !== 'recovered') throw new Error('expected recovery');
+    expect(parsed.envelope.afterTrade).toMatchObject({
+      closeMode: 'all_at_once',
+      fullClose: { pnl: '80', price: '', reason: '' },
+    });
+    expect(parsed.envelope.afterTrade).not.toHaveProperty('finalPnl');
+  });
+
+  it('turns recorded exits into a close in parts, keeping them as they were', () => {
+    const exit = {
+      id: 'e',
+      scope: 'part',
+      pnl: '20',
+      closedPercent: '30',
+      exitedAt: '',
+      price: '',
+      reason: '',
+    };
+    const parsed = parseRecordingDraft(
+      storedWith({ finalPnl: '80', exits: [exit], completeness: 'complete' }),
+      NOW,
+    );
+    if (parsed.status !== 'recovered') throw new Error('expected recovery');
+    expect(parsed.envelope.afterTrade).toMatchObject({ closeMode: 'in_parts', exits: [exit] });
+    expect(parsed.envelope.afterTrade).not.toHaveProperty('completeness');
   });
 });
 
@@ -720,12 +770,11 @@ describe('inactive-mode work a Save would remove (contract §23)', () => {
   it('names every After Trade answer an open Trade cannot hold', () => {
     const items = inactiveModeWork(
       withAfterTrade({
-        finalPnl: '10',
         outcome: 'win',
+        closeMode: 'in_parts',
         exits: [
           { id: 'e', scope: '', pnl: '', closedPercent: '', exitedAt: '', price: '', reason: 'r' },
         ],
-        completeness: 'complete',
         exitedAt: '2026-09-18T10:00',
         postTradeEmotions: { answer: 'none', keys: [] },
         classification: {
@@ -737,14 +786,21 @@ describe('inactive-mode work a Save would remove (contract §23)', () => {
       }),
     ).map((item) => item.kind);
     expect(items).toEqual([
-      'finalPnl',
       'outcome',
       'exits',
-      'completeness',
       'exitedAt',
       'postTradeEmotions',
       'conditionsUnknown',
     ]);
+    // A full close's P&L is the result it is.
+    expect(
+      inactiveModeWork(
+        withAfterTrade({
+          closeMode: 'all_at_once',
+          fullClose: { pnl: '10', price: '', reason: '' },
+        }),
+      ).map((item) => item.kind),
+    ).toEqual(['finalPnl']);
   });
 
   it('names nothing for shared answers, blank exit rows or an untouched section', () => {
@@ -761,7 +817,13 @@ describe('inactive-mode work a Save would remove (contract §23)', () => {
   });
 
   it('never asks when After Trade is the mode being saved', () => {
-    const envelope = { ...withAfterTrade({ finalPnl: '10' }), activeMode: 'after_trade' as const };
+    const envelope = {
+      ...withAfterTrade({
+        closeMode: 'all_at_once',
+        fullClose: { pnl: '10', price: '', reason: '' },
+      }),
+      activeMode: 'after_trade' as const,
+    };
     expect(inactiveModeWork(envelope)).toEqual([]);
   });
 });

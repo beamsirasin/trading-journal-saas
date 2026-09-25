@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, CircleAlert, History, Plus, Trash2 } from 'lucide-react';
+import { CircleAlert, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   useEffect,
@@ -24,7 +24,6 @@ import { useRouter } from '@/i18n/navigation';
 import {
   activeAfterTradeClassification,
   addExit,
-  adoptExitSubtotal,
   afterTradeAnalysisSummary,
   afterTradeFieldSection,
   afterTradePlanOutcomePlan,
@@ -37,22 +36,22 @@ import {
   canAddExit,
   canDeselectEmotion,
   clearEntryTimestamp,
+  closingExits,
   createAfterTradeDraft,
   exitField,
-  finalPnlStillAdopted,
+  formatShare,
+  FULL_CLOSE_EXIT_ID,
   isCompleteEntryTimestamp,
-  meaningfulExit,
   removeEmotionsAnswer,
   removeExit,
   removeSetupAnswer,
   removeStrategyAnswer,
   selectSetup,
   selectStrategy,
-  setCompleteness,
+  setCloseMode,
   setConfidence,
   setEntryDate,
   setEntryTime,
-  setFinalPnl,
   setOutcome,
   setPlanOutcomeAmountText,
   setPlanOutcomeAnswer,
@@ -61,35 +60,24 @@ import {
   setTargetValue,
   toggleEmotion,
   updateExit,
+  updateFullClose,
   validateAfterTradeDraft,
   type AfterTradeDraft,
   type AfterTradeErrorCode,
   type AfterTradeErrors,
   type AfterTradeExitDraft,
   type AfterTradeField,
+  type AfterTradeValidation,
+  type ClosingState,
 } from './after-trade-draft';
-import { exitHistoryStatus, formatShare, type ExitHistoryStatus } from './exit-history-status';
 import type { PlanOutcomeDraftError } from './plan-outcome-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
-import {
-  ChoiceGroup,
-  Disclosure,
-  Helper,
-  InlineAction,
-  Notice,
-  Tag,
-  TextField,
-} from './trade-at-entry-controls';
+import { ChoiceGroup, InlineAction, Tag, TextField } from './trade-at-entry-controls';
 import { formatEntryStamp, tradeDetailsRowId, TradeDetailsStep } from './trade-details-step';
 import { TradeEntryContextStep } from './trade-entry-context-step';
-import {
-  ActualRReadoutRow,
-  ExitTimeField,
-  FinalPnlField,
-  TraderOutcomeField,
-} from './trade-exit-result-step';
-import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
+import { ActualRReadoutRow, ExitTimeField, TraderOutcomeField } from './trade-exit-result-step';
+import { datetimeLocalToIso } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
@@ -273,7 +261,8 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   targetState: 'targetProfit',
   plannedRewardMinor: 'targetProfit',
   targetPrice: 'targetPrice',
-  finalPnlMinor: 'finalPnl',
+  finalPnlMinor: 'exits',
+  finalPnlAdoptedFromExits: 'exits',
   exits: 'exits',
   exitHistoryCompleteness: 'exits',
   contextEntryPrice: 'contextEntryPrice',
@@ -325,7 +314,6 @@ function serverFieldErrorCode(field: AfterTradeField): AfterTradeErrorCode {
       return 'invalid_tradingview_url';
     case 'risk':
     case 'targetProfit':
-    case 'finalPnl':
       return 'invalid_money';
     case 'enteredAt':
     case 'exitedAt':
@@ -426,7 +414,6 @@ export function TradeAfterTradeForm({
     if (saved !== null) savedHeading.current?.focus();
   }, [saved]);
 
-  const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
   /*
     THE CURRENT STEP IS VIEW STATE, NOT DRAFT STATE. Every step stays mounted
     and only the current one is shown, so moving between steps can never drop
@@ -462,8 +449,7 @@ export function TradeAfterTradeForm({
   // Strategy, Setup and conditions as resolved against what is still offered.
   const activeRead = activeAfterTradeClassification(draft, options);
   const staleRead = staleSelections(draft, options);
-  const recordedExits = draft.exits.filter(meaningfulExit);
-  const exitStatus = exitHistoryStatus(draft.exits, draft.completeness);
+  const recordedExits = closingExits(draft);
 
   /*
     WHICH ERRORS SPEAK. Before a Save attempt only a malformed value the trader
@@ -472,7 +458,7 @@ export function TradeAfterTradeForm({
   const typed = (field: AfterTradeField): string => {
     if (field.startsWith('exit:')) {
       const [, id, part] = field.split(':') as [string, string, keyof AfterTradeExitDraft];
-      const exit = draft.exits.find((item) => item.id === id);
+      const exit = closingExits(draft).find((item) => item.id === id);
       return exit === undefined ? '' : String(exit[part] ?? '');
     }
     switch (field) {
@@ -481,8 +467,6 @@ export function TradeAfterTradeForm({
       // Half a final exit time waits for Save before it speaks, like Step 1's entry time.
       case 'exitedAt':
         return isCompleteEntryTimestamp(draft.exitedAt) ? draft.exitedAt : '';
-      case 'finalPnl':
-        return draft.finalPnl;
       case 'risk':
         return draft.risk;
       case 'targetProfit':
@@ -641,8 +625,6 @@ export function TradeAfterTradeForm({
     const currentReadiness = afterTradeReadiness(current, currentValidation);
     if (currentReadiness.status === 'blocked') {
       setServerMessage(null);
-      const sections = new Set(currentReadiness.fields.map(afterTradeFieldSection));
-      if (sections.has('exits')) setExitsOpen(true);
       focusFirstError(currentReadiness.fields);
       return;
     }
@@ -797,9 +779,6 @@ export function TradeAfterTradeForm({
     draft.context.stopPrice,
     draft.context.positionSize,
   ].some((value) => value.trim() !== '');
-  const exitErrorCount = Object.keys(visibleErrors).filter(
-    (field) => afterTradeFieldSection(field as AfterTradeField) === 'exits',
-  ).length;
   /** Blocking errors each step holds, so a step with one is marked wherever it is listed. */
   const stepErrorCounts = STEPS.map(
     (_, index) =>
@@ -945,7 +924,11 @@ export function TradeAfterTradeForm({
       validation.finalPnlMinor === null ? null : formatMoney(validation.finalPnlMinor),
       outcomeLabel,
       validation.actualR.status === 'known' ? formatR(validation.actualR.value) : null,
-      recordedExits.length === 0 ? null : a('exits.summaryCount', { count: recordedExits.length }),
+      draft.closeMode === 'all_at_once'
+        ? a('close.allAtOnce')
+        : draft.closeMode === 'in_parts' && recordedExits.length > 0
+          ? a('exits.summaryCount', { count: recordedExits.length })
+          : null,
     ]),
     plan: joinParts([
       validation.riskMinor === null
@@ -1263,103 +1246,66 @@ export function TradeAfterTradeForm({
             />
           </GroupCard>
 
+          {/*
+            THE TRADE RESULT IS HOW THE TRADE CLOSED (decision 57). One source:
+            the close. "Closed all at once" is one All remaining exit whose P&L
+            is the Final Net P&L; "Closed in parts" is a sequence of exits whose
+            P&L adds up to it once they account for the whole position. The
+            result below is read-only — never typed beside the close.
+          */}
           <GroupCard filled title={a('sections.tradeResult')} data-result-panel="">
-            <FinalPnlField
-              id="after-finalPnl"
-              value={draft.finalPnl}
-              currency={currency}
-              error={errorText('finalPnl')}
-              source={
-                draft.finalPnl.trim() === ''
-                  ? null
-                  : finalPnlStillAdopted(draft, validation)
-                    ? 'adopted'
-                    : 'typed'
-              }
-              // The subtotal and "Use recorded exits" live with the exit history below.
-              adoptable={false}
-              subtotal={null}
-              subtotalBlocked={null}
-              quiet
-              onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
-              onAdopt={() => {
-                if (validation.exitSubtotalMinor === null) return;
-                setDraft((current) =>
-                  adoptExitSubtotal(current, validation, (minor) =>
-                    tradeMoneyInputValue(minor, currency),
-                  ),
-                );
-                setServerMessage(null);
-              }}
-            />
-            {/*
-              TRADER R IS DERIVED, AND READS LIKE IT: smaller than the figure it
-              comes from, marked Calculated, and plain about what is missing
-              when it has no value. Never a fabricated 0R.
-            */}
-            <ActualRReadoutRow readout={validation.actualR} variant="derived" />
-
-            {/*
-              EXIT HISTORY: the supporting breakdown of the same result, in the
-              same card. Its status reads while collapsed; expanded, the exits
-              are divided rows and a read-only reconciliation line closes it.
-            */}
-            <div data-exit-history="" className="border-border min-w-0 border-t pt-2">
-              <div className="-mx-3 min-w-0">
-                <Disclosure
-                  id="after-exits-toggle"
-                  title={a('sections.exits')}
-                  summary={
-                    <>
-                      {exitErrorCount > 0 ? (
-                        <span className="text-destructive flex min-w-0 items-center gap-1.5">
-                          <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                          {c('summary.hasErrors', { count: exitErrorCount })}
-                        </span>
-                      ) : null}
-                      <ExitHistoryStatusLine status={exitStatus} />
-                    </>
-                  }
-                  open={exitsOpen || exitErrorCount > 0}
-                  onToggle={() => setExitsOpen((open) => !open)}
-                >
-                  <ExitHistoryFields
-                    draft={draft}
-                    currency={currency}
-                    errorText={errorText}
-                    reconciliation={
-                      validation.exitSubtotalMinor === null
-                        ? null
-                        : {
-                            subtotal: formatMoney(validation.exitSubtotalMinor),
-                            final:
-                              validation.finalPnlMinor === null
-                                ? null
-                                : formatMoney(validation.finalPnlMinor),
-                            matches:
-                              validation.finalPnlMinor === null
-                                ? null
-                                : validation.finalPnlMinor === validation.exitSubtotalMinor,
-                            adoptable: validation.canAdoptExitSubtotal,
-                          }
-                    }
-                    onAdopt={() => {
-                      if (validation.exitSubtotalMinor === null) return;
-                      setDraft((current) =>
-                        adoptExitSubtotal(current, validation, (minor) =>
-                          tradeMoneyInputValue(minor, currency),
-                        ),
-                      );
-                      setServerMessage(null);
-                    }}
-                    onAdd={() => apply((current) => addExit(current, generateId()))}
-                    onRemove={(id) => apply((current) => removeExit(current, id))}
-                    onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
-                    onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
-                  />
-                </Disclosure>
-              </div>
+            <div id="after-exits" tabIndex={-1} className="min-w-0 outline-none">
+              <ChoiceGroup
+                idPrefix="after-close-mode"
+                legend={a('close.question')}
+                value={draft.closeMode === 'unanswered' ? null : draft.closeMode}
+                status={c('notAnswered')}
+                columns={2}
+                compact
+                fit="row"
+                aside={
+                  <InlineAction
+                    ariaLabel={a('close.removeAria')}
+                    onClick={() => apply((current) => setCloseMode(current, 'unanswered'))}
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(mode) => apply((current) => setCloseMode(current, mode))}
+                options={[
+                  { value: 'all_at_once', label: a('close.allAtOnce') },
+                  { value: 'in_parts', label: a('close.inParts') },
+                ]}
+              />
             </div>
+
+            {draft.closeMode === 'all_at_once' ? (
+              <FullCloseFields
+                draft={draft}
+                currency={currency}
+                errorText={errorText}
+                onChange={(patch) => apply((current) => updateFullClose(current, patch))}
+              />
+            ) : null}
+
+            {draft.closeMode === 'in_parts' ? (
+              <ExitHistoryFields
+                draft={draft}
+                currency={currency}
+                errorText={errorText}
+                closing={validation.closing}
+                onAdd={() => apply((current) => addExit(current, generateId()))}
+                onRemove={(id) => apply((current) => removeExit(current, id))}
+                onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+              />
+            ) : null}
+
+            <FinalResultReadout
+              closing={validation.closing}
+              finalPnlMinor={validation.finalPnlMinor}
+              actualR={validation.actualR}
+              formatMoney={formatMoney}
+            />
           </GroupCard>
 
           {/*
@@ -1539,62 +1485,44 @@ export function TradeAfterTradeForm({
   );
 }
 
+/** A signed amount: a gain reads with its plus sign, so it is never mistaken for a loss. */
+function signedMoney(minor: string, format: (minor: string) => string): string {
+  return BigInt(minor) > 0n ? `+${format(minor)}` : format(minor);
+}
+
 /**
- * THE EXIT HISTORY'S OWN STATUS, readable on the collapsed row: a full close in
- * one exit, or how many exits and how much of the position they account for,
- * with the trader's explicit completeness answer kept apart from the share. It describes the history,
- * never the Trade — the Trade is already closed. An unstated share is said to
- * be unknown, never estimated. Spans only: it sits inside the row's button.
+ * WHERE THE CLOSE IN PARTS STANDS, above its exits: fully closed, or how much
+ * of the position the exits account for and what remains — or, when an exit
+ * states no share, that the allocation is unknown. Never an estimate.
  */
-function ExitHistoryStatusLine({ status }: { status: ExitHistoryStatus }) {
-  const s = useTranslations('trades.create.recording.contractAfter.exits.status');
-  const bps = status.accountedBps;
-  const parts: string[] = [];
-  if (status.kind === 'none') {
-    parts.push(s('none'));
-  } else {
-    /*
-      TWO SEPARATE CLAIMS. First, whether the exit EVENT LIST is complete —
-      the trader's explicit answer, or the count while it is unanswered.
-      Second, how much of the position's ALLOCATION the recorded exits prove:
-      100% only when their percentages total it or an All remaining exit
-      closes what was left. "These are all the exits" never proves 100%.
-    */
-    parts.push(
-      status.completeness === 'complete'
-        ? s('allRecorded')
-        : status.completeness === 'incomplete'
-          ? s('someMissing')
-          : status.completeness === 'unknown'
-            ? s('notSure')
-            : status.kind === 'single_full'
-              ? s('singleFull')
-              : s('count', { count: status.count }),
-    );
-    parts.push(
-      bps === null
-        ? s('allocationUnknown')
-        : bps === 10_000
-          ? s('accountedFull')
-          : s('accounted', { percent: formatShare(bps) }),
-    );
-  }
-  const remaining = status.kind !== 'none' && bps !== null && bps < 10_000 ? 10_000 - bps : null;
-  const detail =
-    remaining !== null
-      ? s('notSpecified', { percent: formatShare(remaining) })
-      : status.kind !== 'none' && bps === null
-        ? s('allocationUnknownDetail')
-        : null;
+function ClosingStatusLine({ closing }: { closing: ClosingState }) {
+  const s = useTranslations('trades.create.recording.contractAfter.close.status');
+  const bps = closing.accountedBps;
+  const state =
+    closing.exitCount === 0
+      ? 'none'
+      : closing.closed
+        ? 'closed'
+        : bps === null
+          ? 'unknown'
+          : 'partial';
   return (
-    <span
-      data-exit-history-status={status.kind}
-      data-exit-completeness={status.completeness}
+    <div
+      data-closing-status={state}
       data-accounted-bps={bps ?? 'unknown'}
+      aria-live="polite"
       className="flex min-w-0 flex-col gap-1.5"
     >
-      <span className="block">{parts.join(' · ')}</span>
-      {status.kind === 'none' || bps === null ? null : (
+      <p className="text-foreground text-sm font-semibold">
+        {state === 'none'
+          ? s('none')
+          : state === 'closed'
+            ? s('closed')
+            : state === 'unknown'
+              ? s('unknown')
+              : s('partial', { percent: formatShare(bps ?? 0) })}
+      </p>
+      {state === 'none' || bps === null ? null : (
         <span
           aria-hidden="true"
           className="bg-muted block h-1.5 w-full max-w-60 overflow-hidden rounded-full"
@@ -1605,8 +1533,133 @@ function ExitHistoryStatusLine({ status }: { status: ExitHistoryStatus }) {
           />
         </span>
       )}
-      {detail === null ? null : <span className="block text-xs">{detail}</span>}
-    </span>
+      {state === 'none' ? null : (
+        <p className="text-muted-foreground text-xs">
+          {state === 'partial'
+            ? s('partialDetail', {
+                count: closing.exitCount,
+                percent: formatShare(10_000 - (bps ?? 0)),
+              })
+            : state === 'unknown'
+              ? s('unknownDetail', { count: closing.exitCount })
+              : s('closedDetail', { count: closing.exitCount })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** "Closed all at once": the one close — its P&L is the whole Trade's. */
+function FullCloseFields({
+  draft,
+  currency,
+  errorText,
+  onChange,
+}: {
+  draft: AfterTradeDraft;
+  currency: string;
+  errorText: (field: AfterTradeField) => string | undefined;
+  onChange: (patch: Partial<AfterTradeDraft['fullClose']>) => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const prefix = `after-exit-${FULL_CLOSE_EXIT_ID}`;
+  return (
+    <div data-full-close="" className="flex min-w-0 flex-col gap-4">
+      <TextField
+        id={`${prefix}-pnl`}
+        label={a('close.pnl')}
+        value={draft.fullClose.pnl}
+        onChange={(pnl) => onChange({ pnl })}
+        suffix={currency}
+        inputMode="decimal"
+        size="lead"
+        figure
+        hint={a('close.pnlHint')}
+        error={errorText(exitField(FULL_CLOSE_EXIT_ID, 'pnl'))}
+      />
+      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+        <TextField
+          id={`${prefix}-price`}
+          label={a('exits.price')}
+          value={draft.fullClose.price}
+          onChange={(price) => onChange({ price })}
+          inputMode="decimal"
+          figure
+          labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+          error={errorText(exitField(FULL_CLOSE_EXIT_ID, 'price'))}
+        />
+        <TextField
+          id={`${prefix}-reason`}
+          label={a('exits.reason')}
+          value={draft.fullClose.reason}
+          onChange={(reason) => onChange({ reason })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * THE RESULT, READ-ONLY. The Final Net P&L exists only once the close proves
+ * the whole position closed and every exit states its P&L; until then this
+ * shows what was recorded so far — named as such — and what the result is
+ * waiting for. Trader R follows the Final Net P&L, never a running figure.
+ */
+function FinalResultReadout({
+  closing,
+  finalPnlMinor,
+  actualR,
+  formatMoney,
+}: {
+  closing: ClosingState;
+  finalPnlMinor: string | null;
+  actualR: AfterTradeValidation['actualR'];
+  formatMoney: (minor: string) => string;
+}) {
+  const s = useTranslations('trades.create.recording.contractAfter.close.result');
+  const waiting =
+    closing.mode === 'unanswered'
+      ? s('waitingForClose')
+      : closing.mode === 'all_at_once'
+        ? s('waitingForPnl')
+        : closing.missingPnl
+          ? s('waitingForEveryPnl')
+          : closing.accountedBps === null
+            ? s('waitingForAllocation')
+            : s('waitingForRemaining');
+  return (
+    <div
+      data-final-result={finalPnlMinor === null ? 'waiting' : 'final'}
+      className="border-border flex min-w-0 flex-col gap-3 border-t pt-4"
+    >
+      <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+        {s('title')}
+      </p>
+      {finalPnlMinor === null ? (
+        <div className="flex min-w-0 flex-col gap-1">
+          {closing.recordedSoFarMinor === null ? null : (
+            <p data-recorded-so-far="" className="text-foreground text-sm tabular-nums">
+              {s('recordedSoFar', {
+                amount: signedMoney(closing.recordedSoFarMinor, formatMoney),
+              })}
+            </p>
+          )}
+          <p className="text-muted-foreground text-sm">{waiting}</p>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="text-muted-foreground text-sm font-medium">{s('finalPnl')}</p>
+          <p
+            data-final-pnl=""
+            className="text-foreground text-2xl leading-none font-semibold tabular-nums"
+          >
+            {signedMoney(finalPnlMinor, formatMoney)}
+          </p>
+        </div>
+      )}
+      <ActualRReadoutRow readout={actualR} variant="derived" />
+    </div>
   );
 }
 
@@ -1614,40 +1667,24 @@ function ExitHistoryFields({
   draft,
   currency,
   errorText,
-  reconciliation,
-  onAdopt,
+  closing,
   onAdd,
   onRemove,
   onChange,
-  onCompleteness,
 }: {
   draft: AfterTradeDraft;
   currency: string;
   errorText: (field: AfterTradeField) => string | undefined;
-  /**
-   * The recorded exits' P&L against the Final Net P&L, formatted — present
-   * only when every recorded exit states its P&L. Read-only: it never changes
-   * the Final Net P&L; "Use recorded exits" does, and only when pressed.
-   */
-  reconciliation: {
-    readonly subtotal: string;
-    readonly final: string | null;
-    readonly matches: boolean | null;
-    readonly adoptable: boolean;
-  } | null;
-  onAdopt: () => void;
+  closing: ClosingState;
   onAdd: () => void;
   onRemove: (id: string) => void;
   onChange: (id: string, patch: Partial<Omit<AfterTradeExitDraft, 'id'>>) => void;
-  onCompleteness: (value: AfterTradeDraft['completeness']) => void;
 }) {
   const a = useTranslations('trades.create.recording.contractAfter');
   const c = useTranslations('trades.create.recording.contractEntry');
-  const pnl = useTranslations('trades.stage5.pnl');
-  const hasExits = draft.exits.some(meaningfulExit);
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-3">
-      <Helper>{a('exits.description')}</Helper>
+      <ClosingStatusLine closing={closing} />
       {/* The disclosure's own summary already says there are none. */}
       {draft.exits.length === 0 ? null : (
         <ol className="divide-border flex min-w-0 flex-col divide-y">
@@ -1768,74 +1805,6 @@ function ExitHistoryFields({
           </p>
         )}
       </div>
-
-      {hasExits ? (
-        <ChoiceGroup
-          idPrefix="after-completeness"
-          legend={a('exits.completeness')}
-          value={draft.completeness === 'unanswered' ? null : draft.completeness}
-          status={c('notAnswered')}
-          columns={3}
-          compact
-          aside={
-            <InlineAction
-              ariaLabel={a('exits.removeCompletenessAria')}
-              onClick={() => onCompleteness('unanswered')}
-            >
-              {c('removeAnswer')}
-            </InlineAction>
-          }
-          onChange={onCompleteness}
-          options={[
-            { value: 'complete', label: a('exits.complete') },
-            { value: 'incomplete', label: a('exits.incomplete') },
-            { value: 'unknown', label: a('exits.unknown') },
-          ]}
-        />
-      ) : null}
-
-      {reconciliation === null ? null : (
-        <div
-          data-exit-subtotal={
-            reconciliation.matches === null
-              ? 'total'
-              : reconciliation.matches
-                ? 'match'
-                : 'mismatch'
-          }
-          className="flex min-w-0 flex-col gap-1.5"
-        >
-          {reconciliation.matches === false ? (
-            <Notice
-              icon={
-                <History
-                  className="text-muted-foreground mt-0.5 size-4 shrink-0"
-                  aria-hidden="true"
-                />
-              }
-            >
-              {a('exits.subtotalMismatch', {
-                subtotal: reconciliation.subtotal,
-                final: reconciliation.final ?? '',
-              })}
-            </Notice>
-          ) : (
-            <p className="text-muted-foreground flex min-w-0 items-start gap-1.5 text-sm tabular-nums">
-              {reconciliation.matches ? (
-                <Check className="text-positive mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              ) : null}
-              {reconciliation.matches
-                ? a('exits.subtotalMatches', { amount: reconciliation.subtotal })
-                : a('exits.subtotalTotal', { amount: reconciliation.subtotal })}
-            </p>
-          )}
-          {reconciliation.adoptable ? (
-            <div>
-              <InlineAction onClick={onAdopt}>{pnl('useRecorded')}</InlineAction>
-            </div>
-          ) : null}
-        </div>
-      )}
     </div>
   );
 }

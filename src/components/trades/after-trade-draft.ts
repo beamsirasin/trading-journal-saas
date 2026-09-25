@@ -24,7 +24,7 @@ import type { z } from 'zod';
 
 import { isCanonicalEmotionKey, type EmotionKey } from '@/config/emotions';
 import { actualR } from '@/lib/calc/trade';
-import { reconcileExitHistory, traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
+import { traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
 import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constants';
 import type { PlanOutcome, PlanOutcomePlan } from '@/lib/trades/plan-outcome';
 import { HISTORICAL_EXIT_LIMIT, type CreateCompletedTradeSchema } from '@/lib/trades/schemas';
@@ -60,6 +60,26 @@ export type Direction = '' | 'long' | 'short';
 export type RecalledConditionStatus = 'met' | 'not_met' | 'unknown';
 export type ExitScopeAnswer = '' | 'part' | 'all_remaining' | 'unknown';
 export type CompletenessAnswer = 'unanswered' | ExitHistoryCompleteness;
+
+/**
+ * HOW THE TRADE WAS CLOSED — Step 5's one result source (contract §11 as
+ * amended by decision 57). Not persisted as a field of its own: the saved
+ * exit records say it. "All at once" is one All remaining exit; "in parts" is
+ * a sequence of exit legs. The whole-Trade Final Net P&L is derived from the
+ * close, never typed beside it.
+ */
+export type CloseMode = 'unanswered' | 'all_at_once' | 'in_parts';
+
+/** The single close of "Closed all at once": one All remaining exit. */
+export interface FullCloseDraft {
+  readonly pnl: string;
+  /** Context only. */
+  readonly price: string;
+  readonly reason: string;
+}
+
+/** The id the full close's one exit carries, so its field errors have a home. */
+export const FULL_CLOSE_EXIT_ID = 'full-close';
 
 export interface AfterTradeExitDraft {
   readonly id: string;
@@ -101,19 +121,14 @@ export interface AfterTradeDraft {
   readonly target: TargetDraft;
   /** Same shape as At Entry's; `inherit` never arises, because nothing is inherited. */
   readonly exitPlan: ExitPlanDraft;
-  /** The authoritative whole-Trade result; '' is not recorded. */
-  readonly finalPnl: string;
-  /**
-   * Present only after "Use recorded exits as final result" (contract §11): the
-   * Final Net P&L was explicitly adopted from the exit subtotal. Typing Final
-   * Net P&L removes it. The Save sends it only while the adopted figure is
-   * still the Complete, fully priced subtotal, and the server checks again.
-   */
-  readonly finalPnlAdopted?: true | undefined;
   /** `null` is Unanswered. */
   readonly outcome: OutcomeValue | null;
+  /** How the Trade was closed; the result is derived from it. */
+  readonly closeMode: CloseMode;
+  /** "Closed all at once": the one close. Kept while "in parts" is chosen. */
+  readonly fullClose: FullCloseDraft;
+  /** "Closed in parts": the exit legs. Kept while "all at once" is chosen. */
   readonly exits: readonly AfterTradeExitDraft[];
-  readonly completeness: CompletenessAnswer;
   readonly classification: AfterTradeClassificationDraft;
   /** Recalled Entry Confidence; no default. */
   readonly confidence: number | null;
@@ -144,10 +159,10 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
     stopMethod: 'unanswered',
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: { choice: { kind: 'unanswered' }, customText: '', customBaseId: null },
-    finalPnl: '',
     outcome: null,
+    closeMode: 'unanswered',
+    fullClose: { pnl: '', price: '', reason: '' },
     exits: [],
-    completeness: 'unanswered',
     classification: { strategy: 'unanswered', strategyId: '', setupByStrategy: {}, conditions: {} },
     confidence: null,
     emotions: { answer: 'unanswered', keys: [] },
@@ -251,21 +266,71 @@ export function updateExit(
   };
 }
 
-/** Removing the last exit also returns completeness to Unanswered: the question needs an exit. */
 export function removeExit(draft: AfterTradeDraft, id: string): AfterTradeDraft {
-  const exits = draft.exits.filter((exit) => exit.id !== id);
-  return {
-    ...draft,
-    exits,
-    completeness: exits.some(meaningfulExit) ? draft.completeness : 'unanswered',
-  };
+  return { ...draft, exits: draft.exits.filter((exit) => exit.id !== id) };
 }
 
-export function setCompleteness(
+/**
+ * Choosing how the Trade closed. Each way keeps its own answers, so switching
+ * back and forth never throws work away; only the chosen way is saved.
+ * `unanswered` is "Remove answer".
+ */
+export function setCloseMode(draft: AfterTradeDraft, closeMode: CloseMode): AfterTradeDraft {
+  return { ...draft, closeMode };
+}
+
+export function updateFullClose(
   draft: AfterTradeDraft,
-  completeness: CompletenessAnswer,
+  patch: Partial<FullCloseDraft>,
 ): AfterTradeDraft {
-  return { ...draft, completeness };
+  return { ...draft, fullClose: { ...draft.fullClose, ...patch } };
+}
+
+function fullCloseRecorded(full: FullCloseDraft): boolean {
+  return full.pnl.trim() !== '' || full.price.trim() !== '' || full.reason.trim() !== '';
+}
+
+/**
+ * THE CLOSE AS EXIT RECORDS — what a Save sends and what validation reads.
+ * "All at once" is one All remaining exit (its P&L, price and reason); "in
+ * parts" is every leg with something in it; Unanswered is no exit at all.
+ */
+export function closingExits(draft: AfterTradeDraft): readonly AfterTradeExitDraft[] {
+  if (draft.closeMode === 'all_at_once') {
+    return [
+      {
+        id: FULL_CLOSE_EXIT_ID,
+        scope: 'all_remaining',
+        pnl: draft.fullClose.pnl,
+        closedPercent: '',
+        exitedAt: '',
+        price: draft.fullClose.price,
+        reason: draft.fullClose.reason,
+      },
+    ];
+  }
+  if (draft.closeMode === 'in_parts') return draft.exits.filter(meaningfulExit);
+  return [];
+}
+
+/**
+ * A DRAFT SAVED BEFORE THE CLOSING MODEL (decision 57), read once: its exits
+ * become "in parts"; a typed Final Net P&L with no exits becomes "all at
+ * once" with that P&L; otherwise the question is Unanswered. A typed Final
+ * Net P&L beside exits has no place in the one-source model and is not kept.
+ */
+export function closingFromLegacy(legacy: {
+  readonly finalPnl: string;
+  readonly exits: readonly AfterTradeExitDraft[];
+}): Pick<AfterTradeDraft, 'closeMode' | 'fullClose' | 'exits'> {
+  const blank: FullCloseDraft = { pnl: '', price: '', reason: '' };
+  if (legacy.exits.some(meaningfulExit)) {
+    return { closeMode: 'in_parts', fullClose: blank, exits: legacy.exits };
+  }
+  if (legacy.finalPnl.trim() !== '') {
+    return { closeMode: 'all_at_once', fullClose: { ...blank, pnl: legacy.finalPnl }, exits: [] };
+  }
+  return { closeMode: 'unanswered', fullClose: blank, exits: legacy.exits };
 }
 
 // ---------------------------------------------------------------------------
@@ -551,7 +616,6 @@ export const AFTER_TRADE_STATIC_FIELDS = [
   'direction',
   'enteredAt',
   'exitedAt',
-  'finalPnl',
   'risk',
   'targetProfit',
   'targetPrice',
@@ -574,8 +638,6 @@ export type AfterTradeSection = 'trade' | 'result' | 'plan' | 'exits' | 'context
 export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSection {
   if (field.startsWith('exit:') || field === 'exits') return 'exits';
   switch (field) {
-    case 'finalPnl':
-      return 'result';
     case 'risk':
     case 'targetProfit':
     case 'targetPrice':
@@ -631,11 +693,6 @@ export type AfterTradeErrors = Partial<Record<AfterTradeField, AfterTradeErrorCo
 
 export type AfterTradeNotice =
   | { readonly kind: 'outcome_contradicts_pnl' }
-  | {
-      readonly kind: 'exit_discrepancy';
-      readonly subtotalMinor: string;
-      readonly finalPnlMinor: string;
-    }
   | { readonly kind: 'stop_wrong_side' }
   | { readonly kind: 'target_wrong_side' };
 
@@ -658,10 +715,29 @@ export interface AfterTradeValidation {
   readonly actualR:
     | { readonly status: 'known'; readonly value: string }
     | { readonly status: 'unavailable'; readonly reason: ActualRUnavailableReason };
-  /** The recorded exit subtotal, only when every recorded exit has a valid P&L. */
-  readonly exitSubtotalMinor: string | null;
-  /** "Use recorded exits as final result" may be offered (contract §11). */
-  readonly canAdoptExitSubtotal: boolean;
+  /** Where the close stands — the one source of the Final Net P&L. */
+  readonly closing: ClosingState;
+}
+
+/**
+ * WHERE THE CLOSE STANDS (decision 57).
+ *
+ * - `closed`: the recorded exits prove the whole position closed — an All
+ *   remaining exit, or stated percentages totalling 100%. Never assumed.
+ * - `finalPnlMinor` (on the validation): the sum of the exit P&Ls, only once
+ *   closed AND every exit states its P&L. Otherwise there is no final result.
+ * - `recordedSoFarMinor`: the known exit P&L while there is no final result —
+ *   a running figure, never called the Final Net P&L.
+ * - `missingPnl`: closed, but some exit has no P&L, so no final result yet.
+ */
+export interface ClosingState {
+  readonly mode: CloseMode;
+  readonly exitCount: number;
+  /** Share of the position the exits account for; `null` is unknown. */
+  readonly accountedBps: number | null;
+  readonly closed: boolean;
+  readonly missingPnl: boolean;
+  readonly recordedSoFarMinor: string | null;
 }
 
 const POSITIVE_DECIMAL = /^\d+(\.\d+)?$/;
@@ -682,6 +758,61 @@ export function percentToBps(input: string): number | 'invalid' | null {
   if (!PERCENT.test(trimmed)) return 'invalid';
   const bps = new Decimal(trimmed).times(100).toNumber();
   return bps > 0 && bps <= 10_000 ? bps : 'invalid';
+}
+
+/**
+ * HOW COMPLETE THE EXIT HISTORY IS — never whether the Trade is open.
+ *
+ * Record Closed reconstructs a Trade that is already closed; its exit history
+ * is optional supporting detail under an authoritative Final Net P&L. This
+ * reads what the recorded exits themselves say, so Step 5 can show it without
+ * being expanded:
+ *
+ * - `kind` tells a full close in one exit apart from partial / several exits;
+ * - `accountedBps` is the share of the original position the exits account
+ *   for — an All remaining exit closes whatever was left, so it accounts for
+ *   the whole position; otherwise every exit must state its percentage, and a
+ *   single unstated one makes the share unknown (`null`) rather than a guess;
+ *
+ * Nothing here is stored or sent; it is presentation of the draft.
+ */
+export interface ExitHistoryStatus {
+  readonly count: number;
+  readonly kind: 'none' | 'single_full' | 'partial';
+  readonly accountedBps: number | null;
+}
+
+export function exitHistoryStatus(exits: readonly AfterTradeExitDraft[]): ExitHistoryStatus {
+  const recorded = exits.filter(meaningfulExit);
+  if (recorded.length === 0) {
+    return { count: 0, kind: 'none', accountedBps: null };
+  }
+  let accountedBps: number | null;
+  if (recorded.some((exit) => exit.scope === 'all_remaining')) {
+    accountedBps = 10_000;
+  } else {
+    let sum = 0;
+    let known = true;
+    for (const exit of recorded) {
+      const bps = percentToBps(exit.closedPercent);
+      if (typeof bps !== 'number') {
+        known = false;
+        break;
+      }
+      sum += bps;
+    }
+    accountedBps = known ? sum : null;
+  }
+  return {
+    count: recorded.length,
+    kind: recorded.length === 1 && accountedBps === 10_000 ? 'single_full' : 'partial',
+    accountedBps,
+  };
+}
+
+/** A share in basis points as a percentage, with no trailing zeros: 6000 → "60", 3333 → "33.33". */
+export function formatShare(bps: number): string {
+  return (bps / 100).toFixed(bps % 100 === 0 ? 0 : 2);
 }
 
 function moneyError(code: string): AfterTradeErrorCode {
@@ -756,17 +887,7 @@ export function validateAfterTradeDraft(
     if (profitBlank && priceBlank) errors.targetProfit = 'fixed_target_requires_value';
   }
 
-  let finalPnlMinor: string | null = null;
-  if (draft.finalPnl.trim() !== '') {
-    const final = parseTradeMoneyInput(draft.finalPnl, context.currency, {
-      allowNegative: true,
-      allowZero: true,
-    });
-    if (final.ok) finalPnlMinor = final.value;
-    else errors.finalPnl = 'invalid_money';
-  }
-
-  const recorded = draft.exits.filter(meaningfulExit);
+  const recorded = closingExits(draft);
   const exitPnl: (bigint | null)[] = [];
   let knownBps = 0;
   for (const exit of recorded) {
@@ -832,11 +953,25 @@ export function validateAfterTradeDraft(
   );
   if (!planOutcome.ok) errors.planOutcome = planOutcome.error;
 
-  const reconciliation = reconcileExitHistory({
-    completeness: draft.completeness === 'unanswered' ? null : draft.completeness,
-    exitPnlMinor: exitPnl,
-    finalNetPnlMinor: finalPnlMinor === null ? null : BigInt(finalPnlMinor),
-  });
+  /*
+    ONE SOURCE (decision 57). The Final Net P&L is what the close adds up to:
+    only once the exits prove the whole position closed, and only when every
+    exit states its P&L. Anything less is a running figure, not a result.
+  */
+  const coverage = exitHistoryStatus(recorded);
+  const closed = coverage.accountedBps === 10_000;
+  const everyPnl = exitPnl.length > 0 && exitPnl.every((pnl) => pnl !== null);
+  const knownPnl = exitPnl.filter((pnl): pnl is bigint => pnl !== null);
+  const sum = knownPnl.reduce((total, pnl) => total + pnl, 0n);
+  const finalPnlMinor = closed && everyPnl ? sum.toString() : null;
+  const closing: ClosingState = {
+    mode: draft.closeMode,
+    exitCount: recorded.length,
+    accountedBps: coverage.accountedBps,
+    closed,
+    missingPnl: closed && !everyPnl,
+    recordedSoFarMinor: finalPnlMinor === null && knownPnl.length > 0 ? sum.toString() : null,
+  };
 
   const notices: AfterTradeNotice[] = [];
   if (
@@ -846,17 +981,6 @@ export function validateAfterTradeDraft(
     )
   ) {
     notices.push({ kind: 'outcome_contradicts_pnl' });
-  }
-  if (
-    reconciliation.discrepancy &&
-    reconciliation.subtotalMinor !== null &&
-    finalPnlMinor !== null
-  ) {
-    notices.push({
-      kind: 'exit_discrepancy',
-      subtotalMinor: reconciliation.subtotalMinor.toString(),
-      finalPnlMinor,
-    });
   }
   const targetPrice =
     draft.target.state === 'fixed' ? parsePositiveDecimal(draft.target.price) : null;
@@ -899,9 +1023,7 @@ export function validateAfterTradeDraft(
     riskMinor,
     finalPnlMinor,
     actualR: actual,
-    exitSubtotalMinor:
-      reconciliation.subtotalMinor === null ? null : reconciliation.subtotalMinor.toString(),
-    canAdoptExitSubtotal: reconciliation.adoptable,
+    closing,
   };
 }
 
@@ -910,7 +1032,7 @@ export function orderedAfterTradeErrorFields(
   draft: AfterTradeDraft,
   errors: AfterTradeErrors,
 ): readonly AfterTradeField[] {
-  const exitFields: AfterTradeField[] = draft.exits.flatMap((exit) =>
+  const exitFields: AfterTradeField[] = closingExits(draft).flatMap((exit) =>
     (['pnl', 'closedPercent', 'exitedAt', 'price'] as const).map((field) =>
       exitField(exit.id, field),
     ),
@@ -921,10 +1043,10 @@ export function orderedAfterTradeErrorFields(
     'direction',
     'enteredAt',
     'exitedAt',
-    'finalPnl',
     'risk',
     'targetProfit',
     'targetPrice',
+    'exits',
     ...exitFields,
     'contextEntryPrice',
     'contextStopPrice',
@@ -956,42 +1078,6 @@ export function afterTradeReadiness(
   return fields.length === 0
     ? { status: 'ready' }
     : { status: 'blocked', count: fields.length, fields };
-}
-
-/**
- * "Use recorded exits as final result" (contract §11): an explicit copy of a
- * Complete, fully priced exit subtotal into Final Net P&L. Never automatic.
- */
-export function adoptExitSubtotal(
-  draft: AfterTradeDraft,
-  validation: AfterTradeValidation,
-  format: (minor: string) => string,
-): AfterTradeDraft {
-  if (!validation.canAdoptExitSubtotal || validation.exitSubtotalMinor === null) return draft;
-  return { ...draft, finalPnl: format(validation.exitSubtotalMinor), finalPnlAdopted: true };
-}
-
-/** A typed Final Net P&L is the trader's own figure: any earlier adoption no longer describes it. */
-export function setFinalPnl(draft: AfterTradeDraft, finalPnl: string): AfterTradeDraft {
-  const { finalPnlAdopted: _adopted, ...rest } = draft;
-  return { ...rest, finalPnl };
-}
-
-/**
- * Whether the Final Net P&L a Save sends is still the adopted exit subtotal:
- * adopted explicitly, and still equal to a Complete, fully priced history.
- * An exit edited after adoption makes it the trader's figure again (manual).
- */
-export function finalPnlStillAdopted(
-  draft: AfterTradeDraft,
-  validation: AfterTradeValidation,
-): boolean {
-  return (
-    draft.finalPnlAdopted === true &&
-    draft.completeness === 'complete' &&
-    validation.exitSubtotalMinor !== null &&
-    validation.finalPnlMinor === validation.exitSubtotalMinor
-  );
 }
 
 export interface AfterTradeAnalysisSummary {
@@ -1037,6 +1123,7 @@ export function hasAfterTradeWork(draft: AfterTradeDraft, pristine: AfterTradeDr
   const withoutBlankExits = (value: AfterTradeDraft) => ({
     ...value,
     exits: value.exits.filter(meaningfulExit),
+    fullClose: fullCloseRecorded(value.fullClose) ? value.fullClose : null,
   });
   return JSON.stringify(withoutBlankExits(draft)) !== JSON.stringify(withoutBlankExits(pristine));
 }
@@ -1160,7 +1247,7 @@ export function buildAfterTradePayload(
   };
 
   const active = activeAfterTradeClassification(draft, context.options);
-  const recordedExits = draft.exits.filter(meaningfulExit);
+  const recordedExits = closingExits(draft);
 
   const payload: CreateCompletedTradePayload = {
     mutationKey: context.mutationKey,
@@ -1181,12 +1268,17 @@ export function buildAfterTradePayload(
           targetPrice: trimmedOrUndefined(draft.target.price) ?? null,
         }
       : {}),
+    /*
+      ONE SOURCE (decision 57): the Final Net P&L is the close's own sum, sent
+      as adopted from the exits so the server checks it against them; the
+      history is Complete exactly when the exits prove the position closed.
+    */
     finalPnlMinor: validation.finalPnlMinor,
-    ...(finalPnlStillAdopted(draft, validation) ? { finalPnlAdoptedFromExits: true } : {}),
+    ...(validation.finalPnlMinor === null ? {} : { finalPnlAdoptedFromExits: true }),
     ...(draft.outcome === null ? {} : { traderOutcome: draft.outcome }),
-    ...(recordedExits.length === 0 || draft.completeness === 'unanswered'
-      ? {}
-      : { exitHistoryCompleteness: draft.completeness }),
+    ...(recordedExits.length > 0 && validation.closing.closed
+      ? { exitHistoryCompleteness: 'complete' }
+      : {}),
     exits: recordedExits.map((exit) => {
       const bps = percentToBps(exit.closedPercent);
       return {

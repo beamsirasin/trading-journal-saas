@@ -2330,7 +2330,6 @@
             "resultDescription": "The whole trade's result and how you classify it. Both are optional, and both drive your trader results.",
             "plan": "Risk and plan at entry",
             "planDescription": "As you remember them. Nothing here is filled in from today's defaults.",
-            "exits": "Exit history",
             "read": "Your read on the trade",
             "readDescription": "Not needed to save. Answers given now are recorded as recalled after the trade.",
             "context": "Trade idea, chart and price levels",
@@ -2392,7 +2391,6 @@
           },
           "exits": {
             "summaryCount": "{count, plural, one {# exit recorded} other {# exits recorded}}",
-            "description": "Optional supporting detail. Your final net P&L stays the trade's result.",
             "empty": "No exits recorded. You can save the trade without them.",
             "add": "Record an exit",
             "exitNumber": "Exit {number}",
@@ -2416,23 +2414,7 @@
             "adopt": "Use recorded exits as final result",
             "adopted": "Final net P&L set to {amount} from your recorded exits.",
             "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving.",
-            "limitReached": "A trade can hold up to {limit} exits.",
-            "status": {
-              "none": "No exits recorded",
-              "singleFull": "Closed in one exit",
-              "count": "{count, plural, one {# exit recorded} other {# exits recorded}}",
-              "allRecorded": "All exits recorded",
-              "someMissing": "Some exits are missing",
-              "notSure": "Not sure all exits are recorded",
-              "accountedFull": "100% accounted for",
-              "accounted": "{percent}% allocation accounted for",
-              "notSpecified": "{percent}% allocation is not specified",
-              "allocationUnknown": "allocation unknown",
-              "allocationUnknownDetail": "Some exits have no % of position, so the allocation is incomplete."
-            },
-            "subtotalTotal": "Recorded exits total {amount}.",
-            "subtotalMatches": "Recorded exits total {amount}, matching your final net P&L.",
-            "subtotalMismatch": "Recorded exits total {subtotal}; Final net P&L is {final}."
+            "limitReached": "A trade can hold up to {limit} exits."
           },
           "conditions": {
             "hint": "Answer the ones you remember. Skipped ones and ones you don't remember are never counted as not met.",
@@ -2570,6 +2552,33 @@
             "symbolSaved": "Saved symbols",
             "symbolAlreadySaved": "“{symbol}” is already saved.",
             "symbolRemove": "Remove {symbol} from saved symbols"
+          },
+          "close": {
+            "question": "How did you close this trade?",
+            "allAtOnce": "Closed all at once",
+            "inParts": "Closed in parts",
+            "removeAria": "Remove how you closed answer",
+            "pnl": "P&L for the close",
+            "pnlHint": "The whole trade's result after costs. Use a minus sign for a loss.",
+            "status": {
+              "none": "No exits recorded yet",
+              "closed": "Fully closed · 100% accounted for",
+              "partial": "Partial close · {percent}% accounted for",
+              "unknown": "Partial close · allocation unknown",
+              "closedDetail": "{count, plural, one {# exit} other {# exits}}",
+              "partialDetail": "{count, plural, one {# exit} other {# exits}} · {percent}% remaining",
+              "unknownDetail": "{count, plural, one {# exit} other {# exits}} · add each exit's % of position, or mark the last one All remaining"
+            },
+            "result": {
+              "title": "Final result",
+              "finalPnl": "Final net P&L",
+              "recordedSoFar": "Recorded so far: {amount}",
+              "waitingForClose": "Choose how you closed the trade to record its result.",
+              "waitingForPnl": "Enter the P&L for the close.",
+              "waitingForEveryPnl": "Waiting for the P&L of every exit.",
+              "waitingForAllocation": "Waiting until the exits account for the whole position.",
+              "waitingForRemaining": "Waiting for the remaining exit."
+            }
           }
         },
         "setupStep": {
@@ -2691,7 +2700,6 @@
             "finalPnl": "Final net P&L",
             "outcome": "Trader outcome",
             "exits": "{count, plural, one {# recorded exit} other {# recorded exits}}",
-            "completeness": "Whether the exit history is complete",
             "exitedAt": "Final exit time",
             "postTradeEmotions": "Post-trade emotion",
             "conditionsUnknown": "Conditions marked Don't remember"
@@ -3094,7 +3102,6 @@
       "pnl": {
         "label": "Final net P&L",
         "hint": "The whole trade's result after costs, in {currency}. Use a minus sign for a loss.",
-        "hintShort": "After costs. Use a minus sign for a loss.",
         "sourceTyped": "Entered by you.",
         "sourceAdopted": "From your recorded exits. Type a figure to replace it.",
         "subtotal": "Recorded exits add up to {amount}.",

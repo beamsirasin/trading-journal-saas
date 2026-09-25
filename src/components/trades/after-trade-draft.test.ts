@@ -5,19 +5,19 @@ import type { TradeCreateOptions } from '@/server/dal/trades';
 
 import {
   addExit,
-  adoptExitSubtotal,
   afterTradeReadiness,
   buildAfterTradePayload,
   canAddExit,
+  closingFromLegacy,
   createAfterTradeDraft,
   exitField,
+  FULL_CLOSE_EXIT_ID,
   hasAfterTradeWork,
-  removeExit,
-  setCompleteness,
-  setFinalPnl,
+  setCloseMode,
   setOutcome,
   setTargetState,
   updateExit,
+  updateFullClose,
   validateAfterTradeDraft,
   type AfterTradeDraft,
 } from './after-trade-draft';
@@ -33,6 +33,23 @@ const OPTIONS = { strategies: [], exitPlans: [] } satisfies Pick<
 
 function identified(): AfterTradeDraft {
   return { ...createAfterTradeDraft(ACCOUNT), symbol: 'xauusd', direction: 'long' };
+}
+
+/** "Closed all at once" with this P&L for the close. */
+function closedAllAtOnce(draft: AfterTradeDraft, pnl: string): AfterTradeDraft {
+  return updateFullClose(setCloseMode(draft, 'all_at_once'), { pnl });
+}
+
+/** "Closed in parts" with these exit legs. */
+function closedInParts(
+  draft: AfterTradeDraft,
+  legs: readonly Partial<Omit<AfterTradeDraft['exits'][number], 'id'>>[],
+): AfterTradeDraft {
+  let next = setCloseMode(draft, 'in_parts');
+  legs.forEach((leg, index) => {
+    next = updateExit(addExit(next, `e${index + 1}`), `e${index + 1}`, leg);
+  });
+  return next;
 }
 
 function payloadOf(draft: AfterTradeDraft) {
@@ -55,11 +72,11 @@ describe('readiness', () => {
   });
 
   it('blocks malformed values and incomplete explicit answers, never missing optional ones', () => {
-    let draft = { ...identified(), finalPnl: 'abc', enteredAt: '2026-09-19T10:00' };
+    let draft = closedAllAtOnce({ ...identified(), enteredAt: '2026-09-19T10:00' }, 'abc');
     draft = setTargetState(draft, 'fixed');
     const { errors } = validateAfterTradeDraft(draft, CONTEXT);
     expect(errors).toEqual({
-      finalPnl: 'invalid_money',
+      [exitField(FULL_CLOSE_EXIT_ID, 'pnl')]: 'invalid_money',
       enteredAt: 'future_time',
       targetProfit: 'fixed_target_requires_value',
     });
@@ -72,7 +89,7 @@ describe('readiness', () => {
 
   it('refuses a final exit before entry and exits that close more than the position', () => {
     let draft = { ...identified(), enteredAt: '2026-09-10T10:00', exitedAt: '2026-09-10T09:00' };
-    draft = addExit(addExit(draft, 'a'), 'b');
+    draft = addExit(addExit(setCloseMode(draft, 'in_parts'), 'a'), 'b');
     draft = updateExit(draft, 'a', { closedPercent: '60' });
     draft = updateExit(draft, 'b', { closedPercent: '60' });
     const { errors } = validateAfterTradeDraft(draft, CONTEXT);
@@ -86,17 +103,17 @@ describe('derived figures and notices', () => {
   it('derives Trader R only from Final Net P&L and Risk at Entry', () => {
     const neither = validateAfterTradeDraft(identified(), CONTEXT);
     expect(neither.actualR).toEqual({ status: 'unavailable', reason: 'needs_pnl_and_risk' });
-    const pnl = validateAfterTradeDraft({ ...identified(), finalPnl: '150' }, CONTEXT);
+    const pnl = validateAfterTradeDraft(closedAllAtOnce(identified(), '150'), CONTEXT);
     expect(pnl.actualR).toEqual({ status: 'unavailable', reason: 'needs_risk' });
     const both = validateAfterTradeDraft(
-      { ...identified(), riskState: 'defined', finalPnl: '150', risk: '100' },
+      closedAllAtOnce({ ...identified(), riskState: 'defined', risk: '100' }, '150'),
       CONTEXT,
     );
     // 150 ÷ the 1R of 100 — the Step 2 Risk is the only denominator there is.
     expect(both.actualR).toEqual({ status: 'known', value: '1.5000' });
     // No Defined Risk: the P&L stands, and no R is made up for it.
     const none = validateAfterTradeDraft(
-      { ...identified(), riskState: 'no_defined', finalPnl: '150' },
+      closedAllAtOnce({ ...identified(), riskState: 'no_defined' }, '150'),
       CONTEXT,
     );
     expect(none.finalPnlMinor).toBe('15000');
@@ -104,38 +121,156 @@ describe('derived figures and notices', () => {
   });
 
   it('notes a sign contradiction without blocking', () => {
-    const draft = setOutcome({ ...identified(), finalPnl: '-10' }, 'win');
+    const draft = setOutcome(closedAllAtOnce(identified(), '-10'), 'win');
     const validation = validateAfterTradeDraft(draft, CONTEXT);
     expect(validation.notices).toEqual([{ kind: 'outcome_contradicts_pnl' }]);
     expect(afterTradeReadiness(draft, validation).status).toBe('ready');
   });
 
-  it('calls a difference a discrepancy only for a Complete, fully priced history', () => {
-    let draft = { ...identified(), finalPnl: '90' };
-    draft = updateExit(addExit(draft, 'a'), 'a', { pnl: '100' });
-    expect(validateAfterTradeDraft(draft, CONTEXT).notices).toEqual([]);
-    draft = setCompleteness(draft, 'complete');
+  it('reads the outcome independently: a result never answers it', () => {
+    const draft = closedAllAtOnce(identified(), '80');
+    expect(draft.outcome).toBeNull();
+    expect(payloadOf(draft)).not.toHaveProperty('traderOutcome');
+  });
+});
+
+/*
+  ONE RESULT SOURCE (decision 57). Step 5 records how the Trade closed; the
+  Final Net P&L is what that close adds up to, never typed beside it.
+*/
+describe('the close is the result', () => {
+  const RISKED = { riskState: 'defined', risk: '50' } as const;
+
+  it('a full close of +80 is a Final Net P&L of +80 and, against a 50 risk, +1.60R', () => {
+    const draft = closedAllAtOnce({ ...identified(), ...RISKED }, '80');
     const validation = validateAfterTradeDraft(draft, CONTEXT);
-    expect(validation.notices).toEqual([
-      { kind: 'exit_discrepancy', subtotalMinor: '10000', finalPnlMinor: '9000' },
+    expect(validation.finalPnlMinor).toBe('8000');
+    expect(validation.actualR).toEqual({ status: 'known', value: '1.6000' });
+    expect(validation.closing).toMatchObject({ mode: 'all_at_once', closed: true, exitCount: 1 });
+    expect(payloadOf(draft)).toMatchObject({
+      finalPnlMinor: '8000',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
+      exits: [{ exitScope: 'all_remaining', realizedPnlMinor: '8000', closedBps: null }],
+    });
+    expect(CreateCompletedTradeSchema.safeParse(payloadOf(draft)).success).toBe(true);
+  });
+
+  it('a full close with no P&L yet has no result, and never a 0', () => {
+    const draft = setCloseMode(identified(), 'all_at_once');
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.finalPnlMinor).toBeNull();
+    expect(validation.closing.recordedSoFarMinor).toBeNull();
+    expect(payloadOf(draft)).toMatchObject({ finalPnlMinor: null });
+    expect(payloadOf(draft)).not.toHaveProperty('finalPnlAdoptedFromExits');
+  });
+
+  it('partial exits of 30% and 30% account for 60% and claim no final result', () => {
+    const draft = closedInParts({ ...identified(), ...RISKED }, [
+      { scope: 'part', closedPercent: '30', pnl: '20' },
+      { scope: 'part', closedPercent: '30', pnl: '15' },
     ]);
-    expect(afterTradeReadiness(draft, validation).status).toBe('ready');
-  });
-
-  it('adopts the subtotal only when asked', () => {
-    let draft = { ...identified(), finalPnl: '90' };
-    draft = setCompleteness(updateExit(addExit(draft, 'a'), 'a', { pnl: '100' }), 'complete');
     const validation = validateAfterTradeDraft(draft, CONTEXT);
-    expect(draft.finalPnl).toBe('90');
-    expect(adoptExitSubtotal(draft, validation, (minor) => `${minor}c`).finalPnl).toBe('10000c');
+    expect(validation.closing).toMatchObject({
+      mode: 'in_parts',
+      exitCount: 2,
+      accountedBps: 6_000,
+      closed: false,
+      recordedSoFarMinor: '3500',
+    });
+    expect(validation.finalPnlMinor).toBeNull();
+    expect(validation.actualR).toMatchObject({ status: 'unavailable' });
+    const payload = payloadOf(draft);
+    expect(payload).toMatchObject({ finalPnlMinor: null });
+    expect(payload).not.toHaveProperty('finalPnlAdoptedFromExits');
+    expect(payload).not.toHaveProperty('exitHistoryCompleteness');
   });
 
-  it('returns completeness to Unanswered when the last exit goes', () => {
-    const draft = setCompleteness(
-      updateExit(addExit(identified(), 'a'), 'a', { pnl: '1' }),
-      'unknown',
-    );
-    expect(removeExit(draft, 'a').completeness).toBe('unanswered');
+  it('an All remaining exit completes the sequence, and the exit P&Ls sum into the result', () => {
+    const draft = closedInParts({ ...identified(), ...RISKED }, [
+      { scope: 'part', closedPercent: '30', pnl: '20' },
+      { scope: 'part', closedPercent: '30', pnl: '15' },
+      { scope: 'all_remaining', pnl: '45' },
+    ]);
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.closing).toMatchObject({ closed: true, accountedBps: 10_000 });
+    expect(validation.finalPnlMinor).toBe('8000');
+    expect(validation.actualR).toEqual({ status: 'known', value: '1.6000' });
+    expect(payloadOf(draft)).toMatchObject({
+      finalPnlMinor: '8000',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
+    });
+    expect(CreateCompletedTradeSchema.safeParse(payloadOf(draft)).success).toBe(true);
+  });
+
+  it('percentages totalling 100% also complete it', () => {
+    const draft = closedInParts(identified(), [
+      { closedPercent: '60', pnl: '50' },
+      { closedPercent: '40', pnl: '30' },
+    ]);
+    expect(validateAfterTradeDraft(draft, CONTEXT).finalPnlMinor).toBe('8000');
+  });
+
+  it('never fabricates coverage: a missing percentage leaves allocation unknown and no result', () => {
+    const draft = closedInParts(identified(), [{ closedPercent: '30', pnl: '20' }, { pnl: '15' }]);
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.closing).toMatchObject({ accountedBps: null, closed: false });
+    expect(validation.finalPnlMinor).toBeNull();
+    expect(validation.closing.recordedSoFarMinor).toBe('3500');
+  });
+
+  it('closed, but an exit without P&L: no final result until every exit states one', () => {
+    const draft = closedInParts(identified(), [
+      { scope: 'part', closedPercent: '50', pnl: '20' },
+      { scope: 'all_remaining' },
+    ]);
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.closing).toMatchObject({ closed: true, missingPnl: true });
+    expect(validation.finalPnlMinor).toBeNull();
+    expect(payloadOf(draft)).toMatchObject({ exitHistoryCompleteness: 'complete' });
+    expect(payloadOf(draft)).not.toHaveProperty('finalPnlAdoptedFromExits');
+  });
+
+  it('keeps each way of closing when switching, and saves only the chosen one', () => {
+    let draft = closedInParts(identified(), [{ closedPercent: '30', pnl: '20' }]);
+    draft = updateFullClose(setCloseMode(draft, 'all_at_once'), { pnl: '80' });
+    expect(draft.exits).toHaveLength(1);
+    expect(payloadOf(draft)?.exits).toHaveLength(1);
+    expect(payloadOf(draft)?.exits?.[0]).toMatchObject({ exitScope: 'all_remaining' });
+    draft = setCloseMode(draft, 'in_parts');
+    expect(draft.fullClose.pnl).toBe('80');
+    expect(payloadOf(draft)?.exits?.[0]).toMatchObject({ closedBps: 3_000 });
+  });
+
+  it('holds no separate Final Net P&L to type', () => {
+    const draft = createAfterTradeDraft(ACCOUNT);
+    expect(draft).not.toHaveProperty('finalPnl');
+    expect(draft).not.toHaveProperty('finalPnlAdopted');
+    expect(draft).not.toHaveProperty('completeness');
+  });
+
+  it('reads an older draft once: exits become parts, a lone typed P&L a full close', () => {
+    const exit = {
+      id: 'x',
+      scope: '' as const,
+      pnl: '20',
+      closedPercent: '30',
+      exitedAt: '',
+      price: '',
+      reason: '',
+    };
+    expect(closingFromLegacy({ finalPnl: '80', exits: [exit] })).toMatchObject({
+      closeMode: 'in_parts',
+      exits: [exit],
+    });
+    expect(closingFromLegacy({ finalPnl: '80', exits: [] })).toMatchObject({
+      closeMode: 'all_at_once',
+      fullClose: { pnl: '80' },
+    });
+    expect(closingFromLegacy({ finalPnl: '', exits: [] })).toMatchObject({
+      closeMode: 'unanswered',
+    });
   });
 });
 
@@ -199,7 +334,8 @@ describe('the Save payload', () => {
       ...identified(),
       riskState: 'defined',
       risk: '100',
-      finalPnl: '80',
+      closeMode: 'all_at_once',
+      fullClose: { pnl: '80', price: '', reason: '' },
     });
     expect(payload).toMatchObject({ plannedRiskMinor: '10000', finalPnlMinor: '8000' });
     expect(payload).not.toHaveProperty('actualRiskAnswer');
@@ -207,7 +343,7 @@ describe('the Save payload', () => {
   });
 
   it('keeps each exit’s evidence as given, with scope Unknown distinct from Unanswered', () => {
-    let draft = addExit(addExit(identified(), 'a'), 'b');
+    let draft = addExit(addExit(setCloseMode(identified(), 'in_parts'), 'a'), 'b');
     draft = updateExit(draft, 'a', { reason: '  Half at the level ' });
     draft = updateExit(draft, 'b', { scope: 'unknown', price: '2410.5', closedPercent: '25' });
     expect(payloadOf(draft)?.exits).toEqual([
@@ -239,47 +375,9 @@ describe('work', () => {
   });
 });
 
-describe('adopting the exit subtotal is recorded as adoption (contract §11)', () => {
-  function completeHistory(): AfterTradeDraft {
-    let draft = identified();
-    draft = addExit(addExit(draft, 'e1'), 'e2');
-    draft = updateExit(draft, 'e1', { pnl: '150' });
-    draft = updateExit(draft, 'e2', { pnl: '200' });
-    return setCompleteness(draft, 'complete');
-  }
-  const format = (minor: string) => (Number(minor) / 100).toFixed(2);
-
-  it('sends the adoption claim with the adopted figure', () => {
-    const draft = completeHistory();
-    const adopted = adoptExitSubtotal(draft, validateAfterTradeDraft(draft, CONTEXT), format);
-    const payload = payloadOf(adopted);
-    expect(payload?.finalPnlMinor).toBe('35000');
-    expect(payload?.finalPnlAdoptedFromExits).toBe(true);
-    expect(CreateCompletedTradeSchema.safeParse(payload).success).toBe(true);
-  });
-
-  it('a typed Final Net P&L is manual, even when it equals the subtotal', () => {
-    const draft = completeHistory();
-    const adopted = adoptExitSubtotal(draft, validateAfterTradeDraft(draft, CONTEXT), format);
-    const typed = setFinalPnl(adopted, '350.00');
-    expect(typed.finalPnlAdopted).toBeUndefined();
-    expect(payloadOf(typed)?.finalPnlAdoptedFromExits).toBeUndefined();
-    expect(payloadOf(setFinalPnl(draft, '350.00'))?.finalPnlAdoptedFromExits).toBeUndefined();
-  });
-
-  it('an exit edited after adoption makes the figure manual again', () => {
-    const draft = completeHistory();
-    const adopted = adoptExitSubtotal(draft, validateAfterTradeDraft(draft, CONTEXT), format);
-    const edited = updateExit(adopted, 'e2', { pnl: '210' });
-    expect(payloadOf(edited)?.finalPnlAdoptedFromExits).toBeUndefined();
-    const incomplete = setCompleteness(adopted, 'incomplete');
-    expect(payloadOf(incomplete)?.finalPnlAdoptedFromExits).toBeUndefined();
-  });
-});
-
 describe('the exit limit is the server limit', () => {
   it('stops adding exits at the limit a Save accepts', () => {
-    let draft = identified();
+    let draft = setCloseMode(identified(), 'in_parts');
     for (let index = 0; index < HISTORICAL_EXIT_LIMIT + 5; index += 1) {
       draft = updateExit(addExit(draft, `e${index}`), `e${index}`, { reason: 'r' });
     }

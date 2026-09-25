@@ -40,10 +40,11 @@ import { PLANNED_RISK_STATES, PLANNED_STOP_METHODS } from '@/lib/trades/add-trad
 import { PLAN_OUTCOMES } from '@/lib/trades/plan-outcome';
 
 import {
+  closingExits,
+  closingFromLegacy,
   createAfterTradeDraft,
   hasAfterTradeWork,
   isCompleteEntryTimestamp,
-  meaningfulExit,
   type AfterTradeDraft,
   type RecalledConditionStatus,
 } from './after-trade-draft';
@@ -633,7 +634,6 @@ export type InactiveModeWorkItem =
   | { readonly kind: 'finalPnl' }
   | { readonly kind: 'outcome' }
   | { readonly kind: 'exits'; readonly count: number }
-  | { readonly kind: 'completeness' }
   | { readonly kind: 'exitedAt' }
   | { readonly kind: 'postTradeEmotions' }
   | { readonly kind: 'conditionsUnknown' };
@@ -662,11 +662,16 @@ export function inactiveModeWork(
   if (envelope.activeMode !== 'at_entry' || envelope.afterTrade === null) return [];
   const after = envelope.afterTrade;
   const items: InactiveModeWorkItem[] = [];
-  if (after.finalPnl.trim() !== '') items.push({ kind: 'finalPnl' });
+  // The close is the result (decision 57): a full close's P&L reads as the
+  // result it is; exit legs are counted as exits.
+  const close = closingExits(after);
+  if (after.closeMode === 'all_at_once' && after.fullClose.pnl.trim() !== '') {
+    items.push({ kind: 'finalPnl' });
+  }
   if (after.outcome !== null) items.push({ kind: 'outcome' });
-  const exits = after.exits.filter(meaningfulExit).length;
-  if (exits > 0) items.push({ kind: 'exits', count: exits });
-  if (exits > 0 && after.completeness !== 'unanswered') items.push({ kind: 'completeness' });
+  if (after.closeMode === 'in_parts' && close.length > 0) {
+    items.push({ kind: 'exits', count: close.length });
+  }
   if (after.exitedAt !== '') items.push({ kind: 'exitedAt' });
   if (after.postTradeEmotions.answer !== 'unanswered') items.push({ kind: 'postTradeEmotions' });
   const unknownCondition = Object.values(after.classification.conditions).some((bySetup) =>
@@ -753,58 +758,75 @@ const atEntrySchema = z.object({
   context: contextSchema,
 }) satisfies z.ZodType<AtEntryDraft>;
 
-const afterTradeSchema = z.object({
-  tradingAccountId: text,
-  symbol: text,
-  direction,
-  enteredAt: text,
-  exitedAt: text,
-  risk: text,
-  // No `actualRisk` (decision 56): an older draft's answer is discarded on read.
-  target: targetSchema,
-  exitPlan: exitPlanSchema,
-  finalPnl: text,
-  finalPnlAdopted: z.literal(true).optional(),
-  outcome: z.enum(['win', 'loss', 'break_even']).nullable(),
-  exits: z
-    .array(
-      z.object({
-        id: text,
-        scope: z.enum(['', 'part', 'all_remaining', 'unknown']),
-        pnl: text,
-        closedPercent: text,
-        exitedAt: text,
-        price: text,
-        reason: text,
-      }),
-    )
-    // Storage tolerates more than a Save accepts; the form never adds more
-    // than HISTORICAL_EXIT_LIMIT, so a recovered draft is never refused for it.
-    .max(200),
-  completeness: z.enum(['unanswered', 'unknown', 'incomplete', 'complete']),
-  classification: z.object({
-    strategy: answerState,
-    strategyId: text,
-    setupByStrategy: setupByStrategySchema,
-    conditions: z.record(
-      text,
-      z.record(text, z.record(text, z.enum(['met', 'not_met', 'unknown']))),
-    ),
-  }),
-  confidence: z.number().int().nullable(),
-  emotions: emotionsSchema,
-  postTradeEmotions: emotionsSchema,
-  context: contextSchema,
-  // Stage 6 (2026-09-22). Absent from a draft written before it: Unanswered.
-  riskState,
-  stopMethod,
-  afterTradeNote: text.default(''),
-  afterTradeTradingviewUrl: text.default(''),
-  // Stage 6 System Result (decision 55). Absent from an earlier draft: Unanswered.
-  planOutcome: z
-    .object({ outcome: z.enum(PLAN_OUTCOMES).nullable(), amount: text })
-    .default({ outcome: null, amount: '' }),
-}) satisfies z.ZodType<AfterTradeDraft>;
+const afterTradeSchema = z
+  .object({
+    tradingAccountId: text,
+    symbol: text,
+    direction,
+    enteredAt: text,
+    exitedAt: text,
+    risk: text,
+    // No `actualRisk` (decision 56): an older draft's answer is discarded on read.
+    target: targetSchema,
+    exitPlan: exitPlanSchema,
+    /*
+    THE CLOSING MODEL (decision 57). A draft written before it has no
+    `closeMode`: its typed Final Net P&L, "Use recorded exits" mark and exit
+    completeness answer are read once below and converted — never kept as a
+    second result source.
+  */
+    closeMode: z.enum(['unanswered', 'all_at_once', 'in_parts']).optional(),
+    fullClose: z.object({ pnl: text, price: text, reason: text }).optional(),
+    finalPnl: text.optional(),
+    finalPnlAdopted: z.literal(true).optional(),
+    outcome: z.enum(['win', 'loss', 'break_even']).nullable(),
+    exits: z
+      .array(
+        z.object({
+          id: text,
+          scope: z.enum(['', 'part', 'all_remaining', 'unknown']),
+          pnl: text,
+          closedPercent: text,
+          exitedAt: text,
+          price: text,
+          reason: text,
+        }),
+      )
+      // Storage tolerates more than a Save accepts; the form never adds more
+      // than HISTORICAL_EXIT_LIMIT, so a recovered draft is never refused for it.
+      .max(200),
+    completeness: z.enum(['unanswered', 'unknown', 'incomplete', 'complete']).optional(),
+    classification: z.object({
+      strategy: answerState,
+      strategyId: text,
+      setupByStrategy: setupByStrategySchema,
+      conditions: z.record(
+        text,
+        z.record(text, z.record(text, z.enum(['met', 'not_met', 'unknown']))),
+      ),
+    }),
+    confidence: z.number().int().nullable(),
+    emotions: emotionsSchema,
+    postTradeEmotions: emotionsSchema,
+    context: contextSchema,
+    // Stage 6 (2026-09-22). Absent from a draft written before it: Unanswered.
+    riskState,
+    stopMethod,
+    afterTradeNote: text.default(''),
+    afterTradeTradingviewUrl: text.default(''),
+    // Stage 6 System Result (decision 55). Absent from an earlier draft: Unanswered.
+    planOutcome: z
+      .object({ outcome: z.enum(PLAN_OUTCOMES).nullable(), amount: text })
+      .default({ outcome: null, amount: '' }),
+  })
+  .transform(
+    ({ closeMode, fullClose, finalPnl, finalPnlAdopted: _adopted, completeness: _c, ...rest }) => ({
+      ...rest,
+      ...(closeMode === undefined
+        ? closingFromLegacy({ finalPnl: finalPnl ?? '', exits: rest.exits })
+        : { closeMode, fullClose: fullClose ?? { pnl: '', price: '', reason: '' } }),
+    }),
+  ) satisfies z.ZodType<AfterTradeDraft>;
 
 const sharedSchema = z.object({
   tradingAccountId: text,
@@ -957,16 +979,18 @@ export function upgradeV1AfterTrade(legacy: z.infer<typeof v1AfterTradeSchema>):
     enteredAt: values.enteredAt,
     exitedAt: values.exitedAt,
     risk: legacy.planBasis === 'money' ? values.plannedRisk : '',
-    finalPnl: money ? values.finalPnl : '',
-    exits: legacy.exits.map((exit) => ({
-      id: exit.id,
-      scope: exit.scope,
-      pnl: money ? exit.value : '',
-      closedPercent: exit.closedPercent,
-      exitedAt: exit.exitedAt,
-      price: money ? '' : exit.value,
-      reason: exit.reason,
-    })),
+    ...closingFromLegacy({
+      finalPnl: money ? values.finalPnl : '',
+      exits: legacy.exits.map((exit) => ({
+        id: exit.id,
+        scope: exit.scope,
+        pnl: money ? exit.value : '',
+        closedPercent: exit.closedPercent,
+        exitedAt: exit.exitedAt,
+        price: money ? '' : exit.value,
+        reason: exit.reason,
+      })),
+    }),
     classification:
       values.strategyId === ''
         ? base.classification

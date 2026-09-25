@@ -19,6 +19,15 @@ import {
   createStrategy,
   createStrategyRule,
 } from '@/server/services/strategy-management';
+import {
+  addExit,
+  buildAfterTradePayload,
+  createAfterTradeDraft,
+  setCloseMode,
+  updateExit,
+  updateFullClose,
+  type AfterTradeDraft,
+} from '@/components/trades/after-trade-draft';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { closeDb } from '../db/client';
@@ -1023,6 +1032,113 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       visible, never quietly trimmed — and write nothing; the same Saves
       without it succeed and store no Actual Risk.
     */
+    /*
+      ONE CLOSING MODEL (decision 57), end to end: the payload the Record
+      Closed form builds from how the Trade closed is accepted by the real
+      Save and stored as an exit-derived result the service re-checked. A
+      partial close stores its exits and no Final Net P&L.
+    */
+    describe('the close is the result (decision 57)', () => {
+      function drafted(fw: Framework, close: (draft: AfterTradeDraft) => AfterTradeDraft) {
+        const draft = close({
+          ...createAfterTradeDraft(fw.tradingAccountId),
+          symbol: 'EURUSD',
+          direction: 'long',
+          riskState: 'defined',
+          risk: '50',
+        });
+        const payload = buildAfterTradePayload(draft, {
+          currency: 'USD',
+          timezone: 'UTC',
+          now: new Date(),
+          mutationKey: crypto.randomUUID(),
+          options: { strategies: [], exitPlans: [] },
+        });
+        if (payload === null) throw new Error('draft not ready');
+        return payload;
+      }
+
+      function inParts(
+        draft: AfterTradeDraft,
+        legs: readonly Partial<Omit<AfterTradeDraft['exits'][number], 'id'>>[],
+      ) {
+        let next = setCloseMode(draft, 'in_parts');
+        legs.forEach((leg, index) => {
+          next = updateExit(addExit(next, `leg-${index}`), `leg-${index}`, leg);
+        });
+        return next;
+      }
+
+      async function saved(tradeId: string) {
+        const [row] = await db.select().from(trades).where(eq(trades.id, tradeId));
+        const exits = await db.select().from(tradeExits).where(eq(tradeExits.tradeId, tradeId));
+        return { row, exits };
+      }
+
+      it('saves a full close of +80 as Final Net P&L +80 and +1.60R, from its one exit', async () => {
+        const { fw } = await freshFixture();
+        const result = await createCompletedTradeAction(
+          drafted(fw, (draft) =>
+            updateFullClose(setCloseMode(draft, 'all_at_once'), { pnl: '80' }),
+          ),
+        );
+        if (!result.ok) throw new Error(`save failed: ${result.error.code}`);
+        const { row, exits } = await saved(result.data.tradeId);
+        expect(row).toMatchObject({
+          netPnlMinor: 8_000n,
+          finalPnlSource: 'exit_history',
+          exitHistoryCompleteness: 'complete',
+          actualR: '1.6000',
+          traderOutcome: null,
+        });
+        expect(exits).toHaveLength(1);
+        expect(exits[0]).toMatchObject({ exitScope: 'all_remaining', realizedPnlMinor: 8_000n });
+      });
+
+      it('saves closed parts as the sum of their P&L', async () => {
+        const { fw } = await freshFixture();
+        const result = await createCompletedTradeAction(
+          drafted(fw, (draft) =>
+            inParts(draft, [
+              { scope: 'part', closedPercent: '30', pnl: '20' },
+              { scope: 'part', closedPercent: '30', pnl: '15' },
+              { scope: 'all_remaining', pnl: '45' },
+            ]),
+          ),
+        );
+        if (!result.ok) throw new Error(`save failed: ${result.error.code}`);
+        const { row, exits } = await saved(result.data.tradeId);
+        expect(row).toMatchObject({
+          netPnlMinor: 8_000n,
+          finalPnlSource: 'exit_history',
+          exitHistoryCompleteness: 'complete',
+          actualR: '1.6000',
+        });
+        expect(exits).toHaveLength(3);
+      });
+
+      it('saves a partial close with its exits and no Final Net P&L', async () => {
+        const { fw } = await freshFixture();
+        const result = await createCompletedTradeAction(
+          drafted(fw, (draft) =>
+            inParts(draft, [
+              { scope: 'part', closedPercent: '30', pnl: '20' },
+              { scope: 'part', closedPercent: '30', pnl: '15' },
+            ]),
+          ),
+        );
+        if (!result.ok) throw new Error(`save failed: ${result.error.code}`);
+        const { row, exits } = await saved(result.data.tradeId);
+        expect(row).toMatchObject({
+          netPnlMinor: null,
+          finalPnlSource: null,
+          exitHistoryCompleteness: null,
+          actualR: null,
+        });
+        expect(exits).toHaveLength(2);
+      });
+    });
+
     it('refuses a retired Actual Risk on Record Open and Record Closed, and saves without it', async () => {
       const { fw } = await freshFixture();
       const openPayload = (overrides: Record<string, unknown> = {}) => ({

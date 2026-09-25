@@ -426,7 +426,6 @@ export function FinalPnlField({
   adoptable,
   subtotal,
   subtotalBlocked,
-  quiet = false,
   onChange,
   onAdopt,
 }: {
@@ -442,12 +441,6 @@ export function FinalPnlField({
   subtotal: string | null;
   /** Why the subtotal cannot be offered yet, when that is worth saying. */
   subtotalBlocked: string | null;
-  /**
-   * The step's lead answer, said once: no Optional tag, the short hint, and a
-   * source line only when the figure was adopted — a typed figure is plainly
-   * the trader's own. Close Trade keeps the full wording.
-   */
-  quiet?: boolean;
   onChange: (value: string) => void;
   onAdopt: () => void;
 }) {
@@ -463,11 +456,11 @@ export function FinalPnlField({
         inputMode="decimal"
         size="lead"
         figure
-        hint={quiet ? s('hintShort') : s('hint', { currency })}
+        hint={s('hint', { currency })}
         error={error}
-        labelAside={quiet ? undefined : <OptionalTag />}
+        labelAside={<OptionalTag />}
       />
-      {source === null || (quiet && source === 'typed') ? null : (
+      {source === null ? null : (
         <p data-final-pnl-source-line="" className="text-muted-foreground text-xs">
           {s(source === 'adopted' ? 'sourceAdopted' : 'sourceTyped')}
         </p>

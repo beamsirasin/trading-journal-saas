@@ -510,7 +510,11 @@ describe('Recording Draft — saving one mode never silently drops the other', (
   function afterTradeWorkThenAtEntry() {
     const after = mount('after_trade');
     fillIdentity('xauusd');
-    fireEvent.change(document.getElementById('after-finalPnl')!, { target: { value: '250' } });
+    // Step 5: closed all at once, with the P&L for the close (decision 57).
+    fireEvent.click(document.getElementById('after-close-mode-all_at_once')!);
+    fireEvent.change(document.getElementById('after-exit-full-close-pnl')!, {
+      target: { value: '250' },
+    });
     after.unmount();
     mount('at_entry');
     typeRisk('100');
@@ -524,7 +528,7 @@ describe('Recording Draft — saving one mode never silently drops the other', (
     fireEvent.click(screen.getByRole('button', { name: copy.inactive.keep }));
     await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(createTradeMock).not.toHaveBeenCalled();
-    expect(stored()?.afterTrade?.finalPnl).toBe('250');
+    expect(stored()?.afterTrade?.fullClose.pnl).toBe('250');
   });
 
   it('saves only after confirmation, and clears the draft only after the server confirms', async () => {
@@ -534,7 +538,7 @@ describe('Recording Draft — saving one mode never silently drops the other', (
     fireEvent.click(await screen.findByRole('button', { name: copy.inactive.confirm }));
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     // A failed Save keeps both modes' work.
-    expect(stored()?.afterTrade?.finalPnl).toBe('250');
+    expect(stored()?.afterTrade?.fullClose.pnl).toBe('250');
 
     saveAtEntry();
     fireEvent.click(await screen.findByRole('button', { name: copy.inactive.confirm }));

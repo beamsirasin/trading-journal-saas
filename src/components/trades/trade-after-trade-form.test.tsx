@@ -242,12 +242,6 @@ function statusText(): string {
   return document.querySelector('[data-save-status]')?.textContent ?? '';
 }
 
-function pnlSource(): string | null {
-  return (
-    document.querySelector('[data-final-pnl-source]')?.getAttribute('data-final-pnl-source') ?? null
-  );
-}
-
 function stepSection(step: keyof typeof STEP_LABEL): HTMLElement {
   return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
 }
@@ -463,9 +457,17 @@ function payload() {
   return createCompletedTradeActionMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
 }
 
+/** Step 5: "Closed in parts", ready for exit legs. */
 function openExitHistory() {
   goTo('result');
-  fireEvent.click(screen.getByRole('button', { name: /^Exit history/ }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
+}
+
+/** Step 5: "Closed all at once", with this P&L for the close — the Trade's result. */
+function closeAllAtOnce(pnl: string) {
+  const once = screen.getByRole('radio', { name: 'Closed all at once' });
+  if (!(once as HTMLInputElement).checked) fireEvent.click(once);
+  type('P&L for the close', pnl);
 }
 
 function recordExit(fields: { pnl?: string; percent?: string; reason?: string } = {}) {
@@ -567,7 +569,7 @@ describe('After Trade — the moment and its steps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next: Risk & target' }));
     typeInPlan('risk', 'Risk at entry', '60');
     goTo('result');
-    type('Final net P&L', '120');
+    closeAllAtOnce('120');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(currentStep()).toBe('context');
@@ -585,7 +587,7 @@ describe('After Trade — the moment and its steps', () => {
     expect(conceptRow('direction')).toHaveTextContent('Long');
     expect(conceptValue('direction')).toBe('long');
     goTo('result');
-    expect(screen.getByLabelText('Final net P&L')).toHaveValue('120');
+    expect(screen.getByLabelText('P&L for the close')).toHaveValue('120');
     expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
     // What the trader did is Trader R; System R belongs to After Trade.
@@ -897,7 +899,7 @@ describe('Step 1 — read first, edit on demand', () => {
     renderForm();
     fillIdentity();
     goTo('result');
-    type('Final net P&L', '400');
+    closeAllAtOnce('400');
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '100');
     // Open and close a Step 1 editor from Step 1 — nothing else moves.
@@ -908,7 +910,7 @@ describe('Step 1 — read first, edit on demand', () => {
     );
     cancelConcept();
     goTo('result');
-    expect(screen.getByLabelText('Final net P&L')).toHaveValue('400');
+    expect(screen.getByLabelText('P&L for the close')).toHaveValue('400');
     expect(screen.getByText('+4.00R')).toBeInTheDocument();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -1969,7 +1971,7 @@ describe('Quick Save — the short way out once identity is answered', () => {
     renderForm();
     fillIdentity();
     goTo('result');
-    type('Final net P&L', '400');
+    closeAllAtOnce('400');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '100');
@@ -2092,7 +2094,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     renderForm();
     fillIdentity();
     goTo('result');
-    type('Final net P&L', '-25');
+    closeAllAtOnce('-25');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
     expect(
       screen.getByText(/You chose Win, but your final net P&L is negative/),
@@ -2106,7 +2108,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     renderForm();
     fillIdentity();
     goTo('result');
-    type('Final net P&L', '120');
+    closeAllAtOnce('120');
     expect(screen.getByRole('radio', { name: 'Win' })).not.toBeChecked();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -2116,7 +2118,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
   it('carries no sign notice for BE beside a profit', () => {
     renderForm();
     goTo('result');
-    type('Final net P&L', '10');
+    closeAllAtOnce('10');
     fireEvent.click(screen.getByRole('radio', { name: 'BE' }));
     expect(screen.queryByText(/does not block saving/)).not.toBeInTheDocument();
   });
@@ -2127,7 +2129,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     expect(
       screen.getByText('Trader R needs your final net P&L and risk at entry.'),
     ).toBeInTheDocument();
-    type('Final net P&L', '100');
+    closeAllAtOnce('100');
     expect(screen.getByText('Trader R needs your risk at entry.')).toBeInTheDocument();
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
     typeInPlan('risk', 'Risk at entry', '50');
@@ -2442,274 +2444,158 @@ describe('psychology', () => {
 });
 
 /*
-  STEP 5 SAYS WHAT THE TRADER ACTUALLY DID. The outcome leads as the trader's
-  own Win / BE / Loss, which the P&L never fills in. Then one close card: the
-  authoritative Final Net P&L, Trader R as a smaller Calculated readout, the
-  final exit time and the exit history, whose status reads while collapsed.
+  STEP 5 RECORDS HOW THE TRADE ACTUALLY CLOSED (decision 57). The outcome leads
+  as the trader's own Win / BE / Loss. Then one Trade result card asks how the
+  trade closed — all at once, or in parts — and the Final Net P&L is what that
+  close adds up to: read-only, never typed beside it, and never claimed before
+  the exits prove the whole position closed. Final exit time stays apart.
 */
-describe('Step 5 — Trader result', () => {
+describe('Step 5 — the close is the result', () => {
   function result() {
     const step = stepSection('result');
     return {
       step,
       outcome: step.querySelector<HTMLElement>('[data-result-outcome]')!,
       panel: step.querySelector<HTMLElement>('[data-result-panel]')!,
-      status: () => step.querySelector<HTMLElement>('[data-exit-history-status]')!,
+      exitTime: step.querySelector<HTMLElement>('[data-result-exit-time]')!,
+      status: () => step.querySelector<HTMLElement>('[data-closing-status]'),
+      final: () => step.querySelector<HTMLElement>('[data-final-result]')!,
+      r: () => step.querySelector<HTMLElement>('[data-actual-r]')!,
     };
   }
 
-  it('leads with the outcome; one Trade result card holds P&L, Trader R and exit history; exit time stays apart', () => {
-    renderForm();
+  function withRisk50() {
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
-    const { step, outcome, panel } = result();
-    const exitTime = step.querySelector<HTMLElement>('[data-result-exit-time]')!;
+  }
 
-    // 1. The outcome is first in the step.
-    expect(
-      step.querySelector('[data-result-outcome], [data-result-panel], [data-result-exit-time]'),
-    ).toBe(outcome);
-    // 2. One card, titled, holding P&L → Trader R → exit history, in that order.
+  function leg(exit: HTMLElement, scope: 'Part' | 'All remaining') {
+    fireEvent.click(within(exit).getByRole('radio', { name: scope }));
+  }
+
+  it('leads with the outcome, asks how the trade closed, and has no Final Net P&L to type', () => {
+    renderForm();
+    goTo('result');
+    const { step, outcome, panel, exitTime } = result();
+    expect(step.querySelector('[data-result-outcome], [data-result-panel]')).toBe(outcome);
+    expect(panel.compareDocumentPosition(exitTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(panel).getByRole('heading', { name: 'Trade result' })).toBeInTheDocument();
-    const pnl = within(panel).getByLabelText('Final net P&L');
-    const r = panel.querySelector<HTMLElement>('[data-actual-r]')!;
-    const history = panel.querySelector<HTMLElement>('[data-exit-history]')!;
-    expect(history).not.toBeNull();
-    for (const [a, b] of [
-      [outcome, panel],
-      [pnl, r],
-      [r, history],
-      [panel, exitTime],
-    ] as const) {
-      expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
-    // 3. The final exit time is its own launcher, outside the card.
+    expect(
+      within(panel).getByRole('group', { name: 'How did you close this trade?' }),
+    ).toBeInTheDocument();
+    // One result source: no Final Net P&L field, no adoption, no mismatch.
+    expect(within(step).queryByRole('textbox', { name: /Final net P&L/ })).toBeNull();
+    expect(within(step).queryByRole('button', { name: 'Use recorded exits' })).toBeNull();
+    expect(step).not.toHaveTextContent(/Recorded exits total/);
+    // The final exit time is its own launcher, outside the card.
     expect(panel.querySelector('[data-exit-time]')).toBeNull();
     expect(exitTime.querySelector('[data-exit-time]')).not.toBeNull();
-    expect(within(exitTime).getByRole('button', { name: /Use now/ })).toBeInTheDocument();
+    // Nothing recorded yet: no result, and never a 0.
+    expect(result().final()).toHaveAttribute('data-final-result', 'waiting');
+    expect(result().r()).toHaveAttribute('data-actual-r', 'unavailable');
+    expect(result().r()).not.toHaveTextContent('0R');
+  });
 
-    type('Final net P&L', '80', panel);
-    expect(r).toHaveAttribute('data-actual-r-variant', 'derived');
-    expect(r).toHaveTextContent('Calculated');
-    expect(r).toHaveTextContent('+1.60R');
-    // Trader R is a readout, never a field.
-    expect(within(r).queryByRole('textbox')).toBeNull();
+  it('closed all at once: +80 is the Final Net P&L, +1.60R against a 50 risk, and saves as one', async () => {
+    renderForm();
+    fillIdentity();
+    withRisk50();
+    closeAllAtOnce('80');
+    const { outcome, final, r } = result();
+    expect(final()).toHaveAttribute('data-final-result', 'final');
+    expect(within(final()).getByText('+80.00 USD')).toBeInTheDocument();
+    expect(r()).toHaveTextContent('+1.60R');
     // The outcome is never set from the P&L.
     expect(outcome.querySelector('[data-trader-outcome]')).toHaveAttribute(
       'data-trader-outcome',
       'unanswered',
     );
-    expect(within(step).queryByText('Optional')).toBeNull();
-  });
-
-  it('shows Trader R as unavailable, never 0R, while the P&L or Risk is missing', () => {
-    renderForm();
-    goTo('result');
-    const r = result().panel.querySelector<HTMLElement>('[data-actual-r]')!;
-    expect(r).toHaveAttribute('data-actual-r', 'unavailable');
-    expect(r).not.toHaveTextContent('0R');
-    type('Final net P&L', '80', result().panel);
-    expect(r).toHaveAttribute('data-actual-r', 'unavailable');
-    expect(r).toHaveTextContent('Trader R needs your risk at entry.');
-  });
-
-  /*
-    THE SUBTOTAL IS READ-ONLY. Once every recorded exit states its P&L, a quiet
-    line totals them against the Final Net P&L — a total, a match, or a
-    mismatch stated as facts. None of them writes the Final Net P&L; only the
-    existing explicit "Use recorded exits" does, when pressed.
-  */
-  describe('the exit subtotal', () => {
-    function subtotal() {
-      return document.querySelector<HTMLElement>('[data-exit-subtotal]');
-    }
-
-    it('is a read-only total while the Final Net P&L is blank', () => {
-      renderForm();
-      goTo('result');
-      openExitHistory();
-      recordExit({ pnl: '50' });
-      recordExit({ pnl: '30' });
-      expect(subtotal()).toHaveAttribute('data-exit-subtotal', 'total');
-      expect(subtotal()).toHaveTextContent('Recorded exits total 80.00 USD.');
-      expect(within(subtotal()!).queryByRole('textbox')).toBeNull();
-      expect(screen.getByLabelText('Final net P&L')).toHaveValue('');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      finalPnlMinor: '8000',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
+      exits: [{ exitScope: 'all_remaining', realizedPnlMinor: '8000' }],
     });
-
-    it('confirms quietly when it matches the Final Net P&L', () => {
-      renderForm();
-      goTo('result');
-      type('Final net P&L', '80');
-      openExitHistory();
-      recordExit({ pnl: '50' });
-      recordExit({ pnl: '30' });
-      expect(subtotal()).toHaveAttribute('data-exit-subtotal', 'match');
-      expect(subtotal()).toHaveTextContent(
-        'Recorded exits total 80.00 USD, matching your final net P&L.',
-      );
-      expect(screen.queryByRole('button', { name: 'Use recorded exits' })).toBeNull();
-    });
-
-    it('states a mismatch without overwriting the Final Net P&L', () => {
-      renderForm();
-      goTo('result');
-      type('Final net P&L', '80');
-      openExitHistory();
-      recordExit({ pnl: '50' });
-      recordExit({ pnl: '15' });
-      fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
-      expect(subtotal()).toHaveAttribute('data-exit-subtotal', 'mismatch');
-      expect(subtotal()).toHaveTextContent(
-        'Recorded exits total 65.00 USD; Final net P&L is 80.00 USD.',
-      );
-      // The Final Net P&L stays as typed, and its source stays the trader's.
-      expect(screen.getByLabelText('Final net P&L')).toHaveValue('80');
-      expect(pnlSource()).toBe('typed');
-      // Adopting stays an explicit action, offered here and nowhere else.
-      expect(screen.getAllByRole('button', { name: 'Use recorded exits' })).toHaveLength(1);
-    });
+    expect(payload()).not.toHaveProperty('traderOutcome');
   });
 
-  it('offers Win / BE / Loss as direct text answers, each chosen in its own tone', () => {
+  it('closed in parts: 30% + 30% is 60% accounted for, 40% remaining, and no final result yet', () => {
     renderForm();
-    goTo('result');
-    const { outcome } = result();
-    const group = within(outcome).getByRole('group', { name: 'Your outcome' });
-    // No radio-circle markers: the label is the answer.
-    for (const label of group.querySelectorAll('label')) {
-      expect(label.querySelector('.rounded-full')).toBeNull();
-    }
-    for (const [name, tone] of [
-      ['Win', 'positive'],
-      ['BE', 'break-even'],
-      ['Loss', 'negative'],
-    ] as const) {
-      fireEvent.click(within(group).getByRole('radio', { name }));
-      const chosen = group.querySelector<HTMLElement>(
-        `label[for="${within(group).getByRole('radio', { name }).id}"]`,
-      )!;
-      // Shape and a check, not colour alone.
-      expect(chosen.className).toContain(`border-${tone}`);
-      expect(chosen.className).toContain('ring-1');
-      expect(chosen.querySelector('svg')).not.toBeNull();
-      // The others stay neutral.
-      for (const other of group.querySelectorAll('label')) {
-        if (other !== chosen) expect(other.className).toContain('border-control-border');
-      }
-    }
-  });
-
-  it('reads the exit history status while collapsed, never implying the Trade is open', () => {
-    renderForm();
-    goTo('result');
-    const { status } = result();
-    expect(status()).toHaveAttribute('data-exit-history-status', 'none');
-    expect(status()).toHaveTextContent('No exits recorded');
-
-    // A full close in one exit.
+    withRisk50();
     openExitHistory();
-    const only = recordExit({ pnl: '80' });
-    fireEvent.click(within(only).getByRole('radio', { name: 'All remaining' }));
-    expect(status()).toHaveAttribute('data-exit-history-status', 'single_full');
-    expect(status()).toHaveTextContent('Closed in one exit · 100% accounted for');
-
-    // Partial exits: the share accounted for, and what is left to account for.
-    fireEvent.click(within(only).getByRole('radio', { name: 'Part' }));
-    type(/% of original position/, '40', only);
-    recordExit({ pnl: '30', percent: '20' });
-    expect(status()).toHaveTextContent('2 exits recorded · 60% allocation accounted for');
-    expect(status()).toHaveTextContent('40% allocation is not specified');
-    fireEvent.click(screen.getByRole('radio', { name: 'Some exits are missing' }));
-    expect(status()).toHaveTextContent('Some exits are missing · 60% allocation accounted for');
-
-    // An unstated share is unknown, never estimated.
-    recordExit({ pnl: '10' });
-    expect(status()).toHaveAttribute('data-accounted-bps', 'unknown');
-    expect(status()).toHaveTextContent('Some exits are missing · allocation unknown');
-    expect(status()).not.toHaveTextContent('not specified');
-
-    // Complete: every exit recorded and the whole position accounted for.
-    type(
-      /% of original position/,
-      '40',
-      document.querySelectorAll<HTMLElement>('[data-after-exit]')[2]!,
-    );
-    fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
-    expect(status()).toHaveTextContent('All exits recorded · 100% accounted for');
-    expect(status()).not.toHaveTextContent(/still open|remaining to close/i);
+    leg(recordExit({ pnl: '20', percent: '30' }), 'Part');
+    leg(recordExit({ pnl: '15', percent: '30' }), 'Part');
+    const { status, final, r } = result();
+    expect(status()).toHaveAttribute('data-closing-status', 'partial');
+    expect(status()).toHaveTextContent('Partial close · 60% accounted for');
+    expect(status()).toHaveTextContent('2 exits · 40% remaining');
+    // Not a final result: a running figure, named as such.
+    expect(final()).toHaveAttribute('data-final-result', 'waiting');
+    expect(final().querySelector('[data-final-pnl]')).toBeNull();
+    expect(final()).toHaveTextContent('Recorded so far: +35.00 USD');
+    expect(final()).toHaveTextContent('Waiting for the remaining exit.');
+    expect(r()).toHaveAttribute('data-actual-r', 'unavailable');
   });
 
-  /*
-    EVENT COMPLETENESS IS NOT ALLOCATION. "These are all the exits" says the
-    list of exit events is complete; only the exits' own percentages, or an
-    All remaining exit closing what was left, prove 100% of the position.
-  */
-  describe('exit-list completeness and allocation coverage stay separate', () => {
-    function exits(
-      rows: readonly { percent?: string; scope?: 'Part' | 'All remaining' }[],
-      answer: 'These are all the exits' | 'Some exits are missing' | 'Not sure',
-    ) {
-      renderForm();
-      goTo('result');
-      openExitHistory();
-      for (const row of rows) {
-        const exit = recordExit({
-          pnl: '10',
-          ...(row.percent === undefined ? {} : { percent: row.percent }),
-        });
-        if (row.scope !== undefined) {
-          fireEvent.click(within(exit).getByRole('radio', { name: row.scope }));
-        }
-      }
-      fireEvent.click(screen.getByRole('radio', { name: answer }));
-      return result().status();
-    }
-
-    it('two 30% exits, all recorded: 60% allocation, 40% not specified', () => {
-      const status = exits([{ percent: '30' }, { percent: '30' }], 'These are all the exits');
-      expect(status).toHaveAttribute('data-exit-completeness', 'complete');
-      expect(status).toHaveAttribute('data-accounted-bps', '6000');
-      expect(status).toHaveTextContent('All exits recorded · 60% allocation accounted for');
-      expect(status).toHaveTextContent('40% allocation is not specified');
-      expect(status).not.toHaveTextContent('100%');
+  it('an All remaining exit completes the sequence, and the exit P&Ls sum into the result', async () => {
+    renderForm();
+    fillIdentity();
+    withRisk50();
+    openExitHistory();
+    leg(recordExit({ pnl: '20', percent: '30' }), 'Part');
+    leg(recordExit({ pnl: '15', percent: '30' }), 'Part');
+    leg(recordExit({ pnl: '45' }), 'All remaining');
+    const { status, final, r } = result();
+    expect(status()).toHaveAttribute('data-closing-status', 'closed');
+    expect(status()).toHaveTextContent('Fully closed · 100% accounted for');
+    expect(status()).toHaveTextContent('3 exits');
+    expect(final()).toHaveAttribute('data-final-result', 'final');
+    expect(within(final()).getByText('+80.00 USD')).toBeInTheDocument();
+    expect(r()).toHaveTextContent('+1.60R');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      finalPnlMinor: '8000',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
     });
+    expect(payload().exits).toHaveLength(3);
+  });
 
-    it('an All remaining final exit, all recorded: 100% accounted for', () => {
-      const status = exits(
-        [{ percent: '30', scope: 'Part' }, { scope: 'All remaining' }],
-        'These are all the exits',
-      );
-      expect(status).toHaveAttribute('data-accounted-bps', '10000');
-      expect(status).toHaveTextContent('All exits recorded · 100% accounted for');
-      expect(status).not.toHaveTextContent('not specified');
-    });
+  it('never fabricates coverage: an exit with no % leaves the allocation unknown', () => {
+    renderForm();
+    openExitHistory();
+    recordExit({ pnl: '20', percent: '30' });
+    recordExit({ pnl: '15' });
+    const { status, final } = result();
+    expect(status()).toHaveAttribute('data-closing-status', 'unknown');
+    expect(status()).toHaveAttribute('data-accounted-bps', 'unknown');
+    expect(status()).toHaveTextContent('Partial close · allocation unknown');
+    expect(status()).not.toHaveTextContent(/[0-9]+% remaining|100%/);
+    expect(final()).toHaveTextContent('Waiting until the exits account for the whole position.');
+  });
 
-    it('percentages totalling 100%, all recorded: 100% accounted for', () => {
-      const status = exits([{ percent: '60' }, { percent: '40' }], 'These are all the exits');
-      expect(status).toHaveTextContent('All exits recorded · 100% accounted for');
-    });
+  it('shows Trader R as unavailable, never 0R, while the Risk is missing', () => {
+    renderForm();
+    goTo('result');
+    closeAllAtOnce('80');
+    expect(result().r()).toHaveAttribute('data-actual-r', 'unavailable');
+    expect(result().r()).toHaveTextContent('Trader R needs your risk at entry.');
+  });
 
-    it('an unknown percentage keeps the completeness answer and says allocation is unknown', () => {
-      const status = exits([{ percent: '30' }, {}], 'These are all the exits');
-      expect(status).toHaveAttribute('data-exit-completeness', 'complete');
-      expect(status).toHaveAttribute('data-accounted-bps', 'unknown');
-      expect(status).toHaveTextContent('All exits recorded · allocation unknown');
-      expect(status).toHaveTextContent('so the allocation is incomplete');
-      expect(status).not.toHaveTextContent(/accounted for/);
-    });
-
-    it('100% proven by percentages stands even when some exits are missing', () => {
-      expect(exits([{ percent: '100' }], 'Some exits are missing')).toHaveTextContent(
-        'Some exits are missing · 100% accounted for',
-      );
-    });
-
-    it('100% proven by All remaining stands even when not sure', () => {
-      expect(exits([{ scope: 'All remaining' }], 'Not sure')).toHaveTextContent(
-        'Not sure all exits are recorded · 100% accounted for',
-      );
-    });
+  it('keeps each way of closing when switching, and shows only the chosen one', () => {
+    renderForm();
+    openExitHistory();
+    recordExit({ pnl: '20', percent: '30' });
+    closeAllAtOnce('80');
+    expect(document.querySelector('[data-after-exit]')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
+    expect(document.querySelectorAll('[data-after-exit]')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('radio', { name: 'Closed all at once' }));
+    expect(screen.getByLabelText('P&L for the close')).toHaveValue('80');
   });
 });
 
@@ -2741,70 +2627,6 @@ describe('exit history', () => {
       },
     ]);
     expect(payload()).not.toHaveProperty('exitHistoryCompleteness');
-  });
-
-  it('asks completeness only once an exit exists, with no answer preselected', () => {
-    renderForm();
-    openExitHistory();
-    expect(screen.queryByRole('group', { name: 'Is this every exit?' })).not.toBeInTheDocument();
-    recordExit({ pnl: '10' });
-    const group = screen.getByRole('group', { name: 'Is this every exit?' });
-    for (const radio of within(group).getAllByRole('radio')) expect(radio).not.toBeChecked();
-  });
-
-  it('states a subtotal that differs from Final Net P&L quietly, whatever the completeness, and never blocks', async () => {
-    renderForm();
-    fillIdentity();
-    goTo('result');
-    type('Final net P&L', '90');
-    openExitHistory();
-    recordExit({ pnl: '60' });
-    // Not every exit states P&L yet: no subtotal at all.
-    const second = recordExit({ percent: '40' });
-    expect(document.querySelector('[data-exit-subtotal]')).toBeNull();
-    type('P&L for this exit', '40', second);
-    const line = () => document.querySelector<HTMLElement>('[data-exit-subtotal]')!;
-    expect(line()).toHaveAttribute('data-exit-subtotal', 'mismatch');
-    expect(line()).toHaveTextContent(
-      'Recorded exits total 100.00 USD; Final net P&L is 90.00 USD.',
-    );
-    fireEvent.click(screen.getByRole('radio', { name: 'Some exits are missing' }));
-    expect(line()).toHaveAttribute('data-exit-subtotal', 'mismatch');
-    fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
-    expect(line()).toHaveAttribute('data-exit-subtotal', 'mismatch');
-    save();
-    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
-    expect(payload()).toMatchObject({
-      finalPnlMinor: '9000',
-      exitHistoryCompleteness: 'complete',
-    });
-  });
-
-  it('adopts the recorded exits as Final Net P&L only when asked', () => {
-    renderForm();
-    goTo('result');
-    type('Final net P&L', '90');
-    openExitHistory();
-    recordExit({ pnl: '60' });
-    recordExit({ pnl: '40' });
-    expect(screen.queryByRole('button', { name: 'Use recorded exits' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
-    expect(screen.getByLabelText('Final net P&L')).toHaveValue('90');
-    // A typed figure is plainly the trader's own; only an adopted one says so.
-    expect(pnlSource()).toBe('typed');
-    expect(screen.queryByText('Entered by you.')).toBeNull();
-    // Offered beside the Final Net P&L it would replace, and only on request.
-    fireEvent.click(screen.getByRole('button', { name: 'Use recorded exits' }));
-    expect(screen.getByLabelText('Final net P&L')).toHaveValue('100.00');
-    // The source says where the figure now comes from.
-    expect(
-      screen.getByText('From your recorded exits. Type a figure to replace it.'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/but your final net P&L is/)).not.toBeInTheDocument();
-    // Typing makes it the trader's own figure again.
-    type('Final net P&L', '95');
-    expect(pnlSource()).toBe('typed');
-    expect(screen.queryByText(/From your recorded exits/)).toBeNull();
   });
 
   it('never re-weights exit P&L by percentage, and blocks exits that close more than 100%', async () => {
@@ -2989,7 +2811,7 @@ describe('Record Closed — Trader R follows the risk decision', () => {
     renderForm();
     fillIdentity();
     goTo('result');
-    type('Final net P&L', '120');
+    closeAllAtOnce('120');
     const editor = openPlanRow('risk');
     chooseRisk(editor, 'No defined risk');
     closeEditor();
@@ -3014,7 +2836,7 @@ describe('Record Closed — Trader R follows the risk decision', () => {
     renderForm();
     fillIdentity();
     goTo('result');
-    type('Final net P&L', '100');
+    closeAllAtOnce('100');
     // Before the plan is answered, R says what it still needs.
     expect(document.querySelector('[data-actual-r]')).toHaveAttribute(
       'data-actual-r',

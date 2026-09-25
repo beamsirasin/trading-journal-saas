@@ -132,7 +132,10 @@ The non-negotiables. Each points to the full rule; the full rule governs.
    Impact. Risk Deviation (Risk at Entry vs Actual Risk) is secondary. Other internal R figures MUST
    NOT compete for attention _(contract §17)_.
 6. **Final Net P&L is the primary money figure of a closed Trade.** The recorded exit subtotal is
-   supporting history and is presented as subordinate to it _(contract §11)_.
+   supporting history and is presented as subordinate to it _(contract §11)_. In Record Closed the
+   close is the result source _(contract decision 57)_: Step 5 asks how the Trade closed (all at
+   once / in parts), shows the Final Net P&L read-only once the exits prove the close, and shows a
+   partial close's running figure only as "recorded so far".
 7. **Three independent status axes stay visually and verbally independent:**
    - Trade lifecycle — Open / Partially Closed / Closed / Canceled.
    - Review lifecycle — Not Reviewed / Reviewed, for Closed Trades only.
@@ -648,7 +651,8 @@ a state showing that it is still only a default until the trader confirms or cha
      reduce coverage and are never manufactured.
    - Incomplete exit history never blocks closing.
 7. **"Use recorded exits as final result"** is offered only when exit history is explicitly Complete
-   and every relevant exit has P&L. It applies only when pressed _(contract §11)_.
+   and every relevant exit has P&L. It applies only when pressed _(contract §11)_. Not offered in
+   Record Closed, which has no separate Final Net P&L to adopt into _(contract decision 57)_.
 8. **Discrepancy language** is used only when history is explicitly Complete, every relevant exit
    has P&L, and the subtotal differs from Final Net P&L.
    - Both values are shown, and Final Net P&L is authoritative. It never blocks.
