@@ -60,20 +60,27 @@ export function TradeEntryDetails({ trade }: { trade: TradeDetail }) {
         label: e('riskAtEntry'),
         value: money(trade.plannedRiskMinor) ?? notAnswered,
       },
-      {
-        key: 'actualRisk',
-        label: e('actualRisk'),
-        value:
-          trade.actualRiskAnswer === null
-            ? notAnswered
-            : trade.actualRiskAnswer === 'matched'
-              ? a('actualRisk.matched')
-              : trade.actualRiskAnswer === 'unknown'
-                ? a('actualRisk.unknown')
-                : [a('actualRisk.different'), money(trade.actualInitialRiskMinor)]
-                    .filter((part): part is string => part !== null)
-                    .join(' · '),
-      },
+      /*
+        ACTUAL RISK IS HISTORY ONLY (contract decision 56). It is no longer
+        asked, so a Trade without an answer shows no line for it at all; one
+        recorded before the retirement still reads back what was said.
+      */
+      ...(trade.actualRiskAnswer === null
+        ? []
+        : [
+            {
+              key: 'actualRisk',
+              label: e('actualRisk'),
+              value:
+                trade.actualRiskAnswer === 'matched'
+                  ? a('actualRisk.matched')
+                  : trade.actualRiskAnswer === 'unknown'
+                    ? a('actualRisk.unknown')
+                    : [a('actualRisk.different'), money(trade.actualInitialRiskMinor)]
+                        .filter((part): part is string => part !== null)
+                        .join(' · '),
+            },
+          ]),
       {
         key: 'target',
         label: e('target'),

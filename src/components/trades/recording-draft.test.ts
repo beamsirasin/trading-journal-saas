@@ -5,12 +5,12 @@ import {
   createAfterTradeDraft,
   selectSetup as selectAfterTradeSetup,
   selectStrategy as selectAfterTradeStrategy,
-  setActualRiskAnswer,
   type AfterTradeDraft,
 } from './after-trade-draft';
 import {
   answerCondition,
   answerNoStrategy,
+  buildAtEntryPayload,
   chooseNoExitRule,
   chooseSavedExitPlan,
   confirmEntryTime,
@@ -19,8 +19,6 @@ import {
   followClock,
   selectSetup,
   selectStrategy,
-  setActualRiskAmount,
-  setActualRiskMode,
   setConfidence,
   setRiskState,
   setStopMethod,
@@ -139,24 +137,11 @@ describe('At Entry → After Trade', () => {
     ).toBe('2026-09-17T09:30');
   });
 
-  it('does not carry the Matched Actual Risk assumption: After Trade starts Unanswered', () => {
+  it('carries no Actual Risk either way: neither section holds one (decision 56)', () => {
     const switched = switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
-    expect(switched.afterTrade?.actualRisk).toEqual({ answer: 'unanswered', amount: '' });
-  });
-
-  it('carries an explicit Actual Risk "Different", with or without its amount', () => {
-    const withAmount = switchRecordingMode(
-      envelopeWith(setActualRiskAmount(workedAtEntry(), '150')),
-      'after_trade',
-      CONTEXT,
-    );
-    expect(withAmount.afterTrade?.actualRisk).toEqual({ answer: 'different', amount: '150' });
-    const unknownAmount = switchRecordingMode(
-      envelopeWith(setActualRiskMode(workedAtEntry(), 'different_unknown')),
-      'after_trade',
-      CONTEXT,
-    );
-    expect(unknownAmount.afterTrade?.actualRisk).toEqual({ answer: 'different', amount: '' });
+    expect(switched.afterTrade).not.toHaveProperty('actualRisk');
+    expect(switched.atEntry).not.toHaveProperty('actualRisk');
+    expect(switched.lastCarried).not.toHaveProperty('actualRiskDifferent');
   });
 
   it('does not carry an automatically inherited Strategy Exit Plan', () => {
@@ -177,7 +162,7 @@ describe('At Entry → After Trade', () => {
   });
 
   it('keeps every At Entry answer in its own section', () => {
-    const atEntry = setActualRiskAmount(workedAtEntry(), '150');
+    const atEntry = workedAtEntry();
     const switched = switchRecordingMode(envelopeWith(atEntry), 'after_trade', CONTEXT);
     expect(switched.atEntry).toEqual(atEntry);
   });
@@ -185,7 +170,7 @@ describe('At Entry → After Trade', () => {
 
 describe('round trips', () => {
   it('At Entry → After Trade → At Entry restores every At Entry answer', () => {
-    const original = setActualRiskAmount(workedAtEntry(), '150');
+    const original = workedAtEntry();
     const there = switchRecordingMode(envelopeWith(original), 'after_trade', CONTEXT);
     const back = switchRecordingMode(there, 'at_entry', CONTEXT);
     expect(back.atEntry).toEqual(original);
@@ -213,7 +198,7 @@ describe('round trips', () => {
 
   it('After Trade → At Entry → After Trade restores After Trade work and never invents At Entry assertions', () => {
     const afterTrade: AfterTradeDraft = {
-      ...setActualRiskAnswer(createAfterTradeDraft(ACCOUNT), 'unknown'),
+      ...createAfterTradeDraft(ACCOUNT),
       symbol: 'NAS100',
       direction: 'short',
       finalPnl: '-40',
@@ -238,9 +223,6 @@ describe('round trips', () => {
     // Shared identity arrives; no historical answer becomes an At Entry assertion.
     expect(atEntry.atEntry).toMatchObject({ symbol: 'NAS100', direction: 'short' });
     expect(atEntry.atEntry?.entryTime.source).toBe('default_now');
-    // Not even a match: an answer about a historical Trade says nothing about
-    // the risk carried on this one (contract §2, §8).
-    expect(atEntry.atEntry?.actualRisk.mode).toBe('unanswered');
     expect(atEntry.atEntry?.target.state).toBe('unanswered');
     const back = switchRecordingMode(atEntry, 'after_trade', CONTEXT);
     expect(back.afterTrade).toEqual(start.afterTrade);
@@ -283,20 +265,6 @@ describe('round trips', () => {
       answer: 'selected',
       setupId: RETEST,
     });
-  });
-
-  it('withdrawing "Different" in After Trade returns At Entry to Unanswered, never to Matched', () => {
-    const there = switchRecordingMode(
-      envelopeWith(setActualRiskAmount(workedAtEntry(), '150')),
-      'after_trade',
-      CONTEXT,
-    );
-    const withdrawn: RecordingDraftEnvelope = {
-      ...there,
-      afterTrade: there.afterTrade && setActualRiskAnswer(there.afterTrade, 'unknown'),
-    };
-    const back = switchRecordingMode(withdrawn, 'at_entry', CONTEXT);
-    expect(back.atEntry?.actualRisk.mode).toBe('unanswered');
   });
 
   it('does not overwrite an account the first time the arriving mode is fresh and the source has none', () => {
@@ -364,116 +332,93 @@ describe('persisted shape', () => {
   });
 
   /*
-    RELOAD KEEPS THE DISTINCTION. An answer the trader gave and an answer
-    nobody gave must still be different after a round trip through storage —
-    otherwise the Save that follows a reload would claim what the Save before
-    it did not.
+    ACTUAL RISK IS DISCARDED FROM EVERY OLDER DRAFT (decision 56). Whatever a
+    stored draft said about it — v2's ambiguous Matched, v3's stated Matched,
+    a Different with or without its amount, in either section or in the last
+    carry — it is dropped on read and nothing replaces it. Everything else the
+    draft held is kept, and a Save from it sends no Actual Risk.
   */
-  it('keeps a stated Matched, an Unanswered and a Different apart across a reload', () => {
-    for (const mode of ['unanswered', 'matched', 'different_unknown'] as const) {
-      const stored = envelopeWith({
-        ...workedAtEntry(),
-        actualRisk: { mode, amount: '' },
-      });
-      const parsed = parseRecordingDraft(serializeRecordingDraft(stored), NOW);
-      expect(parsed.status).toBe('recovered');
-      expect(parsed.status === 'recovered' ? parsed.envelope.atEntry?.actualRisk.mode : null).toBe(
-        mode,
-      );
+  it('drops a stored Actual Risk from any draft version, and keeps the rest', () => {
+    // A real draft that has been switched once: both sections and a last carry.
+    const current = JSON.parse(
+      serializeRecordingDraft(
+        switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT),
+      ),
+    );
+    for (const version of [2, 3, RECORDING_DRAFT_VERSION]) {
+      for (const [atEntryRisk, afterRisk] of [
+        [
+          { mode: 'matched', amount: '' },
+          { answer: 'matched', amount: '' },
+        ],
+        [
+          { mode: 'different', amount: '150' },
+          { answer: 'different', amount: '150' },
+        ],
+        [
+          { mode: 'different_unknown', amount: '' },
+          { answer: 'unknown', amount: '' },
+        ],
+      ]) {
+        const { riskState: _decision, ...olderAtEntry } = current.atEntry;
+        const stored = {
+          ...current,
+          version,
+          atEntry: { ...(version < 4 ? olderAtEntry : current.atEntry), actualRisk: atEntryRisk },
+          afterTrade: { ...current.afterTrade, actualRisk: afterRisk },
+          lastCarried: { ...current.lastCarried, actualRiskDifferent: { amount: '150' } },
+        };
+        const parsed = parseRecordingDraft(JSON.stringify(stored), NOW);
+        if (parsed.status !== 'recovered') throw new Error(`v${version} draft not recovered`);
+        expect(parsed.envelope.version).toBe(RECORDING_DRAFT_VERSION);
+        expect(parsed.envelope.atEntry).not.toHaveProperty('actualRisk');
+        expect(parsed.envelope.afterTrade).not.toHaveProperty('actualRisk');
+        expect(parsed.envelope.lastCarried ?? {}).not.toHaveProperty('actualRiskDifferent');
+        // Nothing else is lost with it.
+        expect(parsed.envelope.atEntry?.symbol).toBe('XAUUSD');
+        expect(parsed.envelope.atEntry?.risk).toBe('100');
+        expect(parsed.envelope.afterTrade?.symbol).toBe('XAUUSD');
+        // And a Save from it carries none.
+        // A real payload (library answers set aside — they are not what this is
+        // about, and a Strategy the test offers nothing for would stop the Save).
+        const fresh = createAtEntryDraft(ACCOUNT);
+        const payload = buildAtEntryPayload(
+          {
+            ...parsed.envelope.atEntry!,
+            riskState: 'defined',
+            classification: fresh.classification,
+            exitPlan: fresh.exitPlan,
+          },
+          {
+            currency: 'USD',
+            timezone: 'UTC',
+            mutationKey: KEY,
+            options: { strategies: [], exitPlans: [] },
+          },
+        );
+        expect(payload).not.toBeNull();
+        expect(payload).toMatchObject({ plannedRiskMinor: '10000' });
+        expect(payload).not.toHaveProperty('actualRiskAnswer');
+        expect(payload).not.toHaveProperty('actualInitialRiskMinor');
+      }
     }
-    const different = envelopeWith(setActualRiskAmount(workedAtEntry(), '150'));
-    const parsed = parseRecordingDraft(serializeRecordingDraft(different), NOW);
-    expect(parsed.status === 'recovered' ? parsed.envelope.atEntry?.actualRisk : null).toEqual({
-      mode: 'different',
-      amount: '150',
-    });
   });
 
   /*
-    A v2 DRAFT CANNOT TELL THE TWO APART, because v2 spelled the untouched
-    default `matched`. It is read as Unanswered: re-answering costs one tap,
-    while the other reading would manufacture a positive observation.
+    STOP METHOD SURVIVES A RELOAD with its explicitness: one the trader chose
+    must still differ from the state nobody answered (decision 53).
   */
-  it("reads a v2 draft's Matched as Unanswered, and leaves its Different alone", () => {
-    const current = JSON.parse(serializeRecordingDraft(envelopeWith(workedAtEntry())));
-    const v2Matched = {
-      ...current,
-      version: 2,
-      atEntry: { ...current.atEntry, actualRisk: { mode: 'matched', amount: '' } },
-    };
-    const matched = parseRecordingDraft(JSON.stringify(v2Matched), NOW);
-    expect(matched.status).toBe('recovered');
-    expect(matched.status === 'recovered' ? matched.envelope.atEntry?.actualRisk.mode : null).toBe(
-      'unanswered',
-    );
-    expect(matched.status === 'recovered' ? matched.envelope.version : null).toBe(
-      RECORDING_DRAFT_VERSION,
-    );
-    // Everything else the v2 draft held is kept.
-    expect(matched.status === 'recovered' ? matched.envelope.atEntry?.symbol : null).toBe('XAUUSD');
-
-    const v2Different = {
-      ...current,
-      version: 2,
-      atEntry: { ...current.atEntry, actualRisk: { mode: 'different', amount: '150' } },
-    };
-    const different = parseRecordingDraft(JSON.stringify(v2Different), NOW);
-    expect(
-      different.status === 'recovered' ? different.envelope.atEntry?.actualRisk : null,
-    ).toEqual({ mode: 'different', amount: '150' });
-  });
-
-  /*
-    FROM v3 ON, `matched` IS A STATEMENT. v3 introduced the Unanswered default,
-    so a v3 draft's Matched can only have been chosen. It must survive the v3 →
-    v4 upgrade as Matched — only v2, where Matched was also the untouched
-    default, is ambiguous and read as Unanswered.
-  */
-  it("keeps a v3 draft's explicit Matched, and its Unanswered stays Unanswered", () => {
-    const current = JSON.parse(serializeRecordingDraft(envelopeWith(workedAtEntry())));
-    const v3 = (actualRisk: { mode: string; amount: string }) => {
-      // A v3 envelope: no risk decision yet (v4 added it), Actual Risk as stored.
-      const { riskState: _decision, ...atEntry } = current.atEntry;
-      return JSON.stringify({ ...current, version: 3, atEntry: { ...atEntry, actualRisk } });
-    };
-
-    const matched = parseRecordingDraft(v3({ mode: 'matched', amount: '' }), NOW);
-    if (matched.status !== 'recovered') throw new Error('v3 draft not recovered');
-    expect(matched.envelope.version).toBe(RECORDING_DRAFT_VERSION);
-    expect(matched.envelope.atEntry?.actualRisk).toEqual({ mode: 'matched', amount: '' });
-    // The v4 upgrade itself still runs: the typed amount makes the risk Defined.
-    expect(matched.envelope.atEntry?.riskState).toBe('defined');
-
-    const untouched = parseRecordingDraft(v3({ mode: 'unanswered', amount: '' }), NOW);
-    if (untouched.status !== 'recovered') throw new Error('v3 draft not recovered');
-    expect(untouched.envelope.atEntry?.actualRisk.mode).toBe('unanswered');
-
-    const different = parseRecordingDraft(v3({ mode: 'different', amount: '150' }), NOW);
-    if (different.status !== 'recovered') throw new Error('v3 draft not recovered');
-    expect(different.envelope.atEntry?.actualRisk).toEqual({ mode: 'different', amount: '150' });
-  });
-
-  /*
-    BOTH ANSWERS SURVIVE A RELOAD, and keep their explicitness: a Stop Method
-    the trader chose and an Actual Risk they stated must still be different
-    from the states nobody answered (contract decisions 52–53).
-  */
-  it('keeps Stop Method and Actual Risk, answered or not, across a reload', () => {
-    const answered = envelopeWith({
-      ...setStopMethod(workedAtEntry(), 'mental'),
-      actualRisk: { mode: 'matched', amount: '' },
-    });
+  it('keeps Stop Method, answered or not, across a reload', () => {
+    const answered = envelopeWith(setStopMethod(workedAtEntry(), 'mental'));
     const parsed = parseRecordingDraft(serializeRecordingDraft(answered), NOW);
     expect(parsed.status).toBe('recovered');
     if (parsed.status !== 'recovered') throw new Error('unreachable');
     expect(parsed.envelope.atEntry?.stopMethod).toBe('mental');
-    expect(parsed.envelope.atEntry?.actualRisk.mode).toBe('matched');
 
     const untouched = envelopeWith(workedAtEntry());
     const plain = parseRecordingDraft(serializeRecordingDraft(untouched), NOW);
     if (plain.status !== 'recovered') throw new Error('unreachable');
     expect(plain.envelope.atEntry?.stopMethod).toBe('unanswered');
-    expect(plain.envelope.atEntry?.actualRisk.mode).toBe('unanswered');
   });
 
   /*
@@ -684,7 +629,7 @@ describe('version 1 drafts', () => {
     // actual risk was a denominator; the reward implied no explicit Target answer.
     expect(upgraded?.classification.conditions).toEqual({});
     expect(upgraded?.completeness).toBe('unanswered');
-    expect(upgraded?.actualRisk).toEqual({ answer: 'unanswered', amount: '' });
+    expect(upgraded).not.toHaveProperty('actualRisk');
     expect(upgraded?.target.state).toBe('unanswered');
     expect(upgraded?.outcome).toBeNull();
   });
@@ -783,7 +728,6 @@ describe('inactive-mode work a Save would remove (contract §23)', () => {
         completeness: 'complete',
         exitedAt: '2026-09-18T10:00',
         postTradeEmotions: { answer: 'none', keys: [] },
-        actualRisk: { answer: 'unknown', amount: '' },
         classification: {
           strategy: 'selected',
           strategyId: 's',
@@ -799,7 +743,6 @@ describe('inactive-mode work a Save would remove (contract §23)', () => {
       'completeness',
       'exitedAt',
       'postTradeEmotions',
-      'actualRiskUnknown',
       'conditionsUnknown',
     ]);
   });

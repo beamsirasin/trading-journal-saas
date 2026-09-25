@@ -50,23 +50,6 @@ export interface EntryTimeDraft {
 }
 
 /**
- * WHAT THE TRADER SAID ABOUT THE RISK THEY ACTUALLY CARRIED.
- *
- * `unanswered` is the default, and it is a state of its own: nobody has said
- * whether the risk taken matched Risk at Entry. It is NOT `matched` — an
- * unanswered observation is never a positive one (Add Trade contract §2, §8),
- * and a Save from this state records no answer at all rather than a match the
- * trader never stated. `matched` is reached only by saying so.
- */
-export type ActualRiskMode = 'unanswered' | 'matched' | 'different' | 'different_unknown';
-
-export interface ActualRiskDraft {
-  readonly mode: ActualRiskMode;
-  /** Kept while another answer is chosen, so switching back restores it. */
-  readonly amount: string;
-}
-
-/**
  * How the trader planned to protect the Trade, as the draft holds it:
  * `unanswered` until they say, then one of the canonical methods. Unanswered
  * is never `no_stop` (contract §2, §8, decision 53).
@@ -151,7 +134,6 @@ export interface AtEntryDraft {
    * it existed still parses. Historical Trades keep their stored value.
    */
   readonly stopMethod: StopMethodDraft;
-  readonly actualRisk: ActualRiskDraft;
   readonly target: TargetDraft;
   readonly exitPlan: ExitPlanDraft;
   readonly classification: ClassificationDraft;
@@ -169,7 +151,6 @@ export function createAtEntryDraft(tradingAccountId: string): AtEntryDraft {
     riskState: 'unanswered',
     risk: '',
     stopMethod: 'unanswered',
-    actualRisk: { mode: 'unanswered', amount: '' },
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: { choice: { kind: 'inherit' }, customText: '', customBaseId: null },
     classification: { strategy: 'unanswered', strategyId: '', setupByStrategy: {}, conditions: {} },
@@ -231,25 +212,11 @@ export function setRiskState(draft: AtEntryDraft, riskState: RiskStateDraft): At
     ...draft,
     riskState,
     risk: riskState === 'defined' ? draft.risk : '',
-    /*
-      "Did what you risked match your plan?" has no answer when there was no
-      plan to match. Choosing No Defined Risk returns Actual Risk to
-      Unanswered rather than leaving a comparison against nothing.
-    */
-    actualRisk: riskState === 'no_defined' ? { mode: 'unanswered', amount: '' } : draft.actualRisk,
   };
 }
 
 export function setStopMethod(draft: AtEntryDraft, stopMethod: StopMethodDraft): AtEntryDraft {
   return { ...draft, stopMethod };
-}
-
-export function setActualRiskMode(draft: AtEntryDraft, mode: ActualRiskMode): AtEntryDraft {
-  return { ...draft, actualRisk: { ...draft.actualRisk, mode } };
-}
-
-export function setActualRiskAmount(draft: AtEntryDraft, amount: string): AtEntryDraft {
-  return { ...draft, actualRisk: { mode: 'different', amount } };
 }
 
 export function setTargetState(draft: AtEntryDraft, state: TargetDraft['state']): AtEntryDraft {
@@ -649,7 +616,6 @@ export const AT_ENTRY_FIELD_ORDER = [
   'symbol',
   'direction',
   'risk',
-  'actualRiskAmount',
   'enteredAt',
   'targetProfit',
   'targetPrice',
@@ -667,7 +633,6 @@ export const AT_ENTRY_FIELD_SECTION: Readonly<Record<AtEntryField, AtEntrySectio
   symbol: 'trade',
   direction: 'trade',
   risk: 'trade',
-  actualRiskAmount: 'trade',
   enteredAt: 'trade',
   targetProfit: 'target',
   targetPrice: 'target',
@@ -685,7 +650,6 @@ export type AtEntryErrorCode =
   | 'invalid_price'
   | 'fixed_target_requires_value'
   | 'risk_decision_required'
-  | 'actual_risk_equals_risk_at_entry'
   /** The server's own chart-link rule, checked before Save rather than after it. */
   | 'invalid_tradingview_url'
   /** Server-side only: a field the server refused that no specific code describes. */
@@ -743,19 +707,6 @@ export function validateAtEntryDraft(
       const risk = parseTradeMoneyInput(draft.risk, context.currency);
       if (risk.ok) riskMinor = risk.value;
       else errors.risk = moneyError(risk.code);
-    }
-  }
-
-  if (draft.actualRisk.mode === 'different') {
-    if (draft.actualRisk.amount.trim() === '') errors.actualRiskAmount = 'required';
-    else {
-      const amount = parseTradeMoneyInput(draft.actualRisk.amount, context.currency);
-      if (!amount.ok) errors.actualRiskAmount = moneyError(amount.code);
-      // Blocking, never rewritten to Matched: the trader said Actual Risk
-      // differed, so the same amount is a contradiction for them to resolve.
-      else if (riskMinor !== null && amount.value === riskMinor) {
-        errors.actualRiskAmount = 'actual_risk_equals_risk_at_entry';
-      }
     }
   }
 
@@ -892,18 +843,15 @@ export function analysisSummary(
 
 /**
  * Whether the trader has done any work a mode switch or navigation would lose.
- * Defaults (entry time now, Matched Actual Risk, an inherited Exit Plan) are
- * not work.
+ * Defaults (entry time now, an inherited Exit Plan) are not work.
  */
 export function hasUserWork(draft: AtEntryDraft, pristine: AtEntryDraft): boolean {
-  const { entryTime, actualRisk, exitPlan, ...rest } = draft;
-  const { entryTime: _t, actualRisk: _a, exitPlan: _e, ...pristineRest } = pristine;
+  const { entryTime, exitPlan, ...rest } = draft;
+  const { entryTime: _t, exitPlan: _e, ...pristineRest } = pristine;
   return (
     entryTime.source !== 'default_now' ||
     draft.riskState !== 'unanswered' ||
     draft.stopMethod !== 'unanswered' ||
-    actualRisk.mode !== 'unanswered' ||
-    actualRisk.amount !== '' ||
     exitPlan.choice.kind !== 'inherit' ||
     exitPlan.customText !== '' ||
     JSON.stringify(rest) !== JSON.stringify(pristineRest)
@@ -943,10 +891,6 @@ export function buildAtEntryPayload(
     draft.entryTime.source === 'cleared' || draft.entryTime.value === ''
       ? null
       : datetimeLocalToIso(draft.entryTime.value, context.timezone);
-  const actualRiskAmount =
-    draft.actualRisk.mode === 'different'
-      ? parseTradeMoneyInput(draft.actualRisk.amount, context.currency)
-      : null;
   const targetProfit =
     draft.target.state === 'fixed' && draft.target.profit.trim() !== ''
       ? parseTradeMoneyInput(draft.target.profit, context.currency)
@@ -970,10 +914,11 @@ export function buildAtEntryPayload(
     direction: draft.direction,
     plannedRiskState: draft.riskState,
     ...(validation.riskMinor === null ? {} : { plannedRiskMinor: validation.riskMinor }),
-    ...(draft.actualRisk.mode === 'unanswered'
-      ? {}
-      : { actualRiskAnswer: draft.actualRisk.mode === 'matched' ? 'matched' : 'different' }),
-    ...(actualRiskAmount?.ok ? { actualInitialRiskMinor: actualRiskAmount.value } : {}),
+    /*
+      ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). Risk at Entry
+      is the one 1R, so no second risk figure is asked or sent: neither
+      `actualRiskAnswer` nor `actualInitialRiskMinor` is ever part of a Save.
+    */
     ...(entered?.ok
       ? {
           enteredAt: entered.value,

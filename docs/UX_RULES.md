@@ -157,7 +157,12 @@ The non-negotiables. Each points to the full rule; the full rule governs.
    invisible and a trader can tell an untouched section from a completed one.
 3. **Disclosure MUST NOT hide a contract distinction.** For example, "Don't know" is never folded
    into a blank field behind a disclosure.
-4. **Actual Risk (At Entry)** is an explicit answer _(contract §4, amended by decision 52,
+4. **Actual Risk is retired from capture** _(contract decision 56, 2026-09-25)_. No recording
+   flow asks it: the Trade's one Risk is the amount defined as 1R in Risk & target. The rules
+   below describe how an Actual Risk **recorded before the retirement** is read — shown read-only
+   only where a Trade has one, never reinterpreted, never an R input.
+
+   _Historical:_ **Actual Risk (At Entry)** was an explicit answer _(contract §4, amended by decision 52,
    2026-09-23)_:
    - It starts **Unanswered** and the interface says so. Not answering is NOT a confirmation that
      the risk matched, and Matched MUST NOT be inferred from the absence of a Different answer.
@@ -170,6 +175,7 @@ The non-negotiables. Each points to the full rule; the full rule governs.
    - _Superseded rule (contract v1): while "Actual risk differed" had not been opened, the
      interface had to visibly state that actual risk matched Risk at Entry, and a Save recorded
      that confirmation. Trades saved under it keep their answer._
+
 5. **Optional context (Tier 4) SHOULD be disclosed on demand.** Tier 1 and the Save action MUST be
    reachable without traversing optional sections.
 6. **Nested editors are views of the same Draft** _(contract §23)_. This covers editors such as
@@ -980,7 +986,7 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    | **1 — Trade Details**            | Account, Symbol, Direction, Entry time                                                                                                                                                                                                                  |
    | **2 — Plan & Risk**              | The plan only: the Planned Risk decision — Unanswered / Defined Risk (with its 1R) / No Defined Risk (decision 54); Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — as context; and one read-only Planned summary of them |
    | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                                                                                                                                       |
-   | **4 — Entry Context & Evidence** | Actual Risk — the risk execution actually carried at entry, in the mode's own form (§3.4, §12.4, decision 53); Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, the Trade's notes                                             |
+   | **4 — Entry Context & Evidence** | Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, the Trade's notes — and no risk figure (contract decision 56)                                                                                                                |
    | **5 — Exit & Result**            | Trader Result: exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Trader R only when a Defined Risk exists                                                                                                  |
    | **6 — After Trade**              | System Result — the factual Plan Outcome (contract decision 55) — then After-Trade Context: Post-Trade Emotion, an after-trade note, after-trade evidence                                                                                               |
 
@@ -988,16 +994,14 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    target**, **Strategy & setup**, **Entry context**, **Trader result**, **After trade** — sentence
    case, as every label in the product.
 
-   Actual Risk is an entry-time **execution** fact, asked in Entry Context & Evidence in every
-   flow since contract decision 53 — never in Plan & Risk, which describes the plan, and never in
-   Exit & Result, which is the result. **In both flows it starts Unanswered and is answered
-   explicitly** (§3.4.4, contract decision 52): At Entry's Matched risk at entry / Different
-   (§11.4), or After Trade's Matched / Different / Don't know reconstruction (§12.4). **Nothing states that actual risk matched unless the trader established
-   it** — not a row, not a Save. Turning an untouched default into a positive observation is what
-   §2 and §8 of the contract forbid, and what the earlier "Opening matches plan" claim was removed
-   for. After-Trade Context may show it read-only as
-   context and never asks it again; there is no second risk-adherence question _(contract decision 51)_. The Trade's notes belong to Entry Context & Evidence and are not reused as an after-trade
-   note (Appendix A).
+   **One Risk** _(contract decision 56)_. Risk & target asks the one risk figure: the amount
+   defined as 1R for the Trade ("This is the amount defined as 1R for this trade"). Trader R and
+   System R both divide by it; No Defined Risk shows no R comparison and says why. Actual Risk is
+   **not asked in any stage of any flow** — Entry Context & Evidence begins with Confidence — and
+   the interface does not teach planned / actual / execution risk as separate concepts. An Actual
+   Risk a Trade recorded before the retirement is shown read-only where it exists and nowhere
+   else. The Trade's notes belong to Entry Context & Evidence and are not reused as an
+   after-trade note (Appendix A).
 
 2. **A stage decides meaning; a flow decides order.** Canonical order and task presentation order
    may differ. Moving a stage in a flow never changes what its answers mean, which defaults apply,

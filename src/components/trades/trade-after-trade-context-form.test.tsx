@@ -343,7 +343,7 @@ describe('Stage 6 System Result on a closed trade (decision 55)', () => {
     const section = document.querySelector('[data-plan-outcome]')!;
     expect(section).toHaveAttribute('data-plan-outcome', 'no_defined_risk');
     expect(section).toHaveTextContent(
-      "R comparison isn't available because this trade had no defined planned risk.",
+      "R comparison isn't available because no risk was defined as 1R for this trade.",
     );
     expect(within(section as HTMLElement).queryByRole('radio')).toBeNull();
   });

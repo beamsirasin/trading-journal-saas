@@ -34,8 +34,6 @@ import {
   resolveExitPlan,
   selectSetup,
   selectStrategy,
-  setActualRiskAmount,
-  setActualRiskMode,
   setConfidence,
   setRiskState,
   setTargetState,
@@ -48,7 +46,6 @@ import {
   type AtEntryField,
 } from './at-entry-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
-import { InlineAction, StateText, TextField } from './trade-at-entry-controls';
 import { tradeDetailsRowId, TradeDetailsStep, type EntryErrorCode } from './trade-details-step';
 import { TradeEntryContextStep } from './trade-entry-context-step';
 import { instantToDatetimeLocal, parseTradeMoneyInput } from './trade-form-values';
@@ -78,7 +75,6 @@ function fieldStep(field: AtEntryField): number {
     case 'direction':
     case 'enteredAt':
       return STEP_INDEX.trade;
-    case 'actualRiskAmount':
     case 'tradingviewUrl':
       return STEP_INDEX.context;
     default:
@@ -110,8 +106,6 @@ const FIELD_TARGET_ID: Readonly<Record<AtEntryField, string>> = {
   direction: tradeDetailsRowId('entry', 'direction'),
   enteredAt: tradeDetailsRowId('entry', 'enteredAt'),
   risk: PLAN_ROW_ID.risk,
-  // Actual Risk moved to Entry Context & Evidence (contract decision 53).
-  actualRiskAmount: 'entry-actual-risk-row',
   targetProfit: PLAN_ROW_ID.target,
   targetPrice: PLAN_ROW_ID.target,
   contextEntryPrice: PLAN_ROW_ID.price,
@@ -163,7 +157,6 @@ function serverFieldErrorCode(field: AtEntryField): AtEntryErrorCode {
     case 'contextPositionSize':
       return 'invalid_price';
     case 'risk':
-    case 'actualRiskAmount':
     case 'targetProfit':
       return 'invalid_money';
     case 'enteredAt':
@@ -181,7 +174,6 @@ const SERVER_FIELD: Readonly<Record<string, AtEntryField>> = {
   symbol: 'symbol',
   direction: 'direction',
   plannedRiskMinor: 'risk',
-  actualInitialRiskMinor: 'actualRiskAmount',
   enteredAt: 'enteredAt',
   targetState: 'targetProfit',
   plannedRewardMinor: 'targetProfit',
@@ -369,7 +361,6 @@ export function TradeAtEntryForm({
   */
   const typed: Partial<Record<AtEntryField, string>> = {
     risk: draft.risk,
-    actualRiskAmount: draft.actualRisk.mode === 'different' ? draft.actualRisk.amount : '',
     enteredAt: draft.entryTime.source === 'trader' ? draft.entryTime.value : '',
     targetProfit: draft.target.state === 'fixed' ? draft.target.profit : '',
     targetPrice: draft.target.state === 'fixed' ? draft.target.price : '',
@@ -411,9 +402,7 @@ export function TradeAtEntryForm({
             ? c('errors.requiredSymbol')
             : field === 'direction'
               ? c('errors.requiredDirection')
-              : field === 'actualRiskAmount'
-                ? c('errors.requiredActualRisk')
-                : c('errors.requiredRisk');
+              : c('errors.requiredRisk');
       case 'risk_decision_required':
         return c('errors.riskDecisionRequired');
       case 'invalid_money':
@@ -430,8 +419,6 @@ export function TradeAtEntryForm({
         return c('errors.invalidPrice');
       case 'fixed_target_requires_value':
         return c('errors.fixedTargetRequiresValue');
-      case 'actual_risk_equals_risk_at_entry':
-        return c('errors.actualRiskEqualsRiskAtEntry');
       case 'invalid_tradingview_url':
         return t('validation.invalidTradingViewUrl');
       case 'not_accepted':
@@ -947,34 +934,6 @@ export function TradeAtEntryForm({
         <TradeEntryContextStep
           mode="at_entry"
           idPrefix="entry"
-          currency={currency}
-          plannedRiskState={draft.riskState}
-          /*
-            EVERY ANSWER HERE IS THE TRADER'S OWN. The draft starts
-            `unanswered` and only a named action moves it, so a match on the
-            row is one they stated — and an untouched draft says nothing
-            (contract §2, §8).
-          */
-          actualRisk={
-            draft.actualRisk.mode === 'different'
-              ? { kind: 'different', amount: draft.actualRisk.amount }
-              : draft.actualRisk.mode === 'different_unknown'
-                ? { kind: 'different_unknown' }
-                : draft.actualRisk.mode === 'matched'
-                  ? { kind: 'matched' }
-                  : { kind: 'not_recorded' }
-          }
-          actualRiskError={errorText('actualRiskAmount')}
-          actualRiskEditor={
-            <ActualRiskField
-              draft={draft}
-              currency={currency}
-              riskIsValid={validation.riskMinor !== null}
-              error={errorText('actualRiskAmount')}
-              onMode={(mode) => apply((current) => setActualRiskMode(current, mode))}
-              onAmount={(amount) => apply((current) => setActualRiskAmount(current, amount))}
-            />
-          }
           confidence={draft.confidence}
           emotions={draft.emotions}
           catalog={options.emotionCatalog}
@@ -991,107 +950,5 @@ export function TradeAtEntryForm({
         />
       </TradeStepSection>
     </TradeStepFlow>
-  );
-}
-
-/**
- * ACTUAL RISK, AS AT ENTRY ASKS IT (contract §4; UX Rules §3.4).
- *
- * IT STARTS UNANSWERED, AND SAYS SO. It once read as a standing assumption —
- * "your actual risk matched this amount", qualified by "assumed until you say
- * otherwise" — and that assumption reached the server as a stated `matched`
- * answer on every Save. An unanswered observation is never a positive one
- * (contract §2, §8), so the question is now asked plainly and answered by the
- * trader: It matched, or It was different, with an amount or with the amount
- * unknown. Nothing here is inferred from Risk at Entry.
- *
- * IT ONLY APPEARS BESIDE A REAL 1R. Matching, or differing from, a Risk at
- * Entry that is missing or invalid is not a question that can be answered, so
- * until one exists there is nothing to ask — except where the trader has
- * already recorded a Different amount, which is theirs to keep.
- */
-function ActualRiskField({
-  draft,
-  currency,
-  riskIsValid,
-  error,
-  onMode,
-  onAmount,
-}: {
-  draft: AtEntryDraft;
-  currency: string;
-  riskIsValid: boolean;
-  error?: string | undefined;
-  onMode: (mode: AtEntryDraft['actualRisk']['mode']) => void;
-  onAmount: (amount: string) => void;
-}) {
-  const c = useTranslations('trades.create.recording.contractEntry.actualRisk');
-  const { mode, amount } = draft.actualRisk;
-  const notAnswered = useTranslations('trades.create.recording.contractEntry');
-  if (mode === 'unanswered' || mode === 'matched') {
-    if (!riskIsValid) return null;
-  }
-  if (mode === 'unanswered') {
-    return (
-      <div
-        data-actual-risk="unanswered"
-        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm"
-      >
-        <span className="text-foreground">{c('legend')}</span>
-        <StateText>{notAnswered('notAnswered')}</StateText>
-        <InlineAction onClick={() => onMode('matched')}>{c('confirmMatched')}</InlineAction>
-        <InlineAction onClick={() => onMode('different')}>{c('different')}</InlineAction>
-      </div>
-    );
-  }
-  if (mode === 'matched') {
-    return (
-      <div
-        data-actual-risk="matched"
-        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm"
-      >
-        <span className="text-foreground">{c('matched')}</span>
-        <InlineAction onClick={() => onMode('different')}>{c('different')}</InlineAction>
-        <InlineAction ariaLabel={c('removeAria')} onClick={() => onMode('unanswered')}>
-          {notAnswered('removeAnswer')}
-        </InlineAction>
-      </div>
-    );
-  }
-  if (mode === 'different_unknown') {
-    return (
-      <div
-        data-actual-risk="different_unknown"
-        className="border-control-border flex min-w-0 flex-col gap-1 border-l-2 pl-4"
-      >
-        <p className="text-foreground text-sm font-medium">{c('unknownState')}</p>
-        <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1">
-          <InlineAction onClick={() => onMode('different')}>{c('enterAmount')}</InlineAction>
-          <InlineAction onClick={() => onMode('matched')}>{c('matchedAfterAll')}</InlineAction>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div
-      data-actual-risk="different"
-      className="border-control-border flex min-w-0 flex-col gap-2 border-l-2 pl-4"
-    >
-      <TextField
-        id="entry-actual-risk"
-        label={c('amount')}
-        value={amount}
-        onChange={onAmount}
-        suffix={currency}
-        inputMode="decimal"
-        figure
-        hint={c('amountHint')}
-        error={error}
-      />
-      <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1">
-        <InlineAction onClick={() => onMode('different_unknown')}>{c('unknown')}</InlineAction>
-        <InlineAction onClick={() => onMode('matched')}>{c('matchedAfterAll')}</InlineAction>
-      </div>
-    </div>
   );
 }

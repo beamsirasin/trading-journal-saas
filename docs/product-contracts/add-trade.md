@@ -46,12 +46,13 @@ forms. The lifecycle groups the semantics this contract already defines into six
 stages; it adds no new state, value, result or requirement, and it changes none:
 
 1. **Trade Details** — Account, Symbol, Direction, Entry time (§6, §13).
-2. **Plan & Risk** — the Planned Risk decision (decision 54) and, when it is Defined, the intended 1R; and Actual Risk, the risk execution actually
-   carried at entry compared with it (§4); Target and Exit Plan (§5); and price levels as context
-   only (§3).
+2. **Plan & Risk** — the Planned Risk decision (decision 54) and, when it is Defined, the amount
+   defined as 1R for the Trade — its one Risk; Target and Exit Plan (§5); and price levels as
+   context only (§3).
 3. **Setup & Checklist** — Strategy, Setup and setup conditions (§7–§8).
 4. **Entry Context & Evidence** — Confidence and Entry Emotion (§9), and optional entry context:
-   trade idea / reason, timeframe, session, chart and the Trade's notes (§6).
+   trade idea / reason, timeframe, session, chart and the Trade's notes (§6). It asks no risk
+   figure (decision 56).
 5. **Exit & Result (Trader Result)** — what the trader actually did: exit events and
    exit-history completeness (§10–§11), final exit time, Final Net P&L and Trader Outcome
    (§11–§12), and Trader R (Final Net P&L ÷ Risk at Entry) only when a Defined Risk exists. A Part
@@ -65,11 +66,13 @@ stages; it adds no new state, value, result or requirement, and it changes none:
 The step labels are the same in every flow (decision 55): **Trade**, **Risk & target**,
 **Strategy & setup**, **Entry context**, **Trader result**, **After trade**.
 
-Actual Risk is an **entry-time fact** — the risk the executed position actually carried, compared
-with the intended Risk at Entry — so it belongs to Plan & Risk in every flow: Record Open Trade
-answers it at entry with the §4 At Entry semantics, and Record Closed Trade reconstructs the same
-fact there with the §4 After Trade semantics. After-Trade Context may show it read-only as context
-but never asks it again, and no second risk-adherence question exists (decision 51).
+**One Risk (decision 56).** A Trade has one canonical Risk: the amount the trader defines as 1R
+in Plan & Risk. Trader R = Final Net P&L ÷ Risk and System R = System Result ÷ Risk; with No
+Defined Risk there is no Trader R, System R or Planned RR, and Risk is never derived from Entry,
+SL or size. **Actual Risk is retired from capture:** no flow asks it, and no Save writes it. A
+Trade that recorded one before the retirement keeps it as history — shown where it was recorded,
+never backfilled or reinterpreted, and never an input to Trader R, System R, Planned RR or
+canonical analytics.
 
 Three task flows use the lifecycle. They are the recording routes of §1 plus the close of §11:
 
@@ -172,8 +175,9 @@ Primary comparison metrics ทั้งสองใช้ denominator เดี�
 
 ถ้า Risk at Entry unknown: Actual R และ System R ที่ต้อง derive จาก Money เป็น unavailable แม้จะทราบ Actual Risk (legacy 1R baseline ให้ legacy R สำหรับ historical record เท่านั้น ไม่ใช่ canonical R — ดู §28)
 
-**Actual Risk** — optional
-ความเสี่ยงทางการเงินจริงของ position เมื่อ execution ทำให้ต่างจาก Risk at Entry
+**Actual Risk** — เลิกใช้ในการบันทึกแล้ว 2026-09-25 (decision 56): Actual Risk ไม่ถูกถามใน flow การบันทึกอีกต่อไป ทั้ง Record Open และ Record Closed — Risk ใน Step 2 (Risk & target) คือจำนวนที่ trader กำหนดเป็น 1R ของเทรด และเป็นฐานเดียวของ Trader R และ System R ข้อความด้านล่างอธิบายความหมายของข้อมูลที่ **บันทึกไว้ก่อนหน้า** ซึ่งยังเก็บไว้ครบ ห้าม backfill ห้าม reinterpret และห้ามนำมาใช้คำนวณ R, RR หรือ canonical analytics ใหม่
+
+_(ประวัติ)_ ความเสี่ยงทางการเงินจริงของ position เมื่อ execution ทำให้ต่างจาก Risk at Entry
 
 Actual Risk **ไม่** เปลี่ยนนิยามของ Actual R ใช้สำหรับ Risk Discipline / Risk Deviation analytics
 
@@ -207,6 +211,8 @@ _Stop Method (decision 53) ถูกถอดออกจากการบั�
 
 ## Actual Risk at Entry
 
+**เลิกใช้ในการบันทึกแล้ว 2026-09-25 (decision 56):** Actual Risk ไม่ถูกถามใน flow การบันทึกอีกต่อไป ทั้ง Record Open และ Record Closed — Risk ใน Step 2 (Risk & target) คือจำนวนที่ trader กำหนดเป็น 1R ของเทรด และเป็นฐานเดียวของ Trader R และ System R ข้อความด้านล่างอธิบายความหมายของข้อมูลที่ **บันทึกไว้ก่อนหน้า** ซึ่งยังเก็บไว้ครบ ห้าม backfill ห้าม reinterpret และห้ามนำมาใช้คำนวณ R, RR หรือ canonical analytics ใหม่
+
 **แก้ไข 2026-09-23 (decision 53):** Actual Risk ถูกถามใน **Entry Context & Evidence (stage 4)** ไม่ใช่ Plan & Risk — เป็น execution fact ของตอนเข้า ไม่ใช่ส่วนหนึ่งของแผน ความหมายและสถานะทุกอย่างคงเดิม
 
 **แก้ไข 2026-09-23 (decision 52):** Actual Risk at Entry เริ่มต้นเป็น **Unanswered**
@@ -236,6 +242,8 @@ Risk at Entry ที่ทราบค่าต้องมากกว่าศ
 ศูนย์ไม่ใช่ตัวแทนของ risk ที่ unknown หรือไม่ได้บันทึก
 
 ## Actual Risk in After Trade
+
+**เลิกใช้ในการบันทึกแล้ว 2026-09-25 (decision 56):** Actual Risk ไม่ถูกถามใน flow การบันทึกอีกต่อไป ทั้ง Record Open และ Record Closed — Risk ใน Step 2 (Risk & target) คือจำนวนที่ trader กำหนดเป็น 1R ของเทรด และเป็นฐานเดียวของ Trader R และ System R ข้อความด้านล่างอธิบายความหมายของข้อมูลที่ **บันทึกไว้ก่อนหน้า** ซึ่งยังเก็บไว้ครบ ห้าม backfill ห้าม reinterpret และห้ามนำมาใช้คำนวณ R, RR หรือ canonical analytics ใหม่
 
 After Trade ห้ามสมมติเงียบ ๆ ว่า Actual Risk ตรงกับ Risk at Entry
 
@@ -1737,3 +1745,33 @@ Recording order and the Plan Outcome, 2026-09-24 (item 55):
     backfilled. Drafts written before this decision hold no Plan Outcome and load with it
     Unanswered. Amends the Recording lifecycle and §13; adds to §9. (§9, §13, Recording
     lifecycle)
+
+Actual Risk retired from capture, 2026-09-25 (item 56):
+
+56. **Actual Risk is retired from canonical capture. Step 2 Risk is the single user-defined 1R
+    basis for Trader / System R comparisons.** TradeChemist V1 records one Risk per Trade — the
+    amount the trader defines as 1R, in Plan & Risk (Risk & target). The core model is Risk (1R),
+    Trader Result (what the trader actually made or lost) and System Result (what the original
+    plan would have produced).
+
+    **Nothing asks for a second risk figure.** Entry Context & Evidence (Step 4) no longer asks
+    Actual Risk in Record Open or Record Closed — no row, no Matched / Different / amount-unknown
+    interaction, no "not applicable" state — and Plan & Risk never did after decision 53. The
+    product does not teach separate concepts of planned, actual or execution risk; internal names
+    such as `planned_risk_minor` stay as they are.
+
+    **R uses Risk alone.** Trader R = Final Net P&L ÷ Risk; System R = System Result ÷ Risk. No
+    Defined Risk (decision 54) produces no Trader R, System R or Planned RR. Risk is never derived
+    from Entry, SL or size (§3).
+
+    **History is kept, not reinterpreted.** No column or table is dropped, and nothing is
+    backfilled. `actual_risk_answer` and `actual_initial_risk_minor` on Trades recorded before this
+    decision stay exactly as saved, are shown read-only only where a Trade has one, and never
+    affect Trader R, System R, Planned RR or new canonical analytics. Legacy (pre-contract) rows
+    keep their own historical Actual R rules (§28). A browser draft that still holds an Actual
+    Risk answer — any draft version — has it discarded on load, so it can never reach a new Trade;
+    nothing replaces it.
+
+    Supersedes the capture placement of decisions 51–53 and the Actual Risk interaction of
+    decision 52 for new recordings; their text remains the meaning of the historical data they
+    produced. (§4, Recording lifecycle, §23)

@@ -13,8 +13,6 @@ import {
   exitField,
   hasAfterTradeWork,
   removeExit,
-  setActualRiskAmount,
-  setActualRiskAnswer,
   setCompleteness,
   setFinalPnl,
   setOutcome,
@@ -59,13 +57,11 @@ describe('readiness', () => {
   it('blocks malformed values and incomplete explicit answers, never missing optional ones', () => {
     let draft = { ...identified(), finalPnl: 'abc', enteredAt: '2026-09-19T10:00' };
     draft = setTargetState(draft, 'fixed');
-    draft = setActualRiskAnswer(draft, 'matched');
     const { errors } = validateAfterTradeDraft(draft, CONTEXT);
     expect(errors).toEqual({
       finalPnl: 'invalid_money',
       enteredAt: 'future_time',
       targetProfit: 'fixed_target_requires_value',
-      actualRisk: 'matched_requires_risk_at_entry',
     });
   });
 
@@ -87,16 +83,24 @@ describe('readiness', () => {
 });
 
 describe('derived figures and notices', () => {
-  it('derives Actual R only from Final Net P&L and Risk at Entry', () => {
+  it('derives Trader R only from Final Net P&L and Risk at Entry', () => {
     const neither = validateAfterTradeDraft(identified(), CONTEXT);
     expect(neither.actualR).toEqual({ status: 'unavailable', reason: 'needs_pnl_and_risk' });
     const pnl = validateAfterTradeDraft({ ...identified(), finalPnl: '150' }, CONTEXT);
     expect(pnl.actualR).toEqual({ status: 'unavailable', reason: 'needs_risk' });
     const both = validateAfterTradeDraft(
-      setActualRiskAmount({ ...identified(), finalPnl: '150', risk: '100' }, '50'),
+      { ...identified(), riskState: 'defined', finalPnl: '150', risk: '100' },
       CONTEXT,
     );
+    // 150 ÷ the 1R of 100 — the Step 2 Risk is the only denominator there is.
     expect(both.actualR).toEqual({ status: 'known', value: '1.5000' });
+    // No Defined Risk: the P&L stands, and no R is made up for it.
+    const none = validateAfterTradeDraft(
+      { ...identified(), riskState: 'no_defined', finalPnl: '150' },
+      CONTEXT,
+    );
+    expect(none.finalPnlMinor).toBe('15000');
+    expect(none.actualR).toEqual({ status: 'unavailable', reason: 'no_defined_risk' });
   });
 
   it('notes a sign contradiction without blocking', () => {
@@ -189,9 +193,16 @@ describe('the Save payload', () => {
     expect(payloadOf(createAfterTradeDraft(ACCOUNT))).toBeNull();
   });
 
-  it('sends Different with an unknown amount as Different, never Matched', () => {
-    const payload = payloadOf(setActualRiskAnswer({ ...identified(), risk: '100' }, 'different'));
-    expect(payload).toMatchObject({ plannedRiskMinor: '10000', actualRiskAnswer: 'different' });
+  it('holds no Actual Risk and never sends one (decision 56)', () => {
+    expect(createAfterTradeDraft(ACCOUNT)).not.toHaveProperty('actualRisk');
+    const payload = payloadOf({
+      ...identified(),
+      riskState: 'defined',
+      risk: '100',
+      finalPnl: '80',
+    });
+    expect(payload).toMatchObject({ plannedRiskMinor: '10000', finalPnlMinor: '8000' });
+    expect(payload).not.toHaveProperty('actualRiskAnswer');
     expect(payload).not.toHaveProperty('actualInitialRiskMinor');
   });
 

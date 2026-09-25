@@ -2102,20 +2102,10 @@
           },
           "risk": {
             "label": "Risk at entry",
-            "hint": "The most this whole position stands to lose at your stop. This is your 1R."
+            "hint": "This is the amount defined as 1R for this trade."
           },
           "actualRisk": {
-            "matched": "Your actual risk matched this amount.",
-            "different": "It was different",
-            "amount": "Actual risk",
-            "amountHint": "What you really had at risk. Your 1R stays your risk at entry.",
-            "unknown": "I don't know the amount",
-            "unknownState": "Different, amount not known",
-            "enterAmount": "Enter the amount",
-            "matchedAfterAll": "It matched after all",
-            "legend": "Actual risk",
-            "confirmMatched": "It matched",
-            "removeAria": "Remove actual risk answer"
+            "unknownState": "Different, amount not known"
           },
           "target": {
             "legend": "Target",
@@ -2299,13 +2289,11 @@
             "requiredSymbol": "Enter a symbol.",
             "requiredDirection": "Choose Long or Short.",
             "requiredRisk": "Enter your risk at entry.",
-            "requiredActualRisk": "Enter the amount, or choose I don't know the amount.",
             "invalidMoney": "Enter a valid amount with the currency's supported precision.",
             "mustBePositive": "Enter an amount greater than zero.",
             "invalidDatetime": "Enter a valid date and time in your saved timezone.",
             "invalidPrice": "Enter a price greater than zero, using digits and one decimal point.",
             "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target.",
-            "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all.",
             "notAccepted": "This value wasn't accepted. Check it and try again.",
             "riskDecisionRequired": "Say how risk was defined for this trade."
           },
@@ -2383,21 +2371,18 @@
               "needs_pnl_and_risk": "Trader R needs your final net P&L and risk at entry.",
               "needs_risk": "Trader R needs your risk at entry.",
               "needs_pnl": "Trader R needs your final net P&L.",
-              "no_defined_risk": "No planned risk was defined, so R is not available."
+              "no_defined_risk": "No risk was defined as 1R for this trade, so R is not available."
             }
           },
           "risk": {
             "label": "Risk at entry",
-            "hint": "What you intended to risk: your 1R. Leave it blank if you do not know it."
+            "hint": "This is the amount defined as 1R for this trade. Leave it blank if you do not know it."
           },
           "actualRisk": {
             "legend": "Actual risk",
             "matched": "Matched risk at entry",
             "different": "It was different",
-            "unknown": "Don't know",
-            "amount": "Actual risk amount",
-            "amountHint": "Leave it blank if you do not know the amount. Your 1R stays your risk at entry.",
-            "removeAria": "Remove actual risk answer"
+            "unknown": "Don't know"
           },
           "exitPlan": {
             "notRecordedHint": "How you planned to manage and close this trade, as you remember it. A plan you choose now is recorded as recalled after the trade.",
@@ -2486,8 +2471,6 @@
             "exitBeforeEntry": "The final exit time is before the entry time.",
             "exitOutsideTrade": "This exit time is outside the trade's entry and final exit times.",
             "invalidPercent": "Enter a percentage above 0 and up to 100, with at most two decimals.",
-            "matchedRequiresRisk": "Matched needs a risk at entry. Enter your risk at entry, or choose another answer.",
-            "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter what you really had at risk, or choose Matched risk at entry.",
             "percentOverTotal": "Together your exits close more than the whole position. Check the percentages.",
             "entryTimeRequired": "Add the time to finish this entry, or clear the date.",
             "entryDateRequired": "Add the date to finish this entry, or clear the time.",
@@ -2600,10 +2583,7 @@
           "notesTitle": "Entry notes",
           "notesHint": "Anything else you noticed around entry.",
           "evidenceTitle": "Before-entry evidence",
-          "evidenceHint": "A chart from before or at entry. It is context and never changes the result.",
-          "actualRiskTitle": "What the entry actually risked",
-          "actualRiskHint": "The risk the position really carried at entry. Your 1R stays your risk at entry.",
-          "actualRiskNotApplicable": "Not applicable — no planned risk was defined."
+          "evidenceHint": "A chart from before or at entry. It is context and never changes the result."
         },
         "planRows": {
           "actualRisk": {
@@ -2627,7 +2607,7 @@
         },
         "plannedSummary": {
           "title": "Planned",
-          "risk": "Planned risk",
+          "risk": "Risk (1R)",
           "target": "Planned target",
           "rr": "Planned RR",
           "exitPlan": "Exit plan",
@@ -2703,7 +2683,6 @@
             "completeness": "Whether the exit history is complete",
             "exitedAt": "Final exit time",
             "postTradeEmotions": "Post-trade emotion",
-            "actualRiskUnknown": "Actual risk: Don't know",
             "conditionsUnknown": "Conditions marked Don't remember"
           },
           "keep": "Keep editing",
@@ -3235,8 +3214,8 @@
         "targetAmountHint": "Your target was recorded as a price, so state the amount.",
         "result": "System result",
         "resultValue": "{money} · {r}",
-        "noDefinedRisk": "R comparison isn't available because this trade had no defined planned risk.",
-        "riskNotRecorded": "R comparison isn't available because no planned risk was recorded for this trade.",
+        "noDefinedRisk": "R comparison isn't available because no risk was defined as 1R for this trade.",
+        "riskNotRecorded": "R comparison isn't available because no 1R was recorded for this trade.",
         "unavailable": "There's no fixed target or exit plan on record, so there's no plan result to compare.",
         "stale": "The plan changed after you answered. Answer again, or remove the answer.",
         "removeAria": "Remove system result answer",

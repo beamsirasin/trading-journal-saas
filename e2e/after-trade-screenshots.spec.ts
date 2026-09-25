@@ -305,8 +305,6 @@ async function fillEverything(page: Page) {
   const riskEditor = await openPlanRow(page, 'risk');
   await chooseInEditor(riskEditor, /^Defined risk/);
   await riskEditor.locator('#after-risk').fill('100');
-  await clickChoice(page, 'It was different');
-  await riskEditor.locator('#after-actual-risk-amount').fill('120');
   await closePlanEditor(page);
   const targetEditor = await openPlanRow(page, 'target');
   await clickChoice(page, /^Fixed target/);

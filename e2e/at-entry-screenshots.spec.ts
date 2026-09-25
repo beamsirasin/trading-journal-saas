@@ -128,24 +128,6 @@ const STATES: readonly CaptureState[] = [
     widths: [1440, 390],
   },
   {
-    name: 'actual-risk-different',
-    prepare: async (page) => {
-      await fillMinimum(page);
-      await page.getByRole('button', { name: 'It was different' }).click();
-      await page.getByLabel('Actual risk').fill('340');
-    },
-    widths: [1440, 390],
-  },
-  {
-    name: 'actual-risk-unknown',
-    prepare: async (page) => {
-      await fillMinimum(page);
-      await page.getByRole('button', { name: 'It was different' }).click();
-      await page.getByRole('button', { name: "I don't know the amount" }).click();
-    },
-    widths: [1440, 320],
-  },
-  {
     // Setup & Checklist announces the plan a chosen Strategy supplies.
     name: 'strategy-announces-exit-plan',
     prepare: async (page) => {

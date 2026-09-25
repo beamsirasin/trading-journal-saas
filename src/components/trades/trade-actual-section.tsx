@@ -188,20 +188,24 @@ export function ActualSection({
                     : money(trade.plannedRiskMinor)
                 }
               />
-              <DetailRow
-                label={a('actualRisk.legend')}
-                value={
-                  trade.actualRiskAnswer === null
-                    ? c('notAnswered')
-                    : trade.actualRiskAnswer === 'matched'
+              {/*
+                Actual Risk is history only (decision 56): shown when a Trade
+                recorded one before it was retired, and absent otherwise.
+              */}
+              {trade.actualRiskAnswer === null ? null : (
+                <DetailRow
+                  label={a('actualRisk.legend')}
+                  value={
+                    trade.actualRiskAnswer === 'matched'
                       ? a('actualRisk.matched')
                       : trade.actualRiskAnswer === 'unknown'
                         ? a('actualRisk.unknown')
                         : trade.actualInitialRiskMinor === null
                           ? c('actualRisk.unknownState')
                           : `${a('actualRisk.different')} · ${money(trade.actualInitialRiskMinor)}`
-                }
-              />
+                  }
+                />
+              )}
             </>
           ) : trade.actualResultMode === 'money' ? (
             <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />

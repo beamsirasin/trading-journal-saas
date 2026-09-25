@@ -48,8 +48,6 @@ import {
   removeStrategyAnswer,
   selectSetup,
   selectStrategy,
-  setActualRiskAmount,
-  setActualRiskAnswer,
   setCompleteness,
   setConfidence,
   setEntryDate,
@@ -204,9 +202,6 @@ function fieldTargetId(field: AfterTradeField): string {
       return tradeDetailsRowId('after', field);
     case 'risk':
       return PLAN_ROW_ID.risk;
-    // Actual Risk moved to Entry Context & Evidence (contract decision 53).
-    case 'actualRisk':
-      return 'after-actual-risk-row';
     case 'targetProfit':
     case 'targetPrice':
       return PLAN_ROW_ID.target;
@@ -273,8 +268,6 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   enteredAt: 'enteredAt',
   exitedAt: 'exitedAt',
   plannedRiskMinor: 'risk',
-  actualRiskAnswer: 'actualRisk',
-  actualInitialRiskMinor: 'actualRisk',
   targetState: 'targetProfit',
   plannedRewardMinor: 'targetProfit',
   targetPrice: 'targetPrice',
@@ -329,7 +322,6 @@ function serverFieldErrorCode(field: AfterTradeField): AfterTradeErrorCode {
     case 'afterTradeTradingviewUrl':
       return 'invalid_tradingview_url';
     case 'risk':
-    case 'actualRisk':
     case 'targetProfit':
     case 'finalPnl':
       return 'invalid_money';
@@ -490,8 +482,6 @@ export function TradeAfterTradeForm({
         return draft.finalPnl;
       case 'risk':
         return draft.risk;
-      case 'actualRisk':
-        return draft.actualRisk.answer === 'matched' ? 'matched' : draft.actualRisk.amount;
       case 'targetProfit':
         return draft.target.state === 'fixed' ? draft.target.profit : '';
       case 'targetPrice':
@@ -558,10 +548,6 @@ export function TradeAfterTradeForm({
         return a('errors.percentOverTotal');
       case 'fixed_target_requires_value':
         return c('errors.fixedTargetRequiresValue');
-      case 'matched_requires_risk_at_entry':
-        return a('errors.matchedRequiresRisk');
-      case 'actual_risk_equals_risk_at_entry':
-        return a('errors.actualRiskEqualsRiskAtEntry');
       case 'invalid_tradingview_url':
         return t('validation.invalidTradingViewUrl');
       case 'not_accepted':
@@ -963,13 +949,6 @@ export function TradeAfterTradeForm({
       validation.riskMinor === null
         ? null
         : `${a('risk.label')} ${formatMoney(validation.riskMinor)}`,
-      draft.actualRisk.answer === 'matched'
-        ? a('actualRisk.matched')
-        : draft.actualRisk.answer === 'different'
-          ? a('actualRisk.different')
-          : draft.actualRisk.answer === 'unknown'
-            ? `${a('actualRisk.legend')}: ${a('actualRisk.unknown')}`
-            : null,
       draft.target.state === 'fixed'
         ? c('target.fixed')
         : draft.target.state === 'no_fixed'
@@ -1228,75 +1207,11 @@ export function TradeAfterTradeForm({
           {/*
                 CANONICAL ENTRY CONTEXT & EVIDENCE — the same component Record
                 Open uses: what the trader knew, thought and felt at entry, as
-                remembered, with Actual Risk as its entry-time execution fact.
+                remembered. It asks no risk figure (decision 56).
               */}
           <TradeEntryContextStep
             mode="after_trade"
             idPrefix="after"
-            currency={currency}
-            plannedRiskState={draft.riskState}
-            /*
-              EVERY ANSWER HERE IS THE TRADER'S OWN. This draft starts at
-              `unanswered` and only a selection moves it, so `matched` reaching
-              the row really does mean they said it matched.
-            */
-            actualRisk={
-              draft.actualRisk.answer === 'matched'
-                ? { kind: 'matched' }
-                : draft.actualRisk.answer === 'different'
-                  ? { kind: 'different', amount: draft.actualRisk.amount }
-                  : draft.actualRisk.answer === 'unknown'
-                    ? { kind: 'unknown' }
-                    : { kind: 'not_recorded' }
-            }
-            actualRiskError={errorText('actualRisk')}
-            actualRiskEditor={
-              <div className="flex min-w-0 flex-col gap-3">
-                <ChoiceGroup
-                  idPrefix="after-actual-risk"
-                  legend={a('actualRisk.legend')}
-                  value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
-                  status={c('notAnswered')}
-                  columns={3}
-                  compact
-                  fit="split"
-                  error={
-                    draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
-                  }
-                  aside={
-                    <InlineAction
-                      ariaLabel={a('actualRisk.removeAria')}
-                      onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
-                  options={[
-                    { value: 'matched', label: a('actualRisk.matched') },
-                    { value: 'different', label: a('actualRisk.different') },
-                    { value: 'unknown', label: a('actualRisk.unknown') },
-                  ]}
-                />
-                {draft.actualRisk.answer === 'different' ? (
-                  <div className="border-control-border border-l-2 pl-4">
-                    <TextField
-                      id="after-actual-risk-amount"
-                      label={a('actualRisk.amount')}
-                      value={draft.actualRisk.amount}
-                      onChange={(amount) =>
-                        apply((current) => setActualRiskAmount(current, amount))
-                      }
-                      suffix={currency}
-                      inputMode="decimal"
-                      figure
-                      hint={a('actualRisk.amountHint')}
-                      error={errorText('actualRisk')}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            }
             confidence={draft.confidence}
             emotions={draft.emotions}
             catalog={options.emotionCatalog}

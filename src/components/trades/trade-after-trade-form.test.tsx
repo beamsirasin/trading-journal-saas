@@ -424,17 +424,6 @@ function closeEditor() {
   fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 }
 
-/** Actual Risk moved to Entry Context & Evidence (contract decision 53). */
-function actualRiskRow(): HTMLElement {
-  if (currentStep() !== 'context') goTo('context');
-  return document.getElementById('after-actual-risk-row')!;
-}
-
-function openActualRisk(): HTMLElement {
-  fireEvent.click(actualRiskRow());
-  return screen.getByRole('dialog');
-}
-
 /** Answer one Plan & Risk field the way a trader does: open, type, close. */
 function typeInPlan(concept: 'risk' | 'target' | 'price', label: string | RegExp, value: string) {
   const editor = openPlanRow(concept);
@@ -607,7 +596,7 @@ describe('After Trade — the moment and its steps', () => {
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
-  it('starts every answer Unanswered: no time, no outcome, no Actual Risk, no Target', () => {
+  it('starts every answer Unanswered: no time, no outcome, no Target', () => {
     renderForm();
     // Blank is "Not recorded", never a zero and never a preselected now.
     expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
@@ -635,13 +624,7 @@ describe('After Trade — the moment and its steps', () => {
     goTo('plan');
     // The rows say nothing was answered before anything is opened.
     expect(planRow('risk')).toHaveTextContent('Not answered');
-    expect(actualRiskRow()).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
     expect(planRow('target')).toHaveTextContent('Not answered');
-    const riskEditor = within(openActualRisk());
-    for (const name of ['Matched risk at entry', 'It was different']) {
-      expect(riskEditor.getByRole('radio', { name })).not.toBeChecked();
-    }
-    closeEditor();
     const targetEditor = within(openPlanRow('target'));
     expect(targetEditor.getByRole('radio', { name: /^Fixed target/ })).not.toBeChecked();
     expect(targetEditor.getByRole('radio', { name: /^No fixed target/ })).not.toBeChecked();
@@ -2121,7 +2104,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     expect(screen.queryByText(/does not block saving/)).not.toBeInTheDocument();
   });
 
-  it('shows Actual R only from Final Net P&L and Risk at Entry, and says why otherwise', () => {
+  it('shows Trader R only from Final Net P&L and Risk at Entry, and says why otherwise', () => {
     renderForm();
     goTo('result');
     expect(
@@ -2133,67 +2116,29 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
-    // Actual Risk is Risk Discipline evidence and never moves the denominator.
-    goTo('plan');
-    const risk = within(openActualRisk());
-    fireEvent.click(risk.getByRole('radio', { name: 'It was different' }));
-    type('Actual risk amount', '25', openActualRisk());
-    closeEditor();
-    goTo('result');
-    expect(screen.getByText('+2.00R')).toBeInTheDocument();
   });
 });
 
-describe('Actual Risk', () => {
-  it('refuses Matched without a Risk at Entry to match', async () => {
-    renderForm();
-    fillIdentity();
-    fireEvent.click(within(openActualRisk()).getByRole('radio', { name: 'Matched risk at entry' }));
-    // Explicitly chosen, so the row may state it — this one IS the trader's answer.
-    closeEditor();
-    expect(actualRiskRow()).toHaveAttribute('data-actual-risk-summary', 'matched');
-    save();
-    expect(await screen.findByText(/Matched needs a risk at entry/)).toBeInTheDocument();
-    // A blocked Save lands on the row, which carries the reason.
-    expect(actualRiskRow()).toHaveAttribute('data-invalid', 'true');
-    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
-  });
-
-  it('refuses a Different amount equal to Risk at Entry, never rewriting it to Matched', async () => {
+/*
+  ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). Record Closed's
+  Entry context asks no risk figure, and a Save sends none: the Step 2 Risk is
+  the Trade's one 1R.
+*/
+describe('Record Closed — no Actual Risk', () => {
+  it('asks no Actual Risk in Entry context, and a Save sends none', async () => {
     renderForm();
     fillIdentity();
     typeInPlan('risk', 'Risk at entry', '50');
-    const editor = openActualRisk();
-    fireEvent.click(within(editor).getByRole('radio', { name: 'It was different' }));
-    type('Actual risk amount', '50', editor);
-    closeEditor();
-    save();
-    expect(await screen.findByText(/This is the same as your risk at entry/)).toBeInTheDocument();
-    expect(currentStep()).toBe('plan');
-    expect(within(openActualRisk()).getByRole('radio', { name: 'It was different' })).toBeChecked();
-    closeEditor();
-    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['Matched risk at entry', 'matched', undefined],
-    ["Don't know", 'unknown', undefined],
-    ['It was different', 'different', undefined],
-  ] as const)('sends %s as its own answer', async (label, answer, amount) => {
-    renderForm();
-    fillIdentity();
-    typeInPlan('risk', 'Risk at entry', '50');
-    const editor = openActualRisk();
-    fireEvent.click(
-      within(within(editor).getByRole('group', { name: 'Actual risk' })).getByRole('radio', {
-        name: label,
-      }),
-    );
-    closeEditor();
+    goTo('context');
+    const step = document.querySelector<HTMLElement>('[data-entry-context-step]')!;
+    expect(step).not.toHaveTextContent(/actual risk|actually risked/i);
+    expect(document.getElementById('after-actual-risk-row')).toBeNull();
+    expect(step.querySelector('[data-actual-risk-summary]')).toBeNull();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
-    expect(payload()).toMatchObject({ plannedRiskMinor: '5000', actualRiskAnswer: answer });
-    expect(payload().actualInitialRiskMinor).toBe(amount);
+    expect(payload()).toMatchObject({ plannedRiskState: 'defined', plannedRiskMinor: '5000' });
+    expect(payload()).not.toHaveProperty('actualRiskAnswer');
+    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
   });
 });
 
@@ -2257,7 +2202,7 @@ describe('Step 6 — System Result (decision 55)', () => {
     const section = systemResult();
     expect(section).toHaveAttribute('data-plan-outcome', 'no_defined_risk');
     expect(section).toHaveTextContent(
-      "R comparison isn't available because this trade had no defined planned risk.",
+      "R comparison isn't available because no risk was defined as 1R for this trade.",
     );
     expect(within(section).queryByRole('radio')).toBeNull();
     save();
@@ -2755,7 +2700,7 @@ describe('Record Closed — Trader R follows the risk decision', () => {
       'unavailable',
     );
     expect(
-      screen.getByText('No planned risk was defined, so R is not available.'),
+      screen.getByText('No risk was defined as 1R for this trade, so R is not available.'),
     ).toBeInTheDocument();
     // The result itself is untouched: P&L is still recorded and still saved.
     save();

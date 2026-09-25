@@ -58,15 +58,8 @@ import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 export type Direction = '' | 'long' | 'short';
 /** `unknown` is "Don't remember" — an answer, never a Not Met (contract §8). */
 export type RecalledConditionStatus = 'met' | 'not_met' | 'unknown';
-export type AfterTradeActualRiskAnswer = 'unanswered' | 'matched' | 'different' | 'unknown';
 export type ExitScopeAnswer = '' | 'part' | 'all_remaining' | 'unknown';
 export type CompletenessAnswer = 'unanswered' | ExitHistoryCompleteness;
-
-export interface AfterTradeActualRiskDraft {
-  readonly answer: AfterTradeActualRiskAnswer;
-  /** Kept through any other answer, so returning to Different restores it. */
-  readonly amount: string;
-}
 
 export interface AfterTradeExitDraft {
   readonly id: string;
@@ -101,7 +94,6 @@ export interface AfterTradeDraft {
   readonly exitedAt: string;
   /** Risk at Entry — the 1R baseline; '' is not recorded. */
   readonly risk: string;
-  readonly actualRisk: AfterTradeActualRiskDraft;
   /** The same risk decision At Entry records, reconstructed (decision 54). */
   readonly riskState: RiskStateDraft;
   /** Retired from capture (decision 54); kept so older drafts still parse. */
@@ -148,7 +140,6 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
     enteredAt: '',
     exitedAt: '',
     risk: '',
-    actualRisk: { answer: 'unanswered', amount: '' },
     riskState: 'unanswered',
     stopMethod: 'unanswered',
     target: { state: 'unanswered', profit: '', price: '' },
@@ -181,18 +172,6 @@ export function createAfterTradeDraft(tradingAccountId: string): AfterTradeDraft
 // Risk, Target and result
 // ---------------------------------------------------------------------------
 
-export function setActualRiskAnswer(
-  draft: AfterTradeDraft,
-  answer: AfterTradeActualRiskAnswer,
-): AfterTradeDraft {
-  return { ...draft, actualRisk: { ...draft.actualRisk, answer } };
-}
-
-/** Typing an amount answers Different; a blank amount is Different, amount unknown. */
-export function setActualRiskAmount(draft: AfterTradeDraft, amount: string): AfterTradeDraft {
-  return { ...draft, actualRisk: { answer: 'different', amount } };
-}
-
 /** The risk decision, reconstructed: Unanswered until the trader says (decision 54). */
 export function setRiskState(draft: AfterTradeDraft, riskState: RiskStateDraft): AfterTradeDraft {
   if (riskState === draft.riskState) return draft;
@@ -200,9 +179,6 @@ export function setRiskState(draft: AfterTradeDraft, riskState: RiskStateDraft):
     ...draft,
     riskState,
     risk: riskState === 'defined' ? draft.risk : '',
-    // No planned 1R to match, so the Actual Risk comparison has no question.
-    actualRisk:
-      riskState === 'no_defined' ? { answer: 'unanswered', amount: '' } : draft.actualRisk,
   };
 }
 
@@ -577,7 +553,6 @@ export const AFTER_TRADE_STATIC_FIELDS = [
   'exitedAt',
   'finalPnl',
   'risk',
-  'actualRisk',
   'targetProfit',
   'targetPrice',
   'exits',
@@ -602,7 +577,6 @@ export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSectio
     case 'finalPnl':
       return 'result';
     case 'risk':
-    case 'actualRisk':
     case 'targetProfit':
     case 'targetPrice':
       return 'plan';
@@ -646,8 +620,6 @@ export type AfterTradeErrorCode =
   /** Exits cannot close more than the whole position. */
   | 'percent_over_total'
   | 'fixed_target_requires_value'
-  | 'matched_requires_risk_at_entry'
-  | 'actual_risk_equals_risk_at_entry'
   /** The server's own chart-link rule, checked before Save rather than after it. */
   | 'invalid_tradingview_url'
   /** Server-side only: a field the server refused that no specific code describes. */
@@ -769,19 +741,6 @@ export function validateAfterTradeDraft(
     const risk = parseTradeMoneyInput(draft.risk, context.currency);
     if (risk.ok) riskMinor = risk.value;
     else errors.risk = moneyError(risk.code);
-  }
-
-  if (draft.actualRisk.answer === 'matched' && riskMinor === null && errors.risk === undefined) {
-    // "Matched Risk at Entry" needs a Risk at Entry to match (contract §4).
-    errors.actualRisk = 'matched_requires_risk_at_entry';
-  }
-  if (draft.actualRisk.answer === 'different' && draft.actualRisk.amount.trim() !== '') {
-    const amount = parseTradeMoneyInput(draft.actualRisk.amount, context.currency);
-    if (!amount.ok) errors.actualRisk = moneyError(amount.code);
-    // Blocking, never rewritten to Matched: the trader said it differed.
-    else if (riskMinor !== null && amount.value === riskMinor) {
-      errors.actualRisk = 'actual_risk_equals_risk_at_entry';
-    }
   }
 
   if (draft.target.state === 'fixed') {
@@ -964,7 +923,6 @@ export function orderedAfterTradeErrorFields(
     'exitedAt',
     'finalPnl',
     'risk',
-    'actualRisk',
     'targetProfit',
     'targetPrice',
     ...exitFields,
@@ -1203,8 +1161,6 @@ export function buildAfterTradePayload(
 
   const active = activeAfterTradeClassification(draft, context.options);
   const recordedExits = draft.exits.filter(meaningfulExit);
-  const actualRiskAmount =
-    draft.actualRisk.answer === 'different' ? money(draft.actualRisk.amount, false) : null;
 
   const payload: CreateCompletedTradePayload = {
     mutationKey: context.mutationKey,
@@ -1216,10 +1172,7 @@ export function buildAfterTradePayload(
     enteredAt: iso(draft.enteredAt),
     exitedAt: iso(draft.exitedAt),
     plannedRiskMinor: validation.riskMinor,
-    ...(draft.actualRisk.answer === 'unanswered'
-      ? {}
-      : { actualRiskAnswer: draft.actualRisk.answer }),
-    ...(actualRiskAmount === null ? {} : { actualInitialRiskMinor: actualRiskAmount }),
+    // Actual Risk is retired from capture (decision 56): never part of a Save.
     ...(draft.riskState === 'unanswered' ? {} : { plannedRiskState: draft.riskState }),
     ...(draft.target.state === 'unanswered' ? {} : { targetState: draft.target.state }),
     ...(draft.target.state === 'fixed'

@@ -77,6 +77,12 @@ import {
  * `unanswered`: downgrading an answer that might have been stated costs one
  * re-answer, while upgrading a default nobody chose would manufacture a
  * positive observation (contract §2, §8, §28).
+ *
+ * Actual Risk (2026-09-25, contract decision 56) is retired from capture, and
+ * the draft no longer holds it. No version bump: every schema here simply
+ * drops an `actualRisk` (and the carried `actualRiskDifferent`) that an older
+ * draft stored, so whatever v2 or v3 said about it — the difference the v3 note
+ * above records — can no longer reach a Save. Nothing replaces it.
  */
 export const RECORDING_DRAFT_VERSION = 4;
 
@@ -130,8 +136,6 @@ export interface SharedRecordingValues {
   readonly target: TargetDraft;
   /** `null` when no explicit Exit Plan answer exists. */
   readonly exitPlan: SharedExitPlan | null;
-  /** An explicit "Actual risk differed", with its amount or ''; `null` otherwise. */
-  readonly actualRiskDifferent: { readonly amount: string } | null;
   readonly confidence: number | null;
   /** `null` Unanswered, `[]` None of these, or the chosen Entry emotions. */
   readonly emotions: readonly string[] | null;
@@ -233,14 +237,6 @@ export function sharedFromAtEntry(draft: AtEntryDraft): SharedRecordingValues {
           : choice.kind === 'no_rule'
             ? { kind: 'no_rule' }
             : null,
-    // Only an explicit "it differed" carries: a match stated in one mode is
-    // not evidence about the other, and Unanswered carries nothing.
-    actualRiskDifferent:
-      draft.actualRisk.mode === 'different'
-        ? { amount: draft.actualRisk.amount }
-        : draft.actualRisk.mode === 'different_unknown'
-          ? { amount: '' }
-          : null,
     confidence: draft.confidence,
     emotions: emotionsShared(draft.emotions),
     entryPrice: draft.context.entryPrice,
@@ -294,8 +290,6 @@ export function sharedFromAfterTrade(draft: AfterTradeDraft): SharedRecordingVal
           : choice.kind === 'no_rule'
             ? { kind: 'no_rule' }
             : null,
-    actualRiskDifferent:
-      draft.actualRisk.answer === 'different' ? { amount: draft.actualRisk.amount } : null,
     confidence: draft.confidence,
     emotions: emotionsShared(draft.emotions),
     entryPrice: draft.context.entryPrice,
@@ -321,7 +315,6 @@ const SHARED_FIELDS: readonly SharedField[] = [
   'conditions',
   'target',
   'exitPlan',
-  'actualRiskDifferent',
   'confidence',
   'emotions',
   'entryPrice',
@@ -450,18 +443,6 @@ export function applySharedToAtEntry(
             : { ...next.exitPlan, choice: plan },
     };
   }
-  if (has('actualRiskDifferent')) {
-    const different = shared.actualRiskDifferent;
-    next = {
-      ...next,
-      actualRisk:
-        different === null
-          ? { ...next.actualRisk, mode: 'unanswered' }
-          : different.amount === ''
-            ? { ...next.actualRisk, mode: 'different_unknown' }
-            : { mode: 'different', amount: different.amount },
-    };
-  }
   if (has('confidence')) next = { ...next, confidence: shared.confidence };
   if (has('emotions')) {
     next = { ...next, emotions: emotionsFromShared(shared.emotions, next.emotions.keys) };
@@ -544,20 +525,6 @@ export function applySharedToAfterTrade(
                 customBaseId: plan.customBaseId,
               }
             : { ...next.exitPlan, choice: plan },
-    };
-  }
-  if (has('actualRiskDifferent')) {
-    const different = shared.actualRiskDifferent;
-    next = {
-      ...next,
-      actualRisk:
-        different !== null
-          ? { answer: 'different', amount: different.amount }
-          : // Withdrawn in At Entry. At Entry's Matched is an assumption, not
-            // an After Trade answer, so this returns to Unanswered.
-            next.actualRisk.answer === 'different'
-            ? { ...next.actualRisk, answer: 'unanswered' }
-            : next.actualRisk,
     };
   }
   if (has('confidence')) next = { ...next, confidence: shared.confidence };
@@ -669,7 +636,6 @@ export type InactiveModeWorkItem =
   | { readonly kind: 'completeness' }
   | { readonly kind: 'exitedAt' }
   | { readonly kind: 'postTradeEmotions' }
-  | { readonly kind: 'actualRiskUnknown' }
   | { readonly kind: 'conditionsUnknown' };
 
 /**
@@ -687,7 +653,7 @@ export type InactiveModeWorkItem =
  *
  * Saving At Entry: the After Trade result, exit history, final exit time and
  * Post-Trade Emotion have no place on an open Trade, and neither have "Don't
- * know" Actual Risk or "Don't remember" conditions, which At Entry cannot say.
+ * remember" conditions, which At Entry cannot say.
  * They are never carried into the open Trade to avoid the question.
  */
 export function inactiveModeWork(
@@ -703,7 +669,6 @@ export function inactiveModeWork(
   if (exits > 0 && after.completeness !== 'unanswered') items.push({ kind: 'completeness' });
   if (after.exitedAt !== '') items.push({ kind: 'exitedAt' });
   if (after.postTradeEmotions.answer !== 'unanswered') items.push({ kind: 'postTradeEmotions' });
-  if (after.actualRisk.answer === 'unknown') items.push({ kind: 'actualRiskUnknown' });
   const unknownCondition = Object.values(after.classification.conditions).some((bySetup) =>
     Object.values(bySetup).some((answers) =>
       Object.values(answers).some((status) => status === 'unknown'),
@@ -772,10 +737,9 @@ const atEntrySchema = z.object({
   riskState,
   risk: text,
   stopMethod,
-  actualRisk: z.object({
-    mode: z.enum(['unanswered', 'matched', 'different', 'different_unknown']),
-    amount: text,
-  }),
+  // No `actualRisk`: retired from capture (decision 56). A draft that still
+  // holds one — any version — has it discarded here, on read, so it can never
+  // reach a Save. Nothing replaces it.
   target: targetSchema,
   exitPlan: exitPlanSchema,
   classification: z.object({
@@ -796,10 +760,7 @@ const afterTradeSchema = z.object({
   enteredAt: text,
   exitedAt: text,
   risk: text,
-  actualRisk: z.object({
-    answer: z.enum(['unanswered', 'matched', 'different', 'unknown']),
-    amount: text,
-  }),
+  // No `actualRisk` (decision 56): an older draft's answer is discarded on read.
   target: targetSchema,
   exitPlan: exitPlanSchema,
   finalPnl: text,
@@ -871,7 +832,6 @@ const sharedSchema = z.object({
       z.object({ kind: z.literal('no_rule') }),
     ])
     .nullable(),
-  actualRiskDifferent: z.object({ amount: text }).nullable(),
   confidence: z.number().int().nullable(),
   emotions: z.array(text).nullable(),
   entryPrice: text,
@@ -1058,7 +1018,6 @@ function upgradeV1Shared(legacy: z.infer<typeof v1SharedSchema>): SharedRecordin
     conditions: {},
     target: { state: 'unanswered', profit: '', price: '' },
     exitPlan: null,
-    actualRiskDifferent: null,
     confidence: legacy.confidence,
     emotions: legacy.emotions,
     entryPrice: '',
@@ -1085,31 +1044,12 @@ function upgradeV1Envelope(legacy: z.infer<typeof v1EnvelopeSchema>): RecordingD
 }
 
 /**
- * A v2 draft's At Entry Actual Risk, read the only way that cannot invent an
- * answer: its `matched` was the untouched default far more often than it was
- * a statement, and the two are indistinguishable in what was stored.
- *
- * ONLY v2. From v3 the default is `unanswered`, so a stored `matched` can only
- * have been chosen, and it is kept. The guard names the version that changed
- * the meaning, never "the current version": when v4 arrived, a guard written
- * as `=== RECORDING_DRAFT_VERSION` quietly began downgrading every v3 Matched.
+ * A v2 or v3 envelope, stamped with the current version. Its Actual Risk —
+ * the one thing v2 and v3 read differently — no longer exists: the schema
+ * discards it on read (decision 56), so no version rule about it remains.
  */
 function upgradeV2Envelope(parsed: z.infer<typeof envelopeSchema>): RecordingDraftEnvelope {
-  const envelope: RecordingDraftEnvelope = { ...parsed, version: RECORDING_DRAFT_VERSION };
-  if (
-    parsed.version >= 3 ||
-    envelope.atEntry === null ||
-    envelope.atEntry.actualRisk.mode !== 'matched'
-  ) {
-    return envelope;
-  }
-  return {
-    ...envelope,
-    atEntry: {
-      ...envelope.atEntry,
-      actualRisk: { ...envelope.atEntry.actualRisk, mode: 'unanswered' },
-    },
-  };
+  return { ...parsed, version: RECORDING_DRAFT_VERSION };
 }
 
 /**

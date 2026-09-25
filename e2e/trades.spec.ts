@@ -1506,14 +1506,7 @@ test.describe('real Trade Journal creation', () => {
     await chooseRadio(afterForm, 'Win');
     await expect(afterForm.getByText(/You chose Loss/)).toHaveCount(0);
 
-    // Actual Risk is Risk Discipline evidence; restating Risk at Entry as
-    // "different" is the one blocking answer.
-    await afterTradeStep(page, 'plan');
-    await chooseRadio(afterForm, 'It was different');
-    await afterForm.locator('#after-actual-risk-amount').fill('100');
-    await expect(afterForm.getByText(/This is the same as your risk at entry/)).toBeVisible();
-    await afterForm.locator('#after-actual-risk-amount').fill('120');
-    await expect(afterForm.getByText(/This is the same as your risk at entry/)).toHaveCount(0);
+    // Actual Risk is retired from capture (decision 56): nothing to answer.
     await afterTradeStep(page, 'result');
     await expect(actualR).toContainText('+4.00R');
 
@@ -1559,7 +1552,8 @@ test.describe('real Trade Journal creation', () => {
     const execution = activePanel(page);
     await expect(execution.getByLabel('Actual Result').getByText('+3.50R')).toBeVisible();
     await expect(execution.getByText('Risk at entry', { exact: true })).toBeVisible();
-    await expect(execution.getByText(/It was different/)).toBeVisible();
+    // No Actual Risk was recorded, so none is shown (decision 56).
+    await expect(execution.getByText(/It was different/)).toHaveCount(0);
     await expect(execution.locator('[data-exit-scope]')).toHaveCount(0);
     // The stated result is never rebuilt from exit legs.
     await expect(execution.getByRole('button', { name: /as final result/ })).toHaveCount(0);

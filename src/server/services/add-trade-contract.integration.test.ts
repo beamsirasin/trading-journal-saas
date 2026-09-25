@@ -11,6 +11,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
+import { CreateTradeSchema } from '@/lib/trades/schemas';
 import {
   exitPlans,
   trades,
@@ -21,9 +22,15 @@ import {
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
+import {
+  buildAtEntryPayload,
+  createAtEntryDraft,
+  setRiskState,
+} from '@/components/trades/at-entry-draft';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { createSetup, createSetupCondition, createStrategy } from './strategy-management';
+import { recordAfterTradeContext } from './trade-after-trade-context';
 import { replaceTradeEmotions } from './trade-discipline';
 import { recordContractExit } from './trade-exit-contract';
 import {
@@ -200,6 +207,74 @@ describe('Add Trade contract At Entry (real database)', () => {
     enteredAt: new Date('2026-09-01T10:00:00Z'),
     enteredAtSource: 'trader' as const,
   };
+
+  /*
+    ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). The Step 2
+    Risk is the one 1R. New Saves write no Actual Risk; one a Trade recorded
+    before the retirement is history, kept exactly and never read as the R
+    denominator.
+  */
+  describe('Actual Risk retired from capture', () => {
+    it("a Save built by today's Record Open writes no Actual Risk", async () => {
+      const fw = await freshFramework();
+      const draft = setRiskState(
+        {
+          ...createAtEntryDraft(fw.tradingAccountId),
+          symbol: 'XAUUSD',
+          direction: 'long' as const,
+        },
+        'defined',
+      );
+      const payload = buildAtEntryPayload(
+        { ...draft, risk: '100' },
+        {
+          currency: 'USD',
+          timezone: 'UTC',
+          mutationKey: crypto.randomUUID(),
+          options: { strategies: [], exitPlans: [] },
+        },
+      );
+      if (payload === null) throw new Error('payload not ready');
+      const parsed = CreateTradeSchema.parse(payload);
+      const result = await createTrade(workspaceId, actorUserId, parsed as CreateTradeInput);
+      if (!result.ok) throw new Error(`create failed: ${result.code}`);
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        plannedRiskState: 'defined',
+        plannedRiskMinor: 10_000n,
+        actualRiskAnswer: null,
+        actualInitialRiskMinor: null,
+      });
+    });
+
+    it('keeps a historical Actual Risk exactly, and never lets it move R', async () => {
+      const fw = await freshFramework();
+      // Recorded under the earlier contract: a Different answer of 300.
+      const tradeId = await createContract(fw, {
+        ...ENTERED,
+        actualRiskAnswer: 'different',
+        actualInitialRiskMinor: 30_000n,
+      });
+      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: 20_000n,
+        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+      });
+      // Trader R = 200 ÷ the Step 2 Risk of 100 — never ÷ the historical 300.
+      expect(closed).toMatchObject({ ok: true, actualR: '2.0000' });
+      const saved = await recordAfterTradeContext(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        afterTradeNote: 'Closed on the retest.',
+      });
+      expect(saved.ok).toBe(true);
+      expect(await readTrade(tradeId)).toMatchObject({
+        actualRiskAnswer: 'different',
+        actualInitialRiskMinor: 30_000n,
+        plannedRiskMinor: 10_000n,
+        actualR: '2.0000',
+      });
+    });
+  });
 
   describe('minimum Save and the 1R baseline', () => {
     it('creates an open contract Trade from Account, Symbol, Direction and Risk at Entry alone', async () => {

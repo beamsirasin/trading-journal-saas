@@ -34,8 +34,6 @@ import {
   sectionErrorCount,
   selectSetup,
   selectStrategy,
-  setActualRiskAmount,
-  setActualRiskMode,
   setConfidence,
   setExitPlanEditorView,
   setRiskState,
@@ -282,47 +280,31 @@ describe('At Entry draft — entry time', () => {
   });
 });
 
-describe('At Entry draft — Actual Risk', () => {
-  it('keeps the Different amount through Matched and back', () => {
-    let draft = setActualRiskAmount(minimum(), '150');
-    draft = setActualRiskMode(draft, 'matched');
-    expect(
-      buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options }),
-    ).not.toHaveProperty('actualInitialRiskMinor');
-    draft = setActualRiskMode(draft, 'different');
-    expect(draft.actualRisk).toEqual({ mode: 'different', amount: '150' });
-    expect(buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options })).toMatchObject(
-      {
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: '15000',
-      },
-    );
-  });
-
-  it('records Different with the amount unknown without asking for a second amount', () => {
-    const draft = setActualRiskMode(setActualRiskAmount(minimum(), '150'), 'different_unknown');
+/*
+  ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). Risk at Entry is
+  the one 1R; the draft holds no second risk figure and no Save ever sends one.
+*/
+describe('At Entry draft — no Actual Risk', () => {
+  it('holds no Actual Risk, and a fully answered Save sends none', () => {
+    expect(createAtEntryDraft(ACCOUNT)).not.toHaveProperty('actualRisk');
+    let draft = setTargetValue(minimum(), 'profit', '300');
+    draft = setConfidence(draft, 75);
     const payload = buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options });
-    expect(payload).toMatchObject({ actualRiskAnswer: 'different' });
+    expect(payload).toMatchObject({ plannedRiskState: 'defined', plannedRiskMinor: '10000' });
+    expect(payload).not.toHaveProperty('actualRiskAnswer');
     expect(payload).not.toHaveProperty('actualInitialRiskMinor');
   });
 
-  it('blocks a Different amount equal to Risk at Entry and never rewrites it to Matched', () => {
-    // `100.00` and `100` are the same minor-unit amount, so the comparison is by value.
-    const draft = setActualRiskMode(setActualRiskAmount(minimum(), '100.00'), 'different');
-    const validation = validateAtEntryDraft(draft, context);
-    expect(validation.errors).toEqual({ actualRiskAmount: 'actual_risk_equals_risk_at_entry' });
-    expect(atEntryReadiness(validation)).toMatchObject({ status: 'blocked', count: 1 });
-    expect(buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options })).toBeNull();
-    expect(draft.actualRisk).toEqual({ mode: 'different', amount: '100.00' });
-
-    expect(validateAtEntryDraft(setActualRiskAmount(draft, '100.01'), context).errors).toEqual({});
-  });
-
-  it('asks for the amount only when Different with an amount is chosen', () => {
-    expect(
-      validateAtEntryDraft(setActualRiskMode(minimum(), 'different'), context).errors
-        .actualRiskAmount,
-    ).toBe('required');
+  it('No Defined Risk sends neither a 1R nor any risk figure in its place', () => {
+    const payload = buildAtEntryPayload(setRiskState(minimum(), 'no_defined'), {
+      ...context,
+      mutationKey: ACCOUNT,
+      options,
+    });
+    expect(payload).toMatchObject({ plannedRiskState: 'no_defined' });
+    for (const field of ['plannedRiskMinor', 'actualRiskAnswer', 'actualInitialRiskMinor']) {
+      expect(payload).not.toHaveProperty(field);
+    }
   });
 });
 

@@ -370,10 +370,8 @@ test.describe('Record Open — canonical stages 1–4 in a real browser', () => 
         await closePlanEditor(page);
       }
       await recordOpenStep(page, 'context');
-      await expect(page.locator('#entry-actual-risk-row')).toHaveAttribute(
-        'data-actual-risk-summary',
-        'not_applicable',
-      );
+      // Actual Risk is retired from capture (decision 56): not asked at all.
+      await expect(page.locator('#entry-actual-risk-row')).toHaveCount(0);
       await recordOpenSave(page);
       await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
       expect(await latestTrade(user.workspaceId)).toMatchObject({

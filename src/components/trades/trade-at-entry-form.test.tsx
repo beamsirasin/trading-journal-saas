@@ -374,8 +374,7 @@ describe('Record Open — Save and Save now', () => {
       plannedRiskMinor: '10000',
       enteredAtSource: 'default_now',
     });
-    // UNANSWERED IS NOT MATCHED. Nobody said what was really risked, so the
-    // Save says nothing about it rather than claiming a match (contract §2, §8).
+    // No Actual Risk is part of any Save (decision 56).
     expect(payload()).not.toHaveProperty('actualRiskAnswer');
     expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
     expect(payload()).not.toHaveProperty('targetState');
@@ -515,167 +514,29 @@ describe('Record Open — Step 1 keeps At Entry’s "now"', () => {
   });
 });
 
-/** Actual Risk moved to Entry Context & Evidence (contract decision 53). */
-function actualRiskRow(): HTMLElement {
-  if (currentStep() !== 'context') goTo('context');
-  return document.getElementById('entry-actual-risk-row')!;
-}
-
-function openActualRisk() {
-  fireEvent.click(actualRiskRow());
-  return within(screen.getByRole('dialog'));
-}
-
-describe('Record Open — Entry Context: Actual Risk', () => {
-  it('asks the question beside a real Risk at Entry, and asserts nothing until answered', () => {
+/*
+  ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). Record Open's
+  Entry context asks no risk figure, Risk & target asks only the 1R, and a
+  Save sends no Actual Risk however the trade was recorded.
+*/
+describe('Record Open — no Actual Risk', () => {
+  it('asks no Actual Risk anywhere, and Entry context begins with Confidence', async () => {
     renderForm();
     fillMinimum();
-    // Plan & Risk describes the plan only: no Actual Risk question there.
     expect(planRow('risk')).not.toHaveTextContent(/actual risk/i);
-    expect(openPlanRow('risk').queryByText('It matched')).toBeNull();
-    closeEditor();
-    const editor = openActualRisk();
-    // The question, unanswered, with both answers offered and neither taken.
-    expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
-      'data-actual-risk',
-      'unanswered',
-    );
-    expect(editor.getByText('Not answered')).toBeVisible();
-    expect(editor.getByRole('button', { name: 'It matched' })).toBeVisible();
-    expect(editor.getByRole('button', { name: 'It was different' })).toBeVisible();
-    // The standing assumption is gone: it is what reached the server as a claim.
-    expect(screen.queryByText('Your actual risk matched this amount.')).toBeNull();
-    expect(screen.queryByText('Assumed until you say otherwise.')).toBeNull();
-  });
-
-  /*
-    1 — UNTOUCHED DOES NOT PERSIST MATCHED. The state a trader never opens is
-    the one this product used to record as a match; it now records nothing.
-  */
-  it('sends no Actual Risk answer at all when the trader never answered it', async () => {
-    renderForm();
-    fillMinimum();
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(payload()).not.toHaveProperty('actualRiskAnswer');
-    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
-  });
-
-  /* 2 — EXPLICIT MATCHED PERSISTS MATCHED, and only from a named action. */
-  it('sends Matched once the trader says it matched, with no second amount', async () => {
-    renderForm();
-    fillMinimum();
-    fireEvent.click(openActualRisk().getByRole('button', { name: 'It matched' }));
-    expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
-      'data-actual-risk',
-      'matched',
-    );
-    closeEditor();
-    // Stated, so the row may say it.
-    expect(actualRiskRow()).toHaveTextContent('Matched risk at entry');
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(payload().actualRiskAnswer).toBe('matched');
-    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
-  });
-
-  it('returns a stated Matched to Unanswered through its own named action', async () => {
-    renderForm();
-    fillMinimum();
-    const editor = openActualRisk();
-    fireEvent.click(editor.getByRole('button', { name: 'It matched' }));
-    fireEvent.click(editor.getByRole('button', { name: 'Remove actual risk answer' }));
-    expect(document.querySelector('[data-actual-risk]')).toHaveAttribute(
-      'data-actual-risk',
-      'unanswered',
-    );
-    closeEditor();
-    expect(actualRiskRow()).toHaveTextContent('Not answered');
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(payload()).not.toHaveProperty('actualRiskAnswer');
-  });
-
-  /* 3 — EXPLICIT DIFFERENT still persists exactly as it did. */
-  it('sends Different with its amount, and Different with no amount, unchanged', async () => {
-    renderForm();
-    fillMinimum();
-    const editor = openActualRisk();
-    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
-    fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
-    closeEditor();
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
-      actualRiskAnswer: 'different',
-      actualInitialRiskMinor: '15000',
-    });
-  });
-
-  /*
-    THE ROW HAS NO ROOM FOR "ASSUMED UNTIL YOU SAY OTHERWISE", so it must not
-    make the claim that sentence exists to qualify. `matched` is this draft's
-    untouched default (`createAtEntryDraft`), and reading it back as a match
-    would turn an unanswered observation into a positive one — Add Trade
-    contract §2 and §8, and the "Opening matches plan" claim this product
-    already removed once.
-  */
-  it('never reads the untouched default back as a match on the closed row', () => {
-    renderForm();
-    fillMinimum();
-    // Plan & Risk reads the plan; Step 4's row reads what was really risked.
-    expect(planRow('risk')).toHaveTextContent('100 USD');
-    const row = actualRiskRow();
-    expect(row).toHaveTextContent('Not answered');
-    expect(row).not.toHaveTextContent(/matched/i);
-    expect(row).toHaveAttribute('data-actual-risk-summary', 'not_recorded');
-  });
-
-  it('reads an explicit Different answer back on the row, with its amount', () => {
-    renderForm();
-    fillMinimum();
-    const editor = openActualRisk();
-    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
-    fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
-    closeEditor();
-    expect(actualRiskRow()).toHaveTextContent('Actual risk 150 USD');
-    expect(actualRiskRow()).toHaveAttribute('data-actual-risk-summary', 'different');
-  });
-
-  it('keeps a Different amount through Matched and back', () => {
-    renderForm();
-    fillMinimum();
-    const editor = openActualRisk();
-    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
-    fireEvent.change(editor.getByLabelText('Actual risk'), { target: { value: '150' } });
-    fireEvent.click(editor.getByRole('button', { name: 'It matched after all' }));
-    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
-    expect(editor.getByLabelText('Actual risk')).toHaveValue('150');
-  });
-
-  it('records Different with the amount unknown without demanding a second figure', async () => {
-    renderForm();
-    fillMinimum();
-    const editor = openActualRisk();
-    fireEvent.click(editor.getByRole('button', { name: 'It was different' }));
-    fireEvent.click(editor.getByRole('button', { name: "I don't know the amount" }));
-    expect(editor.getByText('Different, amount not known')).toBeVisible();
-    closeEditor();
-    expect(actualRiskRow()).toHaveTextContent('Different, amount not known');
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(payload().actualRiskAnswer).toBe('different');
-    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
-  });
-
-  it('says Risk at Entry is required here, and shows no Money/Price switch', () => {
-    renderForm();
-    goTo('plan');
-    expect(planRow('risk')).toHaveTextContent('Required');
-    expect(screen.queryByRole('button', { name: /Use price levels instead/ })).toBeNull();
+    goTo('context');
+    const step = document.querySelector<HTMLElement>('[data-entry-context-step]')!;
+    expect(step).not.toHaveTextContent(/actual risk|actually risked/i);
+    expect(document.getElementById('entry-actual-risk-row')).toBeNull();
+    expect(step.querySelector('[data-actual-risk-summary]')).toBeNull();
     expect(
-      openPlanRow('price').getByText('Context only, never used to calculate results'),
-    ).toBeVisible();
+      within(step.querySelector('section')!).getByRole('group', { name: 'Confidence' }),
+    ).toBeInTheDocument();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ plannedRiskState: 'defined', plannedRiskMinor: '10000' });
+    expect(payload()).not.toHaveProperty('actualRiskAnswer');
+    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
   });
 });
 
