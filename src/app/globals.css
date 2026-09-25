@@ -29,13 +29,15 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   /*
-    THE BRAND BLUE IS ONE FILL; ITS TEXT ADAPTS. `primary` is the fill
-    (#3B6FFE in both themes). `primary-text` is the same blue as TEXT on this
-    theme's surfaces, where the raw fill falls short of 4.5:1. `primary-hover`
-    is the fill's hover, lifted rather than dimmed so its label keeps contrast.
+    THE CTA FILL AND THE BRAND BLUE. `primary` is the primary-action fill —
+    #386AFA with a white label in BOTH themes (4.56:1); `primary-hover` and
+    `primary-active` step it darker in the same blue, so the white label only
+    gains contrast. The brand accent itself (`brand`, `ring`, progress) stays
+    #3B6FFE. `primary-text` is the blue as TEXT on this theme's surfaces.
   */
   --color-primary-text: var(--primary-text);
   --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -457,18 +459,18 @@ html[lang='th'] .text-label {
   --popover: #181818;
   --popover-foreground: #f6f6f6;
   /*
-    THE BRAND BLUE, DARK. The fill is #3B6FFE in both themes — the same
-    blue on a CTA, the active progress step, the ring and the active icons.
-    Graphics clear 3:1 on every surface here. Contrast is solved at the
-    foreground instead of by moving the fill: a CTA's label is #020617, 4.70:1
-    on the fill (white would be 4.29:1), and 5.65:1 on `primary-hover`, which
-    lifts the fill 12% toward white rather than dimming it. Where the blue is
-    TEXT, `primary-text` carries it: #548cff, the same hue lightened, 5.56:1 on the card and 4.74:1 on #262626.
+    THE BRAND BLUE, DARK. The brand accent is #3B6FFE in both themes — the
+    active progress step, the ring and the active icons; graphics clear 3:1 on
+    every surface here. A primary CTA is #386AFA with a white label in both
+    themes (4.56:1), darkening on hover (#3162f0, 5.08:1) and press (#2c5be0,
+    5.71:1) so the label only gains contrast. Where the blue is TEXT,
+    `primary-text` carries it: #548cff, the same hue lightened, 5.56:1 on the card and 4.74:1 on #262626.
   */
-  --primary: #3b6ffe;
-  --primary-foreground: #020617;
+  --primary: #386afa;
+  --primary-foreground: #ffffff;
   --primary-text: #548cff;
-  --primary-hover: color-mix(in oklab, #3b6ffe 88%, #ffffff);
+  --primary-hover: #3162f0;
+  --primary-active: #2c5be0;
   --secondary: #262626;
   --secondary-foreground: #f6f6f6;
   --muted: #262626;
@@ -574,18 +576,18 @@ html[lang='th'] .text-label {
   --popover: #ffffff;
   --popover-foreground: #0b1220;
   /*
-    THE BRAND BLUE, LIGHT. The fill is #3B6FFE in both themes — the same
-    blue on a CTA, the active progress step, the ring and the active icons.
-    Graphics clear 3:1 on every surface here. Contrast is solved at the
-    foreground instead of by moving the fill: a CTA's label is #020617, 4.70:1
-    on the fill (white would be 4.29:1), and 5.65:1 on `primary-hover`, which
-    lifts the fill 12% toward white rather than dimming it. Where the blue is
-    TEXT, `primary-text` carries it: #2857e5, the same hue deepened, 5.86:1 on the card, 5.60:1 on the page and 4.68:1 on the `accent` tint.
+    THE BRAND BLUE, LIGHT. The brand accent is #3B6FFE in both themes — the
+    active progress step, the ring and the active icons; graphics clear 3:1 on
+    every surface here. A primary CTA is #386AFA with a white label in both
+    themes (4.56:1), darkening on hover (#3162f0, 5.08:1) and press (#2c5be0,
+    5.71:1) so the label only gains contrast. Where the blue is TEXT,
+    `primary-text` carries it: #2857e5, the same hue deepened, 5.86:1 on the card, 5.60:1 on the page and 4.68:1 on the `accent` tint.
   */
-  --primary: #3b6ffe;
-  --primary-foreground: #020617;
+  --primary: #386afa;
+  --primary-foreground: #ffffff;
   --primary-text: #2857e5;
-  --primary-hover: color-mix(in oklab, #3b6ffe 88%, #ffffff);
+  --primary-hover: #3162f0;
+  --primary-active: #2c5be0;
   --secondary: #e9edf7;
   --secondary-foreground: #0b1220;
   --muted: #e9edf7;
@@ -687,18 +689,18 @@ html[lang='th'] .text-label {
   --popover: #181818;
   --popover-foreground: #f6f6f6;
   /*
-    THE BRAND BLUE, DARK. The fill is #3B6FFE in both themes — the same
-    blue on a CTA, the active progress step, the ring and the active icons.
-    Graphics clear 3:1 on every surface here. Contrast is solved at the
-    foreground instead of by moving the fill: a CTA's label is #020617, 4.70:1
-    on the fill (white would be 4.29:1), and 5.65:1 on `primary-hover`, which
-    lifts the fill 12% toward white rather than dimming it. Where the blue is
-    TEXT, `primary-text` carries it: #548cff, the same hue lightened, 5.56:1 on the card and 4.74:1 on #262626.
+    THE BRAND BLUE, DARK. The brand accent is #3B6FFE in both themes — the
+    active progress step, the ring and the active icons; graphics clear 3:1 on
+    every surface here. A primary CTA is #386AFA with a white label in both
+    themes (4.56:1), darkening on hover (#3162f0, 5.08:1) and press (#2c5be0,
+    5.71:1) so the label only gains contrast. Where the blue is TEXT,
+    `primary-text` carries it: #548cff, the same hue lightened, 5.56:1 on the card and 4.74:1 on #262626.
   */
-  --primary: #3b6ffe;
-  --primary-foreground: #020617;
+  --primary: #386afa;
+  --primary-foreground: #ffffff;
   --primary-text: #548cff;
-  --primary-hover: color-mix(in oklab, #3b6ffe 88%, #ffffff);
+  --primary-hover: #3162f0;
+  --primary-active: #2c5be0;
   --secondary: #262626;
   --secondary-foreground: #f6f6f6;
   --muted: #262626;

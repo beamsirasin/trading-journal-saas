@@ -72,40 +72,41 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 
 ### Palette
 
-| Token                | Dark                  | Light                 |
-| -------------------- | --------------------- | --------------------- |
-| `background`         | `#0d0d0d`             | `#f8fafd`             |
-| `foreground`         | `#f6f6f6`             | `#0b1220`             |
-| `card`               | `#181818`             | `#ffffff`             |
-| `popover`            | `#181818`             | `#ffffff`             |
-| `primary`            | `#3b6ffe`             | `#3b6ffe`             |
-| `primary-foreground` | `#020617`             | `#020617`             |
-| `primary-text`       | `#548cff`             | `#2857e5`             |
-| `primary-hover`      | `#3b6ffe` + 12% white | `#3b6ffe` + 12% white |
-| `secondary`          | `#262626`             | `#e9edf7`             |
-| `muted`              | `#262626`             | `#e9edf7`             |
-| `muted-foreground`   | `#a1a1a1`             | `#55657f`             |
-| `subtle-foreground`  | `#8a8a8a`             | `#7b879b`             |
-| `accent`             | `#262626`             | `#dfe6f4`             |
-| `destructive`        | `#ef6362`             | `#be123c`             |
-| `border`             | white 8%              | `#dde4f0`             |
-| `input`              | white 12%             | `#dde4f0`             |
-| `ring`               | `#3b6ffe`             | `#3b6ffe`             |
-| `brand`              | `#3b6ffe`             | `#3b6ffe`             |
-| `surface`            | `#0d0d0d`             | `#e9edf7`             |
-| `surface-raised`     | `#262626`             | `#ffffff`             |
-| `positive`           | `#2fa97a`             | `#047857`             |
-| `negative`           | `#ef6362`             | `#be123c`             |
-| `break-even`         | `#5b7ef7`             | `#1d4ed8`             |
-| `zone-edge`          | `#d472c4`             | `#a8339a`             |
-| `warning`            | `#f59e0b`             | `#92400e`             |
-| `info`               | `#56b6f7`             | `#0369a1`             |
-| `chart-1`            | `#0f9e8e`             | `#0891b2`             |
-| `chart-2`            | `#3b82f6`             | `#1d4ed8`             |
-| `chart-3`            | `#c2650f`             | `#c2570f`             |
-| `chart-4`            | `#b06ef0`             | `#7c3aed`             |
+| Token                | Dark      | Light     |
+| -------------------- | --------- | --------- |
+| `background`         | `#0d0d0d` | `#f8fafd` |
+| `foreground`         | `#f6f6f6` | `#0b1220` |
+| `card`               | `#181818` | `#ffffff` |
+| `popover`            | `#181818` | `#ffffff` |
+| `primary`            | `#386afa` | `#386afa` |
+| `primary-foreground` | `#ffffff` | `#ffffff` |
+| `primary-text`       | `#548cff` | `#2857e5` |
+| `primary-hover`      | `#3162f0` | `#3162f0` |
+| `primary-active`     | `#2c5be0` | `#2c5be0` |
+| `secondary`          | `#262626` | `#e9edf7` |
+| `muted`              | `#262626` | `#e9edf7` |
+| `muted-foreground`   | `#a1a1a1` | `#55657f` |
+| `subtle-foreground`  | `#8a8a8a` | `#7b879b` |
+| `accent`             | `#262626` | `#dfe6f4` |
+| `destructive`        | `#ef6362` | `#be123c` |
+| `border`             | white 8%  | `#dde4f0` |
+| `input`              | white 12% | `#dde4f0` |
+| `ring`               | `#3b6ffe` | `#3b6ffe` |
+| `brand`              | `#3b6ffe` | `#3b6ffe` |
+| `surface`            | `#0d0d0d` | `#e9edf7` |
+| `surface-raised`     | `#262626` | `#ffffff` |
+| `positive`           | `#2fa97a` | `#047857` |
+| `negative`           | `#ef6362` | `#be123c` |
+| `break-even`         | `#5b7ef7` | `#1d4ed8` |
+| `zone-edge`          | `#d472c4` | `#a8339a` |
+| `warning`            | `#f59e0b` | `#92400e` |
+| `info`               | `#56b6f7` | `#0369a1` |
+| `chart-1`            | `#0f9e8e` | `#0891b2` |
+| `chart-2`            | `#3b82f6` | `#1d4ed8` |
+| `chart-3`            | `#c2650f` | `#c2570f` |
+| `chart-4`            | `#b06ef0` | `#7c3aed` |
 
-**Brand blue (2026-09-26).** The brand fill is `#3b6ffe` in BOTH themes — `primary`, `brand`, `ring`, the step progress, the active nav icons and the chrome ring — so a CTA and the active progress step are the same blue in Light and Dark. Contrast is solved at the foreground, never by moving the fill: a CTA label is `primary-foreground` `#020617` (4.70:1 on the fill; white would be 4.29:1), its hover is `primary-hover` (the fill lifted 12% toward white, 5.65:1 with the label), and where the blue is TEXT — links, inline actions, selected text, zone labels — components use `text-primary-text`: Light `#2857e5` (5.86:1 on the card), Dark `#548cff` (5.56:1 on the card). Never use `text-primary` for text. `break-even`, `info` and the chart series are semantic or data colours and did not move.
+**Brand blue (2026-09-26).** The brand accent is `#3b6ffe` in BOTH themes — `brand`, `ring`, the step progress, the active nav icons and the chrome ring. A primary CTA (`primary`) is `#386afa` with a white label (`primary-foreground`) in BOTH themes, 4.56:1; its hover (`primary-hover` `#3162f0`, 5.08:1) and pressed state (`primary-active` `#2c5be0`, 5.71:1) step darker in the same blue, so the label only gains contrast. Where the blue is TEXT — links, inline actions, selected text, zone labels — components use `text-primary-text`: Light `#2857e5` (5.86:1 on the card), Dark `#548cff` (5.56:1 on the card). Never use `text-primary` for text. `break-even`, `info` and the chart series are semantic or data colours and did not move.
 
 `positive` and `negative` are never the only signal for a value's direction — sign, arrow, or label must carry it too, for red-green colour blindness.
 
@@ -125,14 +126,10 @@ dark palette has to clear:
 | ------------------- | ------------------ | -------------- |
 | `muted-foreground`  | 6.87:1             | AA normal text |
 | `subtle-foreground` | 5.14:1             | AA normal text |
-| `primary`           | 5.35:1             | AA normal text |
+| `primary-text`      | 5.56:1             | AA normal text |
 | `break-even`        | 4.88:1             | AA normal text |
 
-`primary-foreground` is DARK ink (`#0d0d0d`) in the dark theme, not the page
-foreground. Raising `primary` to clear AA as text made it too light to carry
-`#f6f6f6` as a button label (3.07:1); the filled `primary` button therefore
-reads as dark-on-cyan, at 5.86:1. Light mode is unaffected — `#ffffff` on
-`#1d4ed8` is 6.70:1.
+`primary-foreground` is white (`#ffffff`) in both themes, on the `#386afa` CTA fill (4.56:1). Where the brand blue is text on the card, `primary-text` carries it (above).
 
 ### Step progress
 

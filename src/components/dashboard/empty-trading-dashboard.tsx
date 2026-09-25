@@ -179,7 +179,7 @@ export function NoActiveTradingAccountRecovery() {
       </p>
       <Link
         href="/app/accounts"
-        className="text-primary-foreground bg-primary hover:bg-primary-hover inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
+        className="text-primary-foreground bg-primary hover:bg-primary-hover active:bg-primary-active inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
       >
         {t('noActiveAccountCta')}
       </Link>

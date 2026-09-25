@@ -404,7 +404,7 @@ export function DashboardDataError() {
       <CardContent>
         <Link
           href="/app"
-          className="bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
+          className="bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
         >
           {t('error.retry')}
         </Link>
