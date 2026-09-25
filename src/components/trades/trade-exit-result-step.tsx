@@ -106,6 +106,7 @@ export function ExitTimeField({
   locale,
   error,
   lastRecordedExit,
+  optionalMarker = true,
   onChange,
 }: {
   id: string;
@@ -118,6 +119,8 @@ export function ExitTimeField({
   error?: string | undefined;
   /** ISO instant of the latest recorded exit leg, when one states a time. */
   lastRecordedExit: string | null;
+  /** Left out where the whole step is already optional and says so once. */
+  optionalMarker?: boolean;
   onChange: (value: string) => void;
 }) {
   const s = useTranslations('trades.stage5.time');
@@ -169,7 +172,7 @@ export function ExitTimeField({
         id={id}
         rowRef={rowFocus}
         label={label}
-        marker={<OptionalTag />}
+        marker={optionalMarker ? <OptionalTag /> : undefined}
         value={display}
         placeholder={s('notRecorded')}
         error={error}
@@ -423,6 +426,7 @@ export function FinalPnlField({
   adoptable,
   subtotal,
   subtotalBlocked,
+  quiet = false,
   onChange,
   onAdopt,
 }: {
@@ -438,6 +442,12 @@ export function FinalPnlField({
   subtotal: string | null;
   /** Why the subtotal cannot be offered yet, when that is worth saying. */
   subtotalBlocked: string | null;
+  /**
+   * The step's lead answer, said once: no Optional tag, the short hint, and a
+   * source line only when the figure was adopted — a typed figure is plainly
+   * the trader's own. Close Trade keeps the full wording.
+   */
+  quiet?: boolean;
   onChange: (value: string) => void;
   onAdopt: () => void;
 }) {
@@ -453,11 +463,11 @@ export function FinalPnlField({
         inputMode="decimal"
         size="lead"
         figure
-        hint={s('hint', { currency })}
+        hint={quiet ? s('hintShort') : s('hint', { currency })}
         error={error}
-        labelAside={<OptionalTag />}
+        labelAside={quiet ? undefined : <OptionalTag />}
       />
-      {source === null ? null : (
+      {source === null || (quiet && source === 'typed') ? null : (
         <p data-final-pnl-source-line="" className="text-muted-foreground text-xs">
           {s(source === 'adopted' ? 'sourceAdopted' : 'sourceTyped')}
         </p>
@@ -481,19 +491,43 @@ export function FinalPnlField({
 // ---------------------------------------------------------------------------
 
 /** Final Net P&L ÷ Risk at Entry. Unknown says what is missing; never a fabricated 0R. */
-export function ActualRReadoutRow({ readout }: { readout: ActualRReadout }) {
+export function ActualRReadoutRow({
+  readout,
+  variant = 'lead',
+}: {
+  readout: ActualRReadout;
+  /**
+   * `derived` sits under a lead Final Net P&L and stays smaller than it, marked
+   * Calculated, so it reads as what the figure above comes to — never as a
+   * second input competing with it.
+   */
+  variant?: 'lead' | 'derived';
+}) {
   const a = useTranslations('trades.create.recording.contractAfter');
+  const derived = variant === 'derived';
   return (
     <div
       data-actual-r={readout.status}
-      className="border-border flex min-w-0 flex-wrap items-end justify-between gap-x-4 gap-y-1 border-t pt-4"
+      data-actual-r-variant={variant}
+      className={cn(
+        'border-border flex min-w-0 flex-wrap justify-between gap-x-4 gap-y-1 border-t',
+        derived ? 'items-center pt-3' : 'items-end pt-4',
+      )}
     >
       <div className="min-w-0">
-        <p className="text-muted-foreground text-sm font-medium">{a('result.actualR')}</p>
+        <p className="text-muted-foreground flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
+          {a('result.actualR')}
+          {derived ? <Tag tone="context">{a('result.calculated')}</Tag> : null}
+        </p>
         <p className="text-subtle-foreground text-xs">{a('result.actualRBasis')}</p>
       </div>
       {readout.status === 'known' ? (
-        <p className="text-foreground text-3xl leading-none font-semibold tabular-nums">
+        <p
+          className={cn(
+            'text-foreground leading-none font-semibold tabular-nums',
+            derived ? 'text-xl' : 'text-3xl',
+          )}
+        >
           {formatR(readout.value)}
         </p>
       ) : (
@@ -513,10 +547,13 @@ export function TraderOutcomeField({
   idPrefix,
   value,
   contradicts,
+  hint,
   onChange,
 }: {
   idPrefix: string;
   value: OutcomeValue | null;
+  /** A host's own shorter wording of the outcome hint. */
+  hint?: string;
   /** The choice runs against the Final Net P&L sign — a quiet notice, never a block. */
   contradicts: boolean;
   onChange: (value: OutcomeValue | null) => void;
@@ -544,7 +581,7 @@ export function TraderOutcomeField({
           { value: 'loss', label: a('result.loss') },
         ]}
       />
-      <Helper>{a('result.outcomeHint')}</Helper>
+      <Helper>{hint ?? a('result.outcomeHint')}</Helper>
       {contradicts ? (
         <Notice>{value === 'win' ? a('result.winNegative') : a('result.lossPositive')}</Notice>
       ) : null}

@@ -242,6 +242,12 @@ function statusText(): string {
   return document.querySelector('[data-save-status]')?.textContent ?? '';
 }
 
+function pnlSource(): string | null {
+  return (
+    document.querySelector('[data-final-pnl-source]')?.getAttribute('data-final-pnl-source') ?? null
+  );
+}
+
 function stepSection(step: keyof typeof STEP_LABEL): HTMLElement {
   return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
 }
@@ -2435,6 +2441,59 @@ describe('psychology', () => {
   });
 });
 
+/*
+  STEP 5 SAYS WHAT THE TRADER ACTUALLY DID, IN ORDER OF WEIGHT: the whole
+  trade's Final Net P&L leads; Trader R sits beneath it as a smaller,
+  Calculated readout; the outcome is its own answer that the P&L never fills
+  in; and the final exit time and exit history follow as supporting detail.
+*/
+describe('Step 5 — Trader result hierarchy', () => {
+  it('leads with Final Net P&L, derives Trader R, and keeps the outcome and exits apart', () => {
+    renderForm();
+    goTo('plan');
+    typeInPlan('risk', 'Risk at entry', '50');
+    goTo('result');
+    const step = stepSection('result');
+    const blocks = [
+      step.querySelector('[data-result-panel]'),
+      step.querySelector('[data-result-outcome]'),
+      step.querySelector('[data-result-closing]'),
+    ];
+    for (const block of blocks) expect(block).not.toBeNull();
+    const [panel, outcome, closing] = blocks as HTMLElement[];
+    // In the order of weight, in the document too.
+    expect(
+      panel!.compareDocumentPosition(outcome!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      outcome!.compareDocumentPosition(closing!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // The result card holds the lead figure and what it comes to — nothing else.
+    expect(within(panel!).getByLabelText('Final net P&L')).toBeInTheDocument();
+    expect(panel!.querySelector('[data-exit-time]')).toBeNull();
+    type('Final net P&L', '80', panel);
+    const r = panel!.querySelector<HTMLElement>('[data-actual-r]')!;
+    expect(r).toHaveAttribute('data-actual-r-variant', 'derived');
+    expect(r).toHaveTextContent('Calculated');
+    expect(r).toHaveTextContent('+1.60R');
+    // The outcome is never set from the P&L.
+    expect(outcome!.querySelector('[data-trader-outcome]')).toHaveAttribute(
+      'data-trader-outcome',
+      'unanswered',
+    );
+    expect(
+      within(outcome!).getByText('Your own call. It is never set from the P&L.'),
+    ).toBeVisible();
+
+    // Supporting detail follows: the exit time, then the exit history.
+    expect(closing!.querySelector('[data-exit-time]')).not.toBeNull();
+    expect(within(closing!).getByText('Exit history')).toBeInTheDocument();
+    // The whole step is optional, so no field repeats an Optional tag.
+    expect(within(step).queryByText('Optional')).toBeNull();
+  });
+});
+
 describe('exit history', () => {
   it('accepts a reason-only exit and an explicit unknown scope', async () => {
     renderForm();
@@ -2505,7 +2564,9 @@ describe('exit history', () => {
     expect(screen.queryByRole('button', { name: 'Use recorded exits' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('90');
-    expect(screen.getByText('Entered by you.')).toBeInTheDocument();
+    // A typed figure is plainly the trader's own; only an adopted one says so.
+    expect(pnlSource()).toBe('typed');
+    expect(screen.queryByText('Entered by you.')).toBeNull();
     // Offered beside the Final Net P&L it would replace, and only on request.
     fireEvent.click(screen.getByRole('button', { name: 'Use recorded exits' }));
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('100.00');
@@ -2516,7 +2577,8 @@ describe('exit history', () => {
     expect(screen.queryByText(/but your final net P&L is/)).not.toBeInTheDocument();
     // Typing makes it the trader's own figure again.
     type('Final net P&L', '95');
-    expect(screen.getByText('Entered by you.')).toBeInTheDocument();
+    expect(pnlSource()).toBe('typed');
+    expect(screen.queryByText(/From your recorded exits/)).toBeNull();
   });
 
   it('never re-weights exit P&L by percentage, and blocks exits that close more than 100%', async () => {

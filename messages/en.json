@@ -2333,7 +2333,8 @@
             "exits": "Exit history",
             "read": "Your read on the trade",
             "readDescription": "Not needed to save. Answers given now are recorded as recalled after the trade.",
-            "context": "Trade idea, chart and price levels"
+            "context": "Trade idea, chart and price levels",
+            "closing": "How it closed"
           },
           "times": {
             "entry": "Entry time",
@@ -2361,11 +2362,13 @@
             "breakEven": "BE",
             "loss": "Loss",
             "outcomeHint": "Your own call, and it can differ from the P&L sign: a small profit you treat as a scratch can be BE.",
+            "outcomeHintShort": "Your own call. It is never set from the P&L.",
             "removeOutcomeAria": "Remove outcome answer",
             "winNegative": "You chose Win, but your final net P&L is negative. Check it if that is not what you meant. This does not block saving.",
             "lossPositive": "You chose Loss, but your final net P&L is positive. Check it if that is not what you meant. This does not block saving.",
             "actualR": "Trader R",
             "actualRBasis": "Final net P&L ÷ risk at entry",
+            "calculated": "Calculated",
             "unavailable": {
               "needs_pnl_and_risk": "Trader R needs your final net P&L and risk at entry.",
               "needs_risk": "Trader R needs your risk at entry.",
@@ -2412,7 +2415,6 @@
             "unknown": "Not sure",
             "removeCompletenessAria": "Remove answer about exit history",
             "subtotal": "Recorded exits add up to {amount}.",
-            "subtotalSupporting": "Supporting detail only. It does not replace your final net P&L.",
             "adopt": "Use recorded exits as final result",
             "adopted": "Final net P&L set to {amount} from your recorded exits.",
             "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving.",
@@ -3078,6 +3080,7 @@
       "pnl": {
         "label": "Final net P&L",
         "hint": "The whole trade's result after costs, in {currency}. Use a minus sign for a loss.",
+        "hintShort": "After costs. Use a minus sign for a loss.",
         "sourceTyped": "Entered by you.",
         "sourceAdopted": "From your recorded exits. Type a figure to replace it.",
         "subtotal": "Recorded exits add up to {amount}.",

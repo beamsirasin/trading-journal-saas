@@ -1234,25 +1234,16 @@ export function TradeAfterTradeForm({
         'result',
         'gap-4',
         <>
+          {/*
+            CANONICAL STAGE 5 — the same Final Net P&L, Trader R, outcome, final
+            exit time and exit history controls Close Trade uses, read in the
+            order of what the trader actually did: the whole trade's result
+            first, what it comes to in R beneath it, then the trader's own
+            judgement, and last the supporting detail of how it closed. Record
+            Closed never asks for a Part / All Remaining scope here: it
+            reconstructs a trade that is already closed.
+          */}
           <GroupCard filled data-result-panel="">
-            {/*
-                  CANONICAL STAGE 5 — the same final exit time, Final Net P&L,
-                  Trader R and outcome controls Close Trade uses. Record Closed
-                  never asks for a Part / All Remaining scope here: it
-                  reconstructs a trade that is already closed.
-                */}
-            <ExitTimeField
-              id="after-exitedAt"
-              label={a('times.exit')}
-              value={draft.exitedAt}
-              timezone={timezone}
-              locale={locale}
-              error={errorText('exitedAt')}
-              lastRecordedExit={
-                latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
-              }
-              onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-            />
             <FinalPnlField
               id="after-finalPnl"
               value={draft.finalPnl}
@@ -1272,6 +1263,7 @@ export function TradeAfterTradeForm({
                   : formatMoney(validation.exitSubtotalMinor)
               }
               subtotalBlocked={null}
+              quiet
               onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
               onAdopt={() => {
                 if (validation.exitSubtotalMinor === null) return;
@@ -1284,62 +1276,80 @@ export function TradeAfterTradeForm({
               }}
             />
             {/*
-                  ACTUAL R IS DERIVED, AND READS LIKE IT. It is not another
-                  field: it is what the figures above it come to, so it carries
-                  the group's largest number when it has one and says plainly
-                  what is still missing when it does not. Never a fabricated 0R.
-                */}
-            <ActualRReadoutRow readout={validation.actualR} />
+              TRADER R IS DERIVED, AND READS LIKE IT: smaller than the figure it
+              comes from, marked Calculated, and plain about what is missing
+              when it has no value. Never a fabricated 0R.
+            */}
+            <ActualRReadoutRow readout={validation.actualR} variant="derived" />
           </GroupCard>
 
+          {/* The trader's own judgement — a separate answer, never set from the P&L. */}
           <GroupCard data-result-outcome="">
             <TraderOutcomeField
               idPrefix="after-outcome"
               value={draft.outcome}
               contradicts={outcomeNotice !== undefined}
+              hint={a('result.outcomeHintShort')}
               onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
             />
           </GroupCard>
 
-          {/* Exit history: optional supporting evidence, never the result */}
-          <FoldedGroup
-            id="after-exits-toggle"
-            title={a('sections.exits')}
-            summary={
-              exitErrorCount > 0 ? (
-                <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                  <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                  {c('summary.hasErrors', { count: exitErrorCount })}
-                </span>
-              ) : recordedExits.length === 0 ? (
-                a('exits.summaryEmpty')
-              ) : (
-                a('exits.summaryCount', { count: recordedExits.length })
-              )
-            }
-            open={exitsOpen || exitErrorCount > 0}
-            onToggle={() => setExitsOpen((open) => !open)}
-          >
-            <ExitHistoryFields
-              draft={draft}
-              currency={currency}
-              errorText={errorText}
-              subtotal={validation.exitSubtotalMinor}
-              discrepancy={
-                discrepancy?.kind === 'exit_discrepancy'
-                  ? {
-                      subtotal: formatMoney(discrepancy.subtotalMinor),
-                      final: formatMoney(discrepancy.finalPnlMinor),
-                    }
-                  : null
+          {/* HOW IT CLOSED: supporting detail, below the result and never competing with it. */}
+          <div data-result-closing="" className="flex min-w-0 flex-col gap-3 pt-2">
+            <h3 className="text-muted-foreground text-sm font-semibold">{a('sections.closing')}</h3>
+            <ExitTimeField
+              id="after-exitedAt"
+              label={a('times.exit')}
+              value={draft.exitedAt}
+              timezone={timezone}
+              locale={locale}
+              error={errorText('exitedAt')}
+              lastRecordedExit={
+                latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
               }
-              formatMoney={formatMoney}
-              onAdd={() => apply((current) => addExit(current, generateId()))}
-              onRemove={(id) => apply((current) => removeExit(current, id))}
-              onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
-              onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+              optionalMarker={false}
+              onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
             />
-          </FoldedGroup>
+            {/* Exit history: optional supporting evidence, never the result */}
+            <FoldedGroup
+              id="after-exits-toggle"
+              title={a('sections.exits')}
+              summary={
+                exitErrorCount > 0 ? (
+                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
+                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                    {c('summary.hasErrors', { count: exitErrorCount })}
+                  </span>
+                ) : recordedExits.length === 0 ? (
+                  a('exits.summaryEmpty')
+                ) : (
+                  a('exits.summaryCount', { count: recordedExits.length })
+                )
+              }
+              open={exitsOpen || exitErrorCount > 0}
+              onToggle={() => setExitsOpen((open) => !open)}
+            >
+              <ExitHistoryFields
+                draft={draft}
+                currency={currency}
+                errorText={errorText}
+                subtotal={validation.exitSubtotalMinor}
+                discrepancy={
+                  discrepancy?.kind === 'exit_discrepancy'
+                    ? {
+                        subtotal: formatMoney(discrepancy.subtotalMinor),
+                        final: formatMoney(discrepancy.finalPnlMinor),
+                      }
+                    : null
+                }
+                formatMoney={formatMoney}
+                onAdd={() => apply((current) => addExit(current, generateId()))}
+                onRemove={(id) => apply((current) => removeExit(current, id))}
+                onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+                onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+              />
+            </FoldedGroup>
+          </div>
         </>,
       )}
 
@@ -1529,7 +1539,7 @@ function ExitHistoryFields({
       <Helper>{a('exits.description')}</Helper>
       {/* The disclosure's own summary already says there are none. */}
       {draft.exits.length === 0 ? null : (
-        <ol className="flex min-w-0 flex-col gap-3">
+        <ol className="divide-border flex min-w-0 flex-col divide-y">
           {draft.exits.map((exit, index) => {
             const number = index + 1;
             const prefix = `after-exit-${exit.id}`;
@@ -1537,7 +1547,7 @@ function ExitHistoryFields({
               <li
                 key={exit.id}
                 data-after-exit=""
-                className="border-border flex min-w-0 flex-col gap-4 rounded-md border px-3 py-3 sm:px-4"
+                className="flex min-w-0 flex-col gap-4 py-4 first:pt-0"
               >
                 <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                   <p className="text-foreground text-sm font-semibold">
@@ -1560,6 +1570,7 @@ function ExitHistoryFields({
                   status={c('notAnswered')}
                   columns={3}
                   compact
+                  fit="split"
                   aside={
                     <InlineAction
                       ariaLabel={a('exits.removeScopeAria', { number })}
@@ -1673,12 +1684,9 @@ function ExitHistoryFields({
       ) : null}
 
       {subtotal === null ? null : (
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <p className="text-foreground text-sm tabular-nums">
-            {a('exits.subtotal', { amount: formatMoney(subtotal) })}
-          </p>
-          <p className="text-muted-foreground text-xs">{a('exits.subtotalSupporting')}</p>
-        </div>
+        <p className="text-foreground text-sm tabular-nums">
+          {a('exits.subtotal', { amount: formatMoney(subtotal) })}
+        </p>
       )}
       {discrepancy === null ? null : (
         <Notice
