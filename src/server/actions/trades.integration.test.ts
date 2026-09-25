@@ -1017,6 +1017,62 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       };
     }
 
+    /*
+      ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). Both new-trade
+      Saves refuse it at the boundary — a stale client or a regression is
+      visible, never quietly trimmed — and write nothing; the same Saves
+      without it succeed and store no Actual Risk.
+    */
+    it('refuses a retired Actual Risk on Record Open and Record Closed, and saves without it', async () => {
+      const { fw } = await freshFixture();
+      const openPayload = (overrides: Record<string, unknown> = {}) => ({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        recordingTiming: 'at_entry',
+        recordingContract: 'add_trade_v1',
+        systemPlanBasis: 'money',
+        symbol: 'XAUUSD',
+        direction: 'long' as const,
+        plannedRiskState: 'defined',
+        plannedRiskMinor: '5000',
+        ...overrides,
+      });
+      const before = (await db.select().from(trades)).length;
+
+      for (const retired of [
+        { actualRiskAnswer: 'matched' },
+        { actualRiskAnswer: 'different', actualInitialRiskMinor: '6000' },
+        { actualInitialRiskMinor: '6000' },
+      ]) {
+        expect(await createTradeAction(openPayload(retired))).toMatchObject({
+          ok: false,
+          error: { code: 'validation_error' },
+        });
+        expect(
+          await createCompletedTradeAction(
+            completedPayload(fw, { plannedRiskMinor: '5000', ...retired }),
+          ),
+        ).toMatchObject({ ok: false, error: { code: 'validation_error' } });
+      }
+      // A Record Open amount is named at its field.
+      expect(
+        await createTradeAction(openPayload({ actualInitialRiskMinor: '6000' })),
+      ).toMatchObject({ error: { fieldErrors: { actualInitialRiskMinor: expect.any(Array) } } });
+      // Nothing was written by any refused Save.
+      expect((await db.select().from(trades)).length).toBe(before);
+
+      // Normal saves still work, and store no Actual Risk.
+      const opened = await createTradeAction(openPayload());
+      const closed = await createCompletedTradeAction(
+        completedPayload(fw, { plannedRiskMinor: '5000', finalPnlMinor: '7500' }),
+      );
+      if (!opened.ok || !closed.ok) throw new Error('normal saves failed');
+      for (const tradeId of [opened.data.tradeId, closed.data.tradeId]) {
+        const [row] = await db.select().from(trades).where(eq(trades.id, tradeId));
+        expect(row).toMatchObject({ actualRiskAnswer: null, actualInitialRiskMinor: null });
+      }
+    });
+
     it('returns a stable serializable closed result and exact replay', async () => {
       const { fw } = await freshFixture();
       const exitedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -1131,13 +1187,11 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         ok: false,
         error: { code: 'validation_error', fieldErrors: { targetState: expect.any(Array) } },
       });
+      // Retired from capture (decision 56): not a field of this Save at all.
       const matched = await createCompletedTradeAction(
         completedPayload(fw, { actualRiskAnswer: 'matched' }),
       );
-      expect(matched).toMatchObject({
-        ok: false,
-        error: { code: 'validation_error', fieldErrors: { actualRiskAnswer: expect.any(Array) } },
-      });
+      expect(matched).toMatchObject({ ok: false, error: { code: 'validation_error' } });
       const inherited = await createCompletedTradeAction(
         completedPayload(fw, {
           strategyId: fw.strategyId,

@@ -12,7 +12,6 @@ import {
 } from '@/lib/storage/chart-attachment';
 import { parseInstant } from '@/lib/time/parse';
 import {
-  ACTUAL_RISK_ANSWERS,
   ENTERED_AT_SOURCES,
   EXIT_PLAN_PROVENANCES,
   PLANNED_RISK_STATES,
@@ -502,7 +501,6 @@ const CreateTradeObjectSchema = z
     contextEntryPrice: positiveDecimalField().nullable().optional(),
     contextStopPrice: positiveDecimalField().nullable().optional(),
     contextPositionSize: positiveDecimalField().nullable().optional(),
-    actualRiskAnswer: z.enum(['matched', 'different']).optional(),
     enteredAtSource: z.enum(ENTERED_AT_SOURCES).optional(),
     exitPlan: exitPlanChoiceField().optional(),
     exitPlanInheritanceDeclined: z.boolean().optional(),
@@ -519,7 +517,6 @@ const ADD_TRADE_CONTRACT_ONLY_FIELDS = [
   'contextEntryPrice',
   'contextStopPrice',
   'contextPositionSize',
-  'actualRiskAnswer',
   'enteredAtSource',
   'exitPlan',
   'exitPlanInheritanceDeclined',
@@ -545,10 +542,10 @@ type CreateTradeObject = z.output<typeof CreateTradeObjectSchema>;
  * at Entry are required; an explicit Fixed Target needs Target Profit or a TP
  * price; an entry time carries its source.
  *
- * ACTUAL RISK IS NOT REQUIRED. Matched and Different are answers the trader
- * gives; saying nothing is Unanswered, and the row is stored with no answer
- * rather than a match nobody stated (contract §2, §8). Requiring one here is
- * what made every At Entry Save claim `matched` by default.
+ * ACTUAL RISK IS RETIRED (contract decision 56). `actualRiskAnswer` is not a
+ * field of this schema, so sending it is an unrecognized key; and a contract
+ * Save that carries `actualInitialRiskMinor` is refused below. Legacy (non-
+ * contract) creates keep that amount — it is their R denominator.
  */
 function addAddTradeContractIssues(
   data: CreateTradeObject,
@@ -586,8 +583,8 @@ function addAddTradeContractIssues(
   } else if (hasTargetProfit || hasTargetPrice) {
     issue('target_values_require_fixed_target', 'targetState');
   }
-  if (data.actualRiskAnswer === 'matched' && data.actualInitialRiskMinor != null) {
-    issue('matched_actual_risk_has_no_amount', 'actualInitialRiskMinor');
+  if (data.actualInitialRiskMinor != null) {
+    issue('actual_risk_retired', 'actualInitialRiskMinor');
   }
   if ((data.enteredAt === undefined) !== (data.enteredAtSource === undefined)) {
     issue('entered_at_source_mismatch', 'enteredAtSource');
@@ -611,13 +608,6 @@ function addAddTradeContractIssues(
     data.exitPlanInheritanceDeclined === true
   ) {
     issue('inherited_exit_plan_conflicts_with_declined', 'exitPlan');
-  }
-  if (
-    data.actualRiskAnswer === 'different' &&
-    data.actualInitialRiskMinor != null &&
-    data.actualInitialRiskMinor === data.plannedRiskMinor
-  ) {
-    issue('different_actual_risk_equals_risk_at_entry', 'actualInitialRiskMinor');
   }
 }
 
@@ -1081,11 +1071,10 @@ const CompletedTradeObjectSchema = z
     exitedAt: nullableInstantField(),
     /** Risk at Entry — the 1R baseline. Blank is not recorded. */
     plannedRiskMinor: nullablePositiveMinorField(),
-    /** Absent = Unanswered. */
-    actualRiskAnswer: z.enum(ACTUAL_RISK_ANSWERS).optional(),
-    /** Only with Different; blank is Different, amount unknown. */
-    actualInitialRiskMinor: nullablePositiveMinorField(),
-    /** Absent = Unanswered. */
+    /*
+      No `actualRiskAnswer` / `actualInitialRiskMinor`: Actual Risk is retired
+      from capture (decision 56), so both are unrecognized keys here.
+    */
     /** Absent = Unanswered; 'no_defined' carries no amount (decision 54). */
     plannedRiskState: z.enum(PLANNED_RISK_STATES).optional(),
     /** Retired from capture (decision 54); still accepted for older clients. */
@@ -1189,20 +1178,6 @@ function addAfterTradeContractIssues(
     }
   } else if (hasTargetProfit || hasTargetPrice) {
     issue('target_values_require_fixed_target', ['targetState']);
-  }
-
-  if (data.actualRiskAnswer === 'matched' && data.plannedRiskMinor == null) {
-    issue('matched_actual_risk_requires_risk_at_entry', ['actualRiskAnswer']);
-  }
-  if (data.actualRiskAnswer !== 'different' && data.actualInitialRiskMinor != null) {
-    issue('actual_risk_amount_requires_different', ['actualInitialRiskMinor']);
-  }
-  if (
-    data.actualRiskAnswer === 'different' &&
-    data.actualInitialRiskMinor != null &&
-    data.actualInitialRiskMinor === data.plannedRiskMinor
-  ) {
-    issue('different_actual_risk_equals_risk_at_entry', ['actualInitialRiskMinor']);
   }
 
   if (data.exits.length === 0 && data.exitHistoryCompleteness !== undefined) {

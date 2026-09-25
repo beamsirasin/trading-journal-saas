@@ -54,6 +54,7 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'invalid_initial_risk',
   'invalid_exit_plan',
   'invalid_plan_outcome',
+  'actual_risk_retired',
   'invalid_execution_context',
   'invalid_closed_bps',
   'invalid_exit_shape',
@@ -131,6 +132,7 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'invalid_initial_risk',
   'invalid_exit_plan',
   'invalid_plan_outcome',
+  'actual_risk_retired',
   'invalid_execution_context',
   'invalid_closed_bps',
   'invalid_exit_shape',
@@ -202,6 +204,7 @@ export function mapServiceErrorToPublicCode(
     case 'invalid_status_transition':
     case 'invalid_exit_plan':
     case 'invalid_plan_outcome':
+    case 'actual_risk_retired':
     case 'invalid_initial_risk':
     case 'invalid_execution_context':
     case 'invalid_closed_bps':

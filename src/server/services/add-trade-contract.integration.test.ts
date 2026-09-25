@@ -35,6 +35,7 @@ import { replaceTradeEmotions } from './trade-discipline';
 import { recordContractExit } from './trade-exit-contract';
 import {
   assignTradeClassification,
+  correctTradeExecution,
   createTrade,
   updateTradePlan,
   type CreateTradeInput,
@@ -165,7 +166,6 @@ describe('Add Trade contract At Entry (real database)', () => {
       // Risk is an explicit decision since contract decision 54.
       plannedRiskState: 'defined',
       plannedRiskMinor: 10_000n,
-      actualRiskAnswer: 'matched',
       ...overrides,
     };
   }
@@ -174,6 +174,21 @@ describe('Add Trade contract At Entry (real database)', () => {
     const result = await createTrade(workspaceId, actorUserId, contractInput(fw, overrides));
     if (!result.ok) throw new Error(`contract create failed: ${result.code}`);
     return result.tradeId;
+  }
+
+  /**
+   * A contract Trade as it was saved BEFORE decision 56 retired Actual Risk:
+   * its answer written directly, because no current path may create one.
+   */
+  async function seedHistoricalActualRisk(
+    tradeId: string,
+    answer: 'matched' | 'different' | 'unknown',
+    amount: bigint | null,
+  ) {
+    await db
+      .update(trades)
+      .set({ actualRiskAnswer: answer, actualInitialRiskMinor: amount })
+      .where(eq(trades.id, tradeId));
   }
 
   async function readTrade(tradeId: string) {
@@ -246,14 +261,30 @@ describe('Add Trade contract At Entry (real database)', () => {
       });
     });
 
+    it('refuses a new Actual Risk on a Record Open Save, and writes nothing', async () => {
+      const fw = await freshFramework();
+      const before = (await db.select().from(trades).where(eq(trades.workspaceId, workspaceId)))
+        .length;
+      for (const retired of [
+        { actualRiskAnswer: 'matched' as const },
+        { actualRiskAnswer: 'different' as const, actualInitialRiskMinor: 30_000n },
+        { actualInitialRiskMinor: 30_000n },
+      ]) {
+        expect(await createTrade(workspaceId, actorUserId, contractInput(fw, retired))).toEqual({
+          ok: false,
+          code: 'actual_risk_retired',
+        });
+      }
+      expect(
+        (await db.select().from(trades).where(eq(trades.workspaceId, workspaceId))).length,
+      ).toBe(before);
+    });
+
     it('keeps a historical Actual Risk exactly, and never lets it move R', async () => {
       const fw = await freshFramework();
       // Recorded under the earlier contract: a Different answer of 300.
-      const tradeId = await createContract(fw, {
-        ...ENTERED,
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 30_000n,
-      });
+      const tradeId = await createContract(fw, ENTERED);
+      await seedHistoricalActualRisk(tradeId, 'different', 30_000n);
       const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
         mutationKey: crypto.randomUUID(),
         scope: 'all_remaining',
@@ -274,6 +305,66 @@ describe('Add Trade contract At Entry (real database)', () => {
         actualR: '2.0000',
       });
     });
+
+    /*
+      THE ONE CORRECTION PATH THAT TOUCHES THE FIELD. It stays for legacy
+      Trades, whose actual risk is their R denominator. On a contract Trade it
+      may not change the value — that would record a new Actual Risk — but its
+      other corrections still work and leave the historical value alone.
+    */
+    it('execution correction: refuses a new Actual Risk on a contract Trade, keeps legacy correction', async () => {
+      const fw = await freshFramework();
+      const contractId = await createContract(fw, ENTERED);
+      await seedHistoricalActualRisk(contractId, 'different', 30_000n);
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, contractId, {
+          actualInitialRiskMinor: 20_000n,
+        }),
+      ).toMatchObject({ ok: false, code: 'actual_risk_retired' });
+      const plain = await createContract(fw, ENTERED);
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, plain, {
+          actualInitialRiskMinor: 10_000n,
+        }),
+      ).toMatchObject({ ok: false, code: 'actual_risk_retired' });
+      expect(await readTrade(plain)).toMatchObject({
+        actualRiskAnswer: null,
+        actualInitialRiskMinor: null,
+      });
+      // Another correction on the historical Trade works and keeps its value.
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, contractId, {
+          enteredAt: new Date('2026-09-01T09:30:00Z'),
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await readTrade(contractId)).toMatchObject({
+        actualRiskAnswer: 'different',
+        actualInitialRiskMinor: 30_000n,
+      });
+
+      // A legacy Trade still corrects its risk amount: it is its R denominator.
+      const legacy = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'XAUUSD',
+        direction: 'long',
+        recordingTiming: 'at_entry',
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 10_000n,
+        enteredAt: new Date('2026-09-01T10:00:00Z'),
+      });
+      if (!legacy.ok) throw new Error(`legacy create failed: ${legacy.code}`);
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, legacy.tradeId, {
+          actualInitialRiskMinor: 12_000n,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await readTrade(legacy.tradeId)).toMatchObject({
+        recordingContract: null,
+        actualInitialRiskMinor: 12_000n,
+        actualRiskAnswer: null,
+      });
+    });
   });
 
   describe('minimum Save and the 1R baseline', () => {
@@ -285,8 +376,8 @@ describe('Add Trade contract At Entry (real database)', () => {
         status: 'open',
         actualResultMode: 'money',
         plannedRiskMinor: 10_000n,
-        actualInitialRiskMinor: 10_000n,
-        actualRiskAnswer: 'matched',
+        actualInitialRiskMinor: null,
+        actualRiskAnswer: null,
         enteredAt: null,
         enteredAtSource: null,
         targetState: null,
@@ -316,12 +407,7 @@ describe('Add Trade contract At Entry (real database)', () => {
       ],
     ])('opens a No Defined Risk Trade %s', async (_label, extra) => {
       const fw = await freshFramework();
-      const {
-        systemPlanBasis: _basis,
-        plannedRiskMinor: _risk,
-        actualRiskAnswer: _answer,
-        ...base
-      } = contractInput(fw);
+      const { systemPlanBasis: _basis, plannedRiskMinor: _risk, ...base } = contractInput(fw);
       const result = await createTrade(workspaceId, actorUserId, {
         ...base,
         ...ENTERED,
@@ -368,13 +454,10 @@ describe('Add Trade contract At Entry (real database)', () => {
       expect(confirmed.enteredAtSource).toBe('trader');
     });
 
-    it('measures Actual R against Risk at Entry when Actual Risk was different', async () => {
+    it('measures Actual R against Risk at Entry when a historical Actual Risk was different', async () => {
       const fw = await freshFramework();
-      const tradeId = await createContract(fw, {
-        ...ENTERED,
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 30_000n,
-      });
+      const tradeId = await createContract(fw, ENTERED);
+      await seedHistoricalActualRisk(tradeId, 'different', 30_000n);
       const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
         mutationKey: crypto.randomUUID(),
         scope: 'all_remaining',
@@ -387,9 +470,10 @@ describe('Add Trade contract At Entry (real database)', () => {
       expect(row.actualR).toBe('1.5000');
     });
 
-    it('records Different with the amount unknown and still measures Actual R', async () => {
+    it('keeps a historical Different with the amount unknown and still measures Actual R', async () => {
       const fw = await freshFramework();
-      const tradeId = await createContract(fw, { ...ENTERED, actualRiskAnswer: 'different' });
+      const tradeId = await createContract(fw, ENTERED);
+      await seedHistoricalActualRisk(tradeId, 'different', null);
       expect(await readTrade(tradeId)).toMatchObject({
         actualRiskAnswer: 'different',
         actualInitialRiskMinor: null,
@@ -403,7 +487,7 @@ describe('Add Trade contract At Entry (real database)', () => {
       expect(closed).toMatchObject({ ok: true, actualR: '-0.5000' });
     });
 
-    it('refuses price as result authority and a Matched answer carrying an amount', async () => {
+    it('refuses price as result authority and a retired Actual Risk amount', async () => {
       const fw = await freshFramework();
       const priced = await createTrade(
         workspaceId,
@@ -416,7 +500,7 @@ describe('Add Trade contract At Entry (real database)', () => {
         actorUserId,
         contractInput(fw, { actualInitialRiskMinor: 12_000n }),
       );
-      expect(matchedAmount).toMatchObject({ ok: false, code: 'invalid_initial_risk' });
+      expect(matchedAmount).toMatchObject({ ok: false, code: 'actual_risk_retired' });
     });
 
     it('stores price context without calculating from it', async () => {
@@ -699,9 +783,15 @@ describe('Add Trade contract At Entry (real database)', () => {
       });
     });
 
-    it('Plan edit: a Matched Actual Risk follows Risk at Entry and a Different one does not', async () => {
+    /*
+      THE RETAINED HISTORICAL EDIT PATH. A Risk at Entry correction keeps a
+      historical Matched answer equal to it — maintaining an observation that
+      already exists, never creating one — and leaves a Different one alone.
+    */
+    it('Plan edit: a historical Matched Actual Risk follows Risk at Entry and a Different one does not', async () => {
       const fw = await freshFramework();
       const matched = await createContract(fw);
+      await seedHistoricalActualRisk(matched, 'matched', 10_000n);
       expect(
         await updateTradePlan(workspaceId, actorUserId, matched, { plannedRiskMinor: 12_000n }),
       ).toMatchObject({ ok: true });
@@ -710,11 +800,16 @@ describe('Add Trade contract At Entry (real database)', () => {
         actualInitialRiskMinor: 12_000n,
       });
 
-      const different = await createContract(fw, {
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 30_000n,
-      });
+      const different = await createContract(fw);
+      await seedHistoricalActualRisk(different, 'different', 30_000n);
       await updateTradePlan(workspaceId, actorUserId, different, { plannedRiskMinor: 12_000n });
+      // A Trade with no Actual Risk gains none from a plan edit.
+      const none = await createContract(fw);
+      await updateTradePlan(workspaceId, actorUserId, none, { plannedRiskMinor: 12_000n });
+      expect(await readTrade(none)).toMatchObject({
+        actualRiskAnswer: null,
+        actualInitialRiskMinor: null,
+      });
       expect(await readTrade(different)).toMatchObject({ actualInitialRiskMinor: 30_000n });
     });
 
@@ -757,23 +852,10 @@ describe('Add Trade contract At Entry (real database)', () => {
   });
 
   describe('contradictions are refused as validation, never left to the database', () => {
-    it('refuses a Different Actual Risk that states Risk at Entry’s own amount', async () => {
+    it('refuses a Risk at Entry edit that would equal a historical Different amount, keeping the answer', async () => {
       const fw = await freshFramework();
-      expect(
-        await createTrade(
-          workspaceId,
-          actorUserId,
-          contractInput(fw, { actualRiskAnswer: 'different', actualInitialRiskMinor: 10_000n }),
-        ),
-      ).toMatchObject({ ok: false, code: 'invalid_initial_risk' });
-    });
-
-    it('refuses a Risk at Entry edit that would equal a stated Different amount, keeping the answer', async () => {
-      const fw = await freshFramework();
-      const tradeId = await createContract(fw, {
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 30_000n,
-      });
+      const tradeId = await createContract(fw);
+      await seedHistoricalActualRisk(tradeId, 'different', 30_000n);
       expect(
         await updateTradePlan(workspaceId, actorUserId, tradeId, { plannedRiskMinor: 30_000n }),
       ).toMatchObject({ ok: false, code: 'invalid_plan' });

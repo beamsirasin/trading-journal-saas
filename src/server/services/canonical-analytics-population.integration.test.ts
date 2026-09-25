@@ -101,7 +101,6 @@ async function contractTrade(params: {
       systemPlanBasis: 'money',
       plannedRiskMinor: 10_000n,
       plannedRiskState: 'defined',
-      actualRiskAnswer: 'matched',
       enteredAt: new Date(params.exitedAt.getTime() - 60 * 60 * 1000),
       enteredAtSource: 'trader',
       ...(params.withTarget === true
@@ -647,7 +646,6 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
           systemPlanBasis: 'money',
           plannedRiskMinor: 10_000n,
           plannedRiskState: 'defined',
-          actualRiskAnswer: 'matched',
           enteredAt: new Date('2026-08-10T09:00:00Z'),
           enteredAtSource: 'trader',
         }),

@@ -313,7 +313,6 @@ describe('Add Trade contract After Trade (real database)', () => {
         direction: 'long',
         plannedRiskMinor: 10_000n,
         plannedRiskState: 'defined' as const,
-        actualRiskAnswer: 'matched' as const,
       };
       const open = await createTrade(workspaceId, actorUserId, atEntryRequest);
       if (!open.ok) throw new Error('At Entry save failed');
@@ -399,7 +398,6 @@ describe('Add Trade contract After Trade (real database)', () => {
           direction: 'long',
           plannedRiskMinor: 10_000n,
           plannedRiskState: 'defined' as const,
-          actualRiskAnswer: 'matched' as const,
         };
         const first = await createTrade(workspaceId, actorUserId, request);
         if (!first.ok) throw new Error('first save failed');
@@ -507,15 +505,14 @@ describe('Add Trade contract After Trade (real database)', () => {
       const both = await save(fw, {
         finalPnlMinor: 7_500n,
         plannedRiskMinor: 5_000n,
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 2_500n,
       });
       const noRisk = await save(fw, { finalPnlMinor: 7_500n });
       const noPnl = await save(fw, { plannedRiskMinor: 5_000n });
       expect(both.actualR).toBe('1.5000');
       expect(await readTrade(both.tradeId)).toMatchObject({
         actualR: '1.5000',
-        actualInitialRiskMinor: 2_500n,
+        actualRiskAnswer: null,
+        actualInitialRiskMinor: null,
       });
       expect(noRisk.actualR).toBeNull();
       expect(noPnl.actualR).toBeNull();
@@ -532,62 +529,40 @@ describe('Add Trade contract After Trade (real database)', () => {
     });
   });
 
-  describe('Actual Risk', () => {
+  /*
+    ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). A Record Closed
+    Save may not create an Actual Risk observation in any form — answer,
+    amount, or both — and a refused Save writes nothing.
+  */
+  describe('Actual Risk (retired)', () => {
     it.each([
-      ['Unanswered', {}, null, null],
-      ['Matched', { actualRiskAnswer: 'matched' }, 'matched', 5_000n],
+      ['Matched', { actualRiskAnswer: 'matched' }],
       [
-        'Different, known',
+        'Different with an amount',
         { actualRiskAnswer: 'different', actualInitialRiskMinor: 6_000n },
-        'different',
-        6_000n,
       ],
-      ['Different, amount unknown', { actualRiskAnswer: 'different' }, 'different', null],
-      ["Don't know", { actualRiskAnswer: 'unknown' }, 'unknown', null],
-    ] as const)('keeps %s as its own answer', async (_label, answer, stored, amount) => {
+      ['Different, amount unknown', { actualRiskAnswer: 'different' }],
+      ["Don't know", { actualRiskAnswer: 'unknown' }],
+      ['an amount alone', { actualInitialRiskMinor: 6_000n }],
+    ] as const)('refuses %s and writes nothing', async (_label, retired) => {
       const fw = await freshFramework();
-      const result = await save(fw, { plannedRiskMinor: 5_000n, ...answer });
+      const request = input(fw, { plannedRiskMinor: 5_000n, ...retired });
+      expect(await createCompletedTrade(workspaceId, actorUserId, request)).toEqual({
+        ok: false,
+        code: 'actual_risk_retired',
+      });
+      expect(
+        await db.select().from(trades).where(eq(trades.mutationKey, request.mutationKey)),
+      ).toEqual([]);
+    });
+
+    it('saves the same Trade without it and stores no Actual Risk', async () => {
+      const fw = await freshFramework();
+      const result = await save(fw, { plannedRiskMinor: 5_000n });
       expect(await readTrade(result.tradeId)).toMatchObject({
-        actualRiskAnswer: stored,
-        actualInitialRiskMinor: amount,
+        actualRiskAnswer: null,
+        actualInitialRiskMinor: null,
         plannedRiskMinor: 5_000n,
-      });
-    });
-
-    it('refuses Matched without a Risk at Entry, and a Different amount equal to it', async () => {
-      const fw = await freshFramework();
-      expect(
-        await createCompletedTrade(
-          workspaceId,
-          actorUserId,
-          input(fw, { actualRiskAnswer: 'matched' }),
-        ),
-      ).toEqual({ ok: false, code: 'invalid_initial_risk' });
-      expect(
-        await createCompletedTrade(
-          workspaceId,
-          actorUserId,
-          input(fw, {
-            plannedRiskMinor: 5_000n,
-            actualRiskAnswer: 'different',
-            actualInitialRiskMinor: 5_000n,
-          }),
-        ),
-      ).toEqual({ ok: false, code: 'invalid_initial_risk' });
-    });
-
-    it('accepts Don’t know and Different without any Risk at Entry', async () => {
-      const fw = await freshFramework();
-      const unknown = await save(fw, { actualRiskAnswer: 'unknown' });
-      const different = await save(fw, {
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 4_000n,
-      });
-      expect(await readTrade(unknown.tradeId)).toMatchObject({ actualRiskAnswer: 'unknown' });
-      expect(await readTrade(different.tradeId)).toMatchObject({
-        actualRiskAnswer: 'different',
-        actualInitialRiskMinor: 4_000n,
-        plannedRiskMinor: null,
       });
     });
   });
@@ -927,7 +902,6 @@ describe('Add Trade contract After Trade (real database)', () => {
           direction: 'long',
           plannedRiskMinor: 5_000n,
           plannedRiskState: 'defined',
-          actualRiskAnswer: 'matched',
           strategyId: fw.strategyId,
           setupId: fw.setupId,
           conditionSetToken: createConditionSetToken(fw.setupVersionId),

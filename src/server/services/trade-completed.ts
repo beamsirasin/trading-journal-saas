@@ -85,6 +85,10 @@ export interface CreateCompletedTradeInput {
   readonly exitedAt?: Date | null;
   /** Risk at Entry. */
   readonly plannedRiskMinor?: bigint | null;
+  /**
+   * Retired from capture (contract decision 56). Present only so a caller that
+   * still sends them is refused with `actual_risk_retired`, never trimmed.
+   */
   readonly actualRiskAnswer?: ActualRiskAnswer | undefined;
   readonly actualInitialRiskMinor?: bigint | null;
   readonly plannedRiskState?: PlannedRiskState | undefined;
@@ -198,6 +202,10 @@ function preflightCompletedInput(
   }
   if (input.recordingContract !== RECORDING_CONTRACT_ADD_TRADE_V1) {
     return { ok: false, code: 'invalid_plan_authority' };
+  }
+  // No new Actual Risk observation may be created (decision 56).
+  if (input.actualRiskAnswer !== undefined || input.actualInitialRiskMinor != null) {
+    return { ok: false, code: 'actual_risk_retired' };
   }
 
   const enteredAt = input.enteredAt ?? null;
@@ -383,8 +391,6 @@ export async function createCompletedTrade(
           ? { systemPlanBasis: 'money' as const }
           : {}),
         plannedRiskMinor: input.plannedRiskMinor ?? null,
-        actualRiskAnswer: input.actualRiskAnswer,
-        actualInitialRiskMinor: input.actualInitialRiskMinor ?? null,
         plannedRiskState: input.plannedRiskState,
         plannedStopMethod: input.plannedStopMethod,
         targetState: input.targetState,

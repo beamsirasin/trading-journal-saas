@@ -222,7 +222,6 @@ describe('trades/schemas — valid input', () => {
       enteredAt: '2026-08-01T09:00:00Z',
       exitedAt: '2026-08-01T12:00:00Z',
       plannedRiskMinor: '5000',
-      actualRiskAnswer: 'different',
       targetState: 'fixed',
       plannedRewardMinor: '10000',
       targetPrice: '1.1100',
@@ -304,17 +303,6 @@ describe('trades/schemas — valid input', () => {
   it.each([
     ['a Fixed Target with no representation', { targetState: 'fixed' }, 'targetState'],
     ['Target values without a Fixed Target', { plannedRewardMinor: '100' }, 'targetState'],
-    ['Matched without a Risk at Entry', { actualRiskAnswer: 'matched' }, 'actualRiskAnswer'],
-    [
-      'an Actual Risk amount without Different',
-      { plannedRiskMinor: '100', actualRiskAnswer: 'unknown', actualInitialRiskMinor: '50' },
-      'actualInitialRiskMinor',
-    ],
-    [
-      'a Different amount equal to Risk at Entry',
-      { plannedRiskMinor: '100', actualRiskAnswer: 'different', actualInitialRiskMinor: '100' },
-      'actualInitialRiskMinor',
-    ],
     [
       'an inherited Strategy default Exit Plan',
       {
@@ -333,6 +321,31 @@ describe('trades/schemas — valid input', () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
+  });
+
+  /*
+    ACTUAL RISK IS RETIRED FROM CAPTURE (decision 56): a Record Closed Save
+    carrying either field is refused as an unrecognized key, never trimmed.
+  */
+  it.each([
+    [
+      'an Actual Risk answer',
+      { plannedRiskMinor: '100', actualRiskAnswer: 'matched' },
+      'actualRiskAnswer',
+    ],
+    ["a Don't-know Actual Risk", { actualRiskAnswer: 'unknown' }, 'actualRiskAnswer'],
+    [
+      'an Actual Risk amount',
+      { plannedRiskMinor: '100', actualInitialRiskMinor: '50' },
+      'actualInitialRiskMinor',
+    ],
+  ] as const)('refuses %s on a Record Closed Save', (_label, overrides, key) => {
+    const result = CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), ...overrides });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toEqual([
+      expect.objectContaining({ code: 'unrecognized_keys', keys: [key] }),
+    ]);
   });
 
   it.each(['money_target', 'money_stop', 'money_break_even'] as const)(

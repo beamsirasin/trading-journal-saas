@@ -574,6 +574,8 @@ export type CreateTradeErrorCode =
   | 'invalid_execution_context'
   | 'invalid_exit_plan'
   | 'invalid_classification_request'
+  /** Actual Risk is retired from capture (decision 56); a new contract Trade may not carry one. */
+  | 'actual_risk_retired'
   /** The Save key was already used by a request that said something else (contract §23). */
   | 'mutation_replay_conflict';
 
@@ -695,13 +697,17 @@ function validateContractCreate(
     return 'invalid_plan_authority';
   }
   if (input.plannedRiskMinor != null && input.plannedRiskMinor <= 0n) return 'invalid_initial_risk';
+  /*
+    ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). No new contract
+    Trade — Record Open or Record Closed — may carry an Actual Risk answer or
+    amount: the Step 2 Risk is its one 1R. Refused, never silently dropped, so
+    a stale client or a regression is visible. Trades that recorded one before
+    the retirement keep it; nothing here reads or changes them.
+  */
+  if (input.actualRiskAnswer !== undefined || input.actualInitialRiskMinor != null) {
+    return 'actual_risk_retired';
+  }
   if (afterTrade) {
-    if (input.actualRiskAnswer === 'matched' && input.plannedRiskMinor == null) {
-      return 'invalid_initial_risk';
-    }
-    if (input.actualRiskAnswer !== 'different' && input.actualInitialRiskMinor != null) {
-      return 'invalid_initial_risk';
-    }
     if (input.enteredAtSource !== undefined && input.enteredAtSource !== 'trader') {
       return 'invalid_execution_context';
     }
@@ -723,39 +729,11 @@ function validateContractCreate(
     if (input.plannedRiskState === 'no_defined' && input.plannedRiskMinor != null) {
       return 'invalid_initial_risk';
     }
-    // Actual Risk is the trader's to answer or leave Unanswered; only a
-    // stated answer must be one this contract knows (contract §2, §8).
-    if (
-      input.actualRiskAnswer !== undefined &&
-      input.actualRiskAnswer !== 'matched' &&
-      input.actualRiskAnswer !== 'different'
-    ) {
-      return 'invalid_initial_risk';
-    }
     if (input.postTradeEmotionKeys !== undefined || input.closedAtCreation !== undefined) {
       return 'invalid_plan_authority';
     }
   }
   if (input.plannedRiskState === 'no_defined' && input.plannedRiskMinor != null) {
-    return 'invalid_initial_risk';
-  }
-  // No planned 1R exists to match, so Actual Risk cannot claim it matched one.
-  if (input.plannedRiskState === 'no_defined' && input.actualRiskAnswer === 'matched') {
-    return 'invalid_initial_risk';
-  }
-  if (input.actualRiskAnswer === 'matched' && input.actualInitialRiskMinor != null) {
-    return 'invalid_initial_risk';
-  }
-  if (input.actualInitialRiskMinor != null && input.actualInitialRiskMinor <= 0n) {
-    return 'invalid_initial_risk';
-  }
-  // A Different Actual Risk that states Risk at Entry's own amount is a
-  // contradiction, and `trades_actual_risk_answer_check` refuses it.
-  if (
-    input.actualRiskAnswer === 'different' &&
-    input.actualInitialRiskMinor != null &&
-    input.actualInitialRiskMinor === input.plannedRiskMinor
-  ) {
     return 'invalid_initial_risk';
   }
   const hasTargetProfit = input.plannedRewardMinor != null;
@@ -2327,7 +2305,8 @@ export type CorrectTradeExecutionResult =
         | 'invalid_status_transition'
         | 'invalid_initial_risk'
         | 'invalid_execution_context'
-        | 'invalid_exit_time';
+        | 'invalid_exit_time'
+        | 'actual_risk_retired';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -2391,6 +2370,16 @@ export async function correctTradeExecution(
       'actualPositionSize' in input ? (input.actualPositionSize ?? null) : trade.actualPositionSize;
     const nextEnteredAt = input.enteredAt ?? trade.enteredAt;
 
+    /*
+      NO NEW ACTUAL RISK ON A CONTRACT TRADE (decision 56). This correction path
+      exists for legacy Trades, whose actual_initial_risk_minor is their R
+      denominator and stays correctable. On a contract Trade the same field is
+      a retired observation: changing it would record a new Actual Risk answer,
+      so any change is refused. A historical value is carried through untouched.
+    */
+    if (isContractRow(trade) && nextActualInitialRiskMinor !== trade.actualInitialRiskMinor) {
+      return { ok: false, code: 'actual_risk_retired' };
+    }
     // A contract row never gains Price authority or a Price-mode result.
     if (
       isContractRow(trade) &&
@@ -2523,15 +2512,6 @@ export async function correctTradeExecution(
     await tx
       .update(trades)
       .set({
-        ...(isContractRow(trade) && nextActualInitialRiskMinor !== trade.actualInitialRiskMinor
-          ? {
-              actualRiskAnswer:
-                nextActualInitialRiskMinor !== null &&
-                nextActualInitialRiskMinor === trade.plannedRiskMinor
-                  ? ('matched' as const)
-                  : ('different' as const),
-            }
-          : {}),
         actualResultMode: nextActualResultMode,
         actualEntry: nextActualEntry,
         actualInitialStop: nextActualInitialStop,

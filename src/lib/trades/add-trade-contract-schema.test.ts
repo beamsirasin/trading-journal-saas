@@ -19,7 +19,6 @@ function contractInput(overrides: Record<string, unknown> = {}) {
     systemPlanBasis: 'money' as const,
     plannedRiskState: 'defined' as const,
     plannedRiskMinor: '10000',
-    actualRiskAnswer: 'matched' as const,
     ...overrides,
   };
 }
@@ -57,31 +56,28 @@ describe('CreateTradeSchema — Add Trade contract v1', () => {
   it('requires a positive Risk at Entry, and leaves Actual Risk to the trader', () => {
     const { plannedRiskMinor: _risk, ...withoutRisk } = contractInput();
     expect(issueMessages(withoutRisk)).toContain('contract_requires_risk_at_entry');
-    /*
-      ACTUAL RISK MAY BE UNANSWERED. Matched and Different are answers the
-      trader gives; an omitted answer is Unanswered and is accepted as such,
-      rather than being demanded and therefore defaulted to a match nobody
-      stated (contract §2, §8).
-    */
-    const { actualRiskAnswer: _answer, ...withoutAnswer } = contractInput();
-    expect(issueMessages(withoutAnswer)).toEqual([]);
   });
 
-  it('keeps a Matched Actual Risk free of a second amount but lets Different carry one or none', () => {
-    expect(issueMessages(contractInput({ actualInitialRiskMinor: '12000' }))).toContain(
-      'matched_actual_risk_has_no_amount',
-    );
-    expect(
-      issueMessages(
-        contractInput({ actualRiskAnswer: 'different', actualInitialRiskMinor: '12000' }),
-      ),
-    ).toEqual([]);
-    expect(issueMessages(contractInput({ actualRiskAnswer: 'different' }))).toEqual([]);
-    expect(
-      issueMessages(
-        contractInput({ actualRiskAnswer: 'different', actualInitialRiskMinor: '10000' }),
-      ),
-    ).toContain('different_actual_risk_equals_risk_at_entry');
+  /*
+    ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). A Record Open
+    Save refuses it outright — the answer is not a field at all, and the
+    amount is named — so a stale client is visible instead of quietly
+    trimmed. A legacy (non-contract) create still takes its risk amount.
+  */
+  it('refuses a retired Actual Risk answer or amount on a Record Open Save', () => {
+    for (const answer of ['matched', 'different']) {
+      const result = CreateTradeSchema.safeParse(contractInput({ actualRiskAnswer: answer }));
+      expect(result.success).toBe(false);
+      if (result.success) continue;
+      expect(result.error.issues).toEqual([
+        expect.objectContaining({ code: 'unrecognized_keys', keys: ['actualRiskAnswer'] }),
+      ]);
+    }
+    expect(issueMessages(contractInput({ actualInitialRiskMinor: '12000' }))).toEqual([
+      'actual_risk_retired',
+    ]);
+    // The same Save without them is accepted.
+    expect(issueMessages(contractInput())).toEqual([]);
   });
 
   it('attaches an incomplete Fixed Target to the Target question', () => {

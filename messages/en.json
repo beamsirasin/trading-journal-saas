@@ -2817,6 +2817,7 @@
       "unexpected_error": "Something went wrong. Please try again.",
       "invalid_exit_plan": "That exit plan is no longer available. Choose another plan and try again.",
       "invalid_plan_outcome": "That plan outcome no longer fits this trade's plan. Check the answer and try again.",
+      "actual_risk_retired": "Actual risk is no longer recorded. Reload the page and save again.",
       "contract_close_required": "This trade closes through Record partial exit or Close trade."
     },
     "workspace": {

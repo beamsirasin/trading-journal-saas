@@ -1138,7 +1138,6 @@ describe('trades DAL (real database)', () => {
         systemPlanBasis: 'money',
         plannedRiskMinor: 10_000n,
         plannedRiskState: 'defined',
-        actualRiskAnswer: 'matched',
       });
       if (!created.ok) throw new Error(`contract create failed: ${created.code}`);
 

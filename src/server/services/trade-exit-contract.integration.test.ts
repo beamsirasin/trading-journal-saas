@@ -136,7 +136,6 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       systemPlanBasis: 'money',
       plannedRiskMinor: 10_000n,
       plannedRiskState: 'defined',
-      actualRiskAnswer: 'matched',
       enteredAt: ENTERED_AT,
       enteredAtSource: 'trader',
     });

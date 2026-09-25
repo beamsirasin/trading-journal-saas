@@ -336,7 +336,6 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       contextEntryPrice: parsed.data.contextEntryPrice ?? null,
       contextStopPrice: parsed.data.contextStopPrice ?? null,
       contextPositionSize: parsed.data.contextPositionSize ?? null,
-      actualRiskAnswer: parsed.data.actualRiskAnswer,
       enteredAtSource: parsed.data.enteredAtSource,
       exitPlan: parsed.data.exitPlan,
       exitPlanInheritanceDeclined: parsed.data.exitPlanInheritanceDeclined,
