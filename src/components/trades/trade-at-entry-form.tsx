@@ -464,7 +464,7 @@ export function TradeAtEntryForm({
       (readiness.status === 'ready'
         ? requiredLeft > 0
           ? q('left', { count: requiredLeft })
-          : q('readyOpen')
+          : q('requiredComplete')
         : statusBlocked
           ? c('save.blocked', { count: blockedCount })
           : c('save.remaining', { count: remaining })));

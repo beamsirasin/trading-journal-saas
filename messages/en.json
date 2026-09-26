@@ -3318,7 +3318,7 @@
     "completion": {
       "left": "{count, plural, one {# required item left} other {# required items left}}. You can save now and finish them later.",
       "readyToClose": "Ready to close.",
-      "readyOpen": "Required items complete.",
+      "requiredComplete": "Required items complete.",
       "closeBlocked": "{count, plural, one {# required item left} other {# required items left}} before you can close this trade."
     }
   },

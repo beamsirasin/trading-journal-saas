@@ -598,7 +598,7 @@ export function TradeAfterTradeForm({
       (readiness.status === 'ready'
         ? requiredLeft > 0
           ? q('left', { count: requiredLeft })
-          : q('readyToClose')
+          : q('requiredComplete')
         : statusBlocked
           ? a('save.blocked', { count: blockedCount })
           : a('save.remaining', { count: remaining })));

@@ -2951,6 +2951,22 @@ describe('Required / Recommended / Optional', () => {
     expect(planRow('risk')).toHaveTextContent('50 USD');
   });
 
+  it('says the record’s requirements are complete — never "Ready to close" — for a closed trade', () => {
+    renderForm();
+    fillIdentity();
+    chooseRisk(openPlanRow('risk'), 'No defined risk');
+    closeEditor();
+    const target = openPlanRow('target');
+    fireEvent.click(within(target).getByRole('radio', { name: /^Fixed target/ }));
+    type('Target profit', '120', target);
+    closeEditor();
+    goTo('result');
+    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    closeAllAtOnce('100');
+    expect(statusText()).toBe('Required items complete.');
+    expect(statusText()).not.toMatch(/Ready to close/);
+  });
+
   it('never calls a step with Required items Optional, and never blocks navigation', () => {
     renderForm();
     const labels = Array.from(document.querySelectorAll('[data-step-link]')).map(
