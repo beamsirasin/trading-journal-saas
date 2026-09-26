@@ -12,26 +12,29 @@ import { Link, useRouter } from '@/i18n/navigation';
 
 import { createAtEntryDraft } from './at-entry-draft';
 import {
-  adoptRecordedExits,
   buildClosePayload,
   createCloseTradeDraft,
+  effectiveCloseMode,
   effectiveCloseTarget,
   firstCloseErrorField,
   lastRecordedExitTime,
   missingForFinalClose,
   serverErrorField,
-  setCompleteness,
+  setCloseMode,
   setFinalPnl,
   setOutcome,
+  setPartsResult,
   updateClosePlan,
   updateLeg,
   validateCloseDraft,
   type CloseErrorCode,
   type CloseErrors,
   type CloseField,
+  type CloseMode,
   type CloseScope,
   type CloseTradeContext,
   type CloseTradeDraft,
+  type PartsResult,
 } from './close-trade-draft';
 import {
   closeBasisMatches,
@@ -54,18 +57,18 @@ import {
 import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { TradeEntryDetails } from './trade-entry-details';
 import {
-  ActualRReadoutRow,
-  ExitDiscrepancyNotice,
+  ClosingExitsEditor,
   exitLegFieldId,
   ExitLegFields,
-  ExitTimeField,
-  FinalPnlField,
+  FinalExitTimeRow,
   RecordedExitsList,
-  TraderOutcomeField,
+  TradeResultCard,
+  TraderOutcomeCard,
+  type TradeResultIds,
 } from './trade-exit-result-step';
-import { tradeMoneyInputValue } from './trade-form-values';
 import { formatTradeInstant, formatTradeMoney } from './trade-format';
 import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
+import { StepHeading } from './trade-step-flow';
 
 const NO_PLAN_OPTIONS: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'> = {
   strategies: [],
@@ -76,6 +79,23 @@ const LEG_PREFIX = 'close-leg';
 const FINAL_TIME_ID = 'close-finalExitedAt';
 const FINAL_PNL_ID = 'close-finalPnl';
 const HISTORY_TOGGLE_ID = 'close-history-toggle';
+
+/**
+ * Step 5's Trade result controls. The closing exit's own fields serve both
+ * "Closed all at once" and "Record each exit" — only one is ever shown — so a
+ * refusal about the closing exit always has one control to land on.
+ */
+const RESULT_IDS: TradeResultIds = {
+  anchor: 'close-result',
+  closeMode: 'close-close-mode',
+  partsResult: 'close-parts-result',
+  fullClose: {
+    pnl: exitLegFieldId(LEG_PREFIX, 'pnl'),
+    price: exitLegFieldId(LEG_PREFIX, 'price'),
+    reason: exitLegFieldId(LEG_PREFIX, 'reason'),
+  },
+  statedTotal: FINAL_PNL_ID,
+};
 
 /** The control a blocked Save focuses for each field — always one that exists. */
 function fieldTargetId(field: CloseField): string {
@@ -111,16 +131,34 @@ const PLAN_IDS = {
   exitPlanRow: 'close-plan-exitPlan',
 } as const;
 
-/** Where a missing Required item is answered, for the first one a blocked close lands on. */
-const MISSING_TARGET: Readonly<
-  Record<'risk' | 'target' | 'exitPlan' | 'outcome' | 'traderResult', string>
-> = {
-  risk: `${PLAN_IDS.riskState}-defined`,
-  target: `${PLAN_IDS.targetState}-fixed`,
-  exitPlan: PLAN_IDS.exitPlanRow,
-  outcome: 'close-outcome-win',
-  traderResult: FINAL_PNL_ID,
-};
+/**
+ * Where a missing Required item is answered, for the first one a blocked
+ * close lands on. The Trader Result's control is the next unanswered question
+ * of the way the trader is recording the close.
+ */
+function missingTargetId(
+  item: 'risk' | 'target' | 'exitPlan' | 'outcome' | 'traderResult',
+  mode: CloseMode,
+  partsResult: PartsResult,
+): string {
+  switch (item) {
+    case 'risk':
+      return `${PLAN_IDS.riskState}-defined`;
+    case 'target':
+      return `${PLAN_IDS.targetState}-fixed`;
+    case 'exitPlan':
+      return PLAN_IDS.exitPlanRow;
+    case 'outcome':
+      return 'close-outcome-win';
+    case 'traderResult':
+      if (mode === 'unanswered') return `${RESULT_IDS.closeMode}-all_at_once`;
+      if (mode === 'in_parts' && partsResult === 'unanswered') {
+        return `${RESULT_IDS.partsResult}-each_exit`;
+      }
+      if (mode === 'in_parts' && partsResult === 'total_only') return FINAL_PNL_ID;
+      return exitLegFieldId(LEG_PREFIX, 'pnl');
+  }
+}
 
 const PRECISE_TIME_CODES: ReadonlySet<string> = new Set([
   'exit_time_before_entry',
@@ -129,21 +167,23 @@ const PRECISE_TIME_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * CANONICAL STAGE 5 — EXIT & RESULT for an Open contract Trade (Close
- * Existing Open Trade; Add Trade contract §10–§12, UX Rules §20).
+ * CLOSE EXISTING OPEN TRADE — Stage 5 for a Trade whose Steps 1–4 already
+ * exist (Add Trade contract §10–§12, decisions 57–59; UX Rules §20).
  *
  * THE ENTRY ACTION CHOSE THE SCOPE. "Record partial exit" arrives as Part and
  * "Close trade" as All Remaining; neither asks again.
  *
  * - PART shows one exit leg — time, P&L for this exit, % closed, price as
  *   context, reason — and nothing whole-trade. Saving leaves the trade Open.
- * - ALL REMAINING reads as the result: final exit date & time, Final Net P&L
- *   (authoritative), Actual R (derived only), and the trader's own Win / BE /
- *   Loss. The exit history — earlier legs, this closing leg, whether it is
- *   every exit — is supporting evidence, folded beneath. Post-Trade Emotion is
- *   not here: it is After-Trade Context (stage 6).
+ * - ALL REMAINING is the Final Close, and reads as canonical Step 5 — the
+ *   same components Record Closed shows: the trader's own Win / BE / Loss,
+ *   then the Trade result (how it closed, and the Final Net P&L that close
+ *   proves, with Trader R derived from it), then the final exit time. Only
+ *   what this lifecycle adds sits above it: which Trade this is, and — where
+ *   the Trade lacks them — the Required plan answers (decision 59).
  *
- * Both write through the one canonical action, `recordContractExitAction`.
+ * Both write through the one canonical action, `recordContractExitAction`; a
+ * Final Close continues into canonical Step 6.
  */
 export function TradeCloseForm({
   trade,
@@ -204,6 +244,7 @@ export function TradeCloseForm({
     },
   };
   const validation = validateCloseDraft(draft, context);
+  const closeMode = effectiveCloseMode(draft, context);
   /*
     ONLY A COMPLETE RECORD CLOSES (decision 59). Every applicable Required item
     of Steps 1–5 must be answered — by the Trade already, or here — before
@@ -225,6 +266,7 @@ export function TradeCloseForm({
   };
   // Whether there is anything to discard: the answers alone decide it.
   const pristine = JSON.stringify(draft) === JSON.stringify(createCloseTradeDraft(scope));
+  const formatMoney = (minor: string) => formatTradeMoney(minor, currency) ?? minor;
 
   /*
     RESTORE ONCE, AFTER HYDRATION. The server renders a blank form (it cannot
@@ -308,23 +350,13 @@ export function TradeCloseForm({
     return PRECISE_TIME_CODES.has(code) ? tErrors(code) : s(`errors.${code}`);
   };
   const errorCount = Object.keys(visibleErrors).length;
-  const legInHistory = allRemaining;
-  const legErrorCount = (
-    ['leg.exitedAt', 'leg.pnl', 'leg.closedPercent', 'leg.price'] as const
-  ).filter((field) => visibleErrors[field] !== undefined).length;
 
-  function focusField(field: CloseField) {
-    const inHistory = legInHistory && field.startsWith('leg.');
-    if (inHistory) setHistoryOpen(true);
-    const target = fieldTargetId(field);
-    // After the fold has opened, so the control is on screen when it is focused.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        const element = document.getElementById(target);
-        element?.focus();
-        element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-      }),
-    );
+  function focusId(target: string) {
+    requestAnimationFrame(() => {
+      const element = document.getElementById(target);
+      element?.focus();
+      element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    });
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -334,26 +366,20 @@ export function TradeCloseForm({
     // Answers given against a different Trade state are never sent unconfirmed.
     if (draftNotice === 'stale') {
       setFormMessage(s('draft.staleBlocked'));
-      requestAnimationFrame(() => document.getElementById('close-draft-keep')?.focus());
+      focusId('close-draft-keep');
       return;
     }
     const current = validateCloseDraft(draft, { ...context, now: new Date() });
     const blocked = firstCloseErrorField(current.errors);
     if (blocked !== null) {
-      focusField(blocked);
+      focusId(fieldTargetId(blocked));
       return;
     }
     const stillMissing = missingForFinalClose(draft, context, current);
     if (stillMissing.length > 0) {
       setFormMessage(q('closeBlocked', { count: stillMissing.length }));
       const first = stillMissing[0];
-      if (first !== undefined) {
-        requestAnimationFrame(() => {
-          const element = document.getElementById(MISSING_TARGET[first]);
-          element?.focus();
-          element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-        });
-      }
+      if (first !== undefined) focusId(missingTargetId(first, closeMode, draft.partsResult));
       return;
     }
     const body = JSON.stringify(
@@ -374,9 +400,9 @@ export function TradeCloseForm({
       const result = await recordContractExitAction(payload);
       if (result.ok) {
         if (draftScope !== null) removeCloseTask(draftScope, scope, new Date());
-        // The Trade is Closed now. The Final Close continues into Stage 6 —
-        // optional After-Trade Context — while a Part exit returns to the
-        // still-Open Trade and never enters it.
+        // The Trade is Closed now. The Final Close continues into canonical
+        // Step 6 — After trade — while a Part exit returns to the still-Open
+        // Trade and never enters it.
         router.push(
           allRemaining ? `/app/trades/after-trade?trade=${trade.tradeId}&from=close` : tradeHref,
           { scroll: false },
@@ -389,7 +415,7 @@ export function TradeCloseForm({
         setFormMessage(s('page.conflict'));
         return;
       }
-      const field = serverErrorField(code, draft, context);
+      const field = serverErrorField(code, draft);
       if (field !== null) {
         setServerErrors({
           [field]: PRECISE_TIME_CODES.has(code)
@@ -398,55 +424,21 @@ export function TradeCloseForm({
               ? allRemaining
                 ? 'percent_over_total'
                 : 'part_closes_position'
-              : code === 'exit_history_not_adoptable'
-                ? 'exit_history_not_adoptable'
-                : 'not_accepted',
+              : 'not_accepted',
         });
-        focusField(field);
+        focusId(fieldTargetId(field));
         return;
       }
       setFormMessage(tErrors(code));
     });
   }
 
-  const legFields = (
-    <ExitLegFields
-      idPrefix={LEG_PREFIX}
-      leg={draft.leg}
-      currency={currency}
-      timezone={timezone}
-      locale={locale}
-      timeLabel={s('time.legLabel')}
-      timeRowRef={legTimeRow}
-      lastRecordedExit={lastExit}
-      errors={{
-        exitedAt: errorText('leg.exitedAt'),
-        pnl: errorText('leg.pnl'),
-        closedPercent: errorText('leg.closedPercent'),
-        price: errorText('leg.price'),
-      }}
-      onChange={(patch) => apply((current) => updateLeg(current, patch))}
-    />
-  );
-
-  const hasHistory =
-    trade.exits.length > 0 || Object.values(draft.leg).some((value) => value.trim() !== '');
-  const subtotal =
-    validation.exitSubtotalMinor === null
-      ? null
-      : (formatTradeMoney(validation.exitSubtotalMinor, currency) ?? validation.exitSubtotalMinor);
-  const subtotalBlocked =
-    !allRemaining || validation.canAdoptExitSubtotal || draft.finalPnlAdopted
-      ? null
-      : subtotal !== null && draft.completeness !== 'complete'
-        ? s('pnl.needsComplete', { amount: subtotal })
-        : null;
-  const discrepancy =
-    allRemaining &&
-    draft.completeness === 'complete' &&
-    validation.exitSubtotalMinor !== null &&
-    validation.finalPnlMinor !== null &&
-    validation.exitSubtotalMinor !== validation.finalPnlMinor;
+  const legErrors = {
+    exitedAt: errorText('leg.exitedAt'),
+    pnl: errorText('leg.pnl'),
+    closedPercent: errorText('leg.closedPercent'),
+    price: errorText('leg.price'),
+  };
 
   const remaining =
     trade.closedBps !== null && trade.closedBps > 0 && trade.remainingBps !== null
@@ -460,7 +452,7 @@ export function TradeCloseForm({
       data-close-form={scope}
       className="flex min-w-0 flex-1 flex-col gap-4"
     >
-      {/* WHICH TRADE, IN ONE LINE: what is being closed, and what is known about it. */}
+      {/* WHICH TRADE, IN ONE LINE: Steps 1–4 already exist, so they are context here. */}
       <dl
         data-close-context=""
         className="border-border bg-muted/30 grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 rounded-lg border p-4 text-sm sm:grid-cols-4"
@@ -654,136 +646,98 @@ export function TradeCloseForm({
       ) : null}
 
       {allRemaining ? (
-        <>
-          {/* 1–3 — WHEN IT CLOSED, WHAT IT CAME TO, AND WHAT THAT IS IN R */}
-          <GroupCard filled data-close-result="">
-            <ExitTimeField
-              id={FINAL_TIME_ID}
-              rowRef={finalTimeRow}
-              label={s('time.finalLabel')}
-              value={draft.finalExitedAt}
-              timezone={timezone}
-              locale={locale}
-              error={errorText('finalExitedAt')}
-              lastRecordedExit={lastExit}
-              onChange={(finalExitedAt) => apply((current) => ({ ...current, finalExitedAt }))}
-            />
-            <FinalPnlField
-              id={FINAL_PNL_ID}
-              value={draft.finalPnl}
-              currency={currency}
-              error={errorText('finalPnl')}
-              source={
-                draft.finalPnl.trim() === '' ? null : draft.finalPnlAdopted ? 'adopted' : 'typed'
-              }
-              adoptable={validation.canAdoptExitSubtotal}
-              subtotal={subtotal}
-              subtotalBlocked={subtotalBlocked}
-              marker={<RequirementBadge level="required" className="ml-auto" />}
-              onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
-              onAdopt={() => {
-                if (validation.exitSubtotalMinor === null) return;
-                const text = tradeMoneyInputValue(validation.exitSubtotalMinor, currency);
-                apply((current) => adoptRecordedExits(current, text));
-              }}
-            />
-            <ActualRReadoutRow readout={validation.actualR} />
-          </GroupCard>
+        /*
+          CANONICAL STEP 5 — TRADER RESULT, the very components Record Closed
+          shows, in its order: the outcome, the Trade result, the final exit
+          time. Only the closing exit's own lifecycle facts differ, and they
+          come in through props: exits recorded while the Trade was open are
+          listed as saved history, and the exit this close adds is All
+          remaining by definition.
+        */
+        <section
+          aria-labelledby="close-step-heading"
+          data-close-step="result"
+          className="flex min-w-0 flex-col gap-4 pt-2"
+        >
+          <StepHeading
+            id="close-step-heading"
+            progress={a('steps.progress', { current: 5, total: 6 })}
+            title={a('steps.result.title')}
+            description={a('steps.result.description')}
+          />
 
-          {/* 4 — THE TRADER'S OWN CALL, always in view */}
-          <GroupCard title={s('page.sections.outcome')}>
-            <TraderOutcomeField
-              idPrefix="close-outcome"
-              value={draft.outcome}
-              contradicts={validation.outcomeContradictsPnl}
-              badge={<RequirementBadge level="required" />}
-              onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
-            />
-          </GroupCard>
+          <TraderOutcomeCard
+            idPrefix="close-outcome"
+            value={draft.outcome}
+            contradicts={validation.outcomeContradictsPnl}
+            onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
+          />
 
-          {/* 5 — EXIT HISTORY: supporting evidence, never the result */}
-          <FoldedGroup
-            id={HISTORY_TOGGLE_ID}
-            title={s('history.title')}
-            summary={
-              legErrorCount > 0 ? (
-                <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                  <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                  {c('summary.hasErrors', { count: legErrorCount })}
-                </span>
-              ) : trade.exits.length === 0 ? (
-                s('history.summaryEmpty')
-              ) : (
-                s('history.summaryCount', { count: trade.exits.length })
-              )
+          <TradeResultCard
+            ids={RESULT_IDS}
+            currency={currency}
+            closeMode={closeMode}
+            closedInParts={
+              trade.exits.length === 0
+                ? null
+                : s('page.closedInParts', { count: trade.exits.length })
             }
-            open={historyOpen || legErrorCount > 0}
-            onToggle={() => setHistoryOpen((open) => !open)}
-          >
-            <div className="flex min-w-0 flex-col gap-5 pb-3">
-              <Helper>{s('history.description')}</Helper>
-              {trade.exits.length === 0 ? null : (
-                <RecordedExitsList
-                  exits={trade.exits}
-                  currency={currency}
-                  timezone={timezone}
-                  locale={locale}
-                />
-              )}
-              <section
-                aria-labelledby="close-leg-heading"
-                className="border-border flex min-w-0 flex-col gap-4 rounded-md border px-3 py-3 sm:px-4"
-              >
-                <div className="flex min-w-0 flex-col gap-1">
-                  <h3 id="close-leg-heading" className="text-foreground text-sm font-semibold">
-                    {s('history.closingLeg')}
-                  </h3>
-                  <p className="text-muted-foreground text-xs">{s('history.closingLegHint')}</p>
-                </div>
-                {legFields}
-              </section>
-              {hasHistory ? (
-                <ChoiceGroup
-                  idPrefix="close-completeness"
-                  legend={a('exits.completeness')}
-                  value={draft.completeness === 'unanswered' ? null : draft.completeness}
-                  status={c('notAnswered')}
-                  columns={3}
-                  compact
-                  aside={
-                    <InlineAction
-                      ariaLabel={a('exits.removeCompletenessAria')}
-                      onClick={() => apply((current) => setCompleteness(current, 'unanswered'))}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(value) => apply((current) => setCompleteness(current, value))}
-                  options={[
-                    { value: 'complete', label: a('exits.complete') },
-                    { value: 'incomplete', label: a('exits.incomplete') },
-                    { value: 'unknown', label: a('exits.unknown') },
-                  ]}
-                />
-              ) : null}
-              {discrepancy && subtotal !== null && validation.finalPnlMinor !== null ? (
-                <ExitDiscrepancyNotice>
-                  {a('exits.discrepancy', {
-                    subtotal,
-                    final:
-                      formatTradeMoney(validation.finalPnlMinor, currency) ??
-                      validation.finalPnlMinor,
-                  })}
-                </ExitDiscrepancyNotice>
-              ) : null}
-            </div>
-          </FoldedGroup>
-        </>
+            partsResult={draft.partsResult}
+            fullClose={draft.leg}
+            fullCloseErrors={{ pnl: legErrors.pnl, price: legErrors.price }}
+            statedTotal={draft.finalPnl}
+            statedTotalError={errorText('finalPnl')}
+            eachExit={
+              <ClosingExitsEditor
+                recorded={trade.exits}
+                closing={validation.closing}
+                leg={draft.leg}
+                idPrefix={LEG_PREFIX}
+                currency={currency}
+                timezone={timezone}
+                locale={locale}
+                errors={legErrors}
+                onChange={(patch) => apply((current) => updateLeg(current, patch))}
+              />
+            }
+            closing={validation.closing}
+            finalPnlMinor={validation.finalPnlMinor}
+            actualR={validation.actualR}
+            formatMoney={formatMoney}
+            onCloseMode={(mode) => apply((current) => setCloseMode(current, mode))}
+            onPartsResult={(mode) => apply((current) => setPartsResult(current, mode))}
+            onFullClose={(patch) => apply((current) => updateLeg(current, patch))}
+            onStatedTotal={(value) => apply((current) => setFinalPnl(current, value))}
+          />
+
+          <FinalExitTimeRow
+            id={FINAL_TIME_ID}
+            rowRef={finalTimeRow}
+            label={a('times.exit')}
+            value={draft.finalExitedAt}
+            timezone={timezone}
+            locale={locale}
+            error={errorText('finalExitedAt')}
+            lastRecordedExit={lastExit}
+            onChange={(finalExitedAt) => apply((current) => ({ ...current, finalExitedAt }))}
+          />
+        </section>
       ) : (
         <>
           {/* PART — ONE EXIT LEG, and nothing that belongs to the whole trade */}
           <GroupCard filled title={s('page.sections.exit')} data-close-leg="">
-            {legFields}
+            <ExitLegFields
+              idPrefix={LEG_PREFIX}
+              leg={draft.leg}
+              currency={currency}
+              timezone={timezone}
+              locale={locale}
+              timeLabel={s('time.legLabel')}
+              timeRowRef={legTimeRow}
+              lastRecordedExit={lastExit}
+              errors={legErrors}
+              onChange={(patch) => apply((current) => updateLeg(current, patch))}
+            />
           </GroupCard>
           {trade.exits.length === 0 ? null : (
             <FoldedGroup

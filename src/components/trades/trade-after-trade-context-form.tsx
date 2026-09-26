@@ -33,6 +33,7 @@ import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-
 import { InlineAction, Notice } from './trade-at-entry-controls';
 import { tradeMoneyInputValue } from './trade-form-values';
 import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
+import { StepHeading } from './trade-step-flow';
 
 const ID_PREFIX = 'stage6';
 const IDS = afterTradeContextIds(ID_PREFIX);
@@ -165,6 +166,7 @@ export function TradeAfterTradeContextForm({
   fromClose: boolean;
 }) {
   const s = useTranslations('trades.stage6');
+  const a = useTranslations('trades.create.recording.contractAfter');
   const tErrors = useTranslations('trades.errors');
   const router = useRouter();
   const saved = answersOf(trade);
@@ -393,6 +395,16 @@ export function TradeAfterTradeContextForm({
           ) : null}
         </div>
       )}
+
+      {fromClose ? (
+        // CANONICAL STEP 6 — the heading Record Closed's Step 6 carries.
+        <StepHeading
+          id="close-step-heading"
+          progress={a('steps.progress', { current: 6, total: 6 })}
+          title={a('steps.after.title')}
+          description={a('steps.after.description')}
+        />
+      ) : null}
 
       <TradeAfterTradeContextStep
         idPrefix={ID_PREFIX}

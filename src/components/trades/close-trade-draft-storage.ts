@@ -114,43 +114,61 @@ export interface CloseDraftEnvelope {
 const text = z.string().max(2_000);
 const TaskSchema = z.object({
   basis: z.object({ status: z.string().max(40), exitIds: z.array(z.string().max(64)).max(100) }),
-  exitResult: z.object({
-    leg: z.object({
-      pnl: text,
-      closedPercent: text,
-      exitedAt: text,
-      price: text,
-      reason: text,
-    }),
-    finalExitedAt: text,
-    finalPnl: text,
-    finalPnlAdopted: z.boolean(),
-    outcome: z.enum(OUTCOME_VALUES).nullable(),
-    completeness: z.enum(['unanswered', 'complete', 'incomplete', 'unknown']),
-    // Decision 59. Absent from a task saved before it: nothing answered here.
-    plan: z
-      .object({
-        riskState: z.enum(['unanswered', 'defined', 'no_defined']),
-        risk: text,
-        target: z.object({
-          state: z.enum(['unanswered', 'fixed', 'no_fixed']),
-          profit: text,
-          price: text,
-        }),
-        exitPlan: z.object({
-          choice: z.discriminatedUnion('kind', [
-            z.object({ kind: z.literal('inherit') }),
-            z.object({ kind: z.literal('unanswered') }),
-            z.object({ kind: z.literal('saved'), exitPlanId: z.string().max(64) }),
-            z.object({ kind: z.literal('customized') }),
-            z.object({ kind: z.literal('no_rule') }),
-          ]),
-          customText: z.string().max(4_000),
-          customBaseId: z.string().max(64).nullable(),
-        }),
-      })
-      .default(BLANK_CLOSE_PLAN),
-  }),
+  exitResult: z
+    .object({
+      leg: z.object({
+        pnl: text,
+        closedPercent: text,
+        exitedAt: text,
+        price: text,
+        reason: text,
+      }),
+      finalExitedAt: text,
+      /*
+        The canonical Step 5 close (decisions 57–58). A task saved before it
+        has neither: nothing is chosen for the trader.
+      */
+      closeMode: z.enum(['unanswered', 'all_at_once', 'in_parts']).default('unanswered'),
+      partsResult: z.enum(['unanswered', 'each_exit', 'total_only']).default('unanswered'),
+      finalPnl: text,
+      // Before the canonical close: a figure "Use recorded exits" filled in, and
+      // the trader's completeness answer. Read once, never written again.
+      finalPnlAdopted: z.boolean().optional(),
+      completeness: z.enum(['unanswered', 'complete', 'incomplete', 'unknown']).optional(),
+      outcome: z.enum(OUTCOME_VALUES).nullable(),
+      // Decision 59. Absent from a task saved before it: nothing answered here.
+      plan: z
+        .object({
+          riskState: z.enum(['unanswered', 'defined', 'no_defined']),
+          risk: text,
+          target: z.object({
+            state: z.enum(['unanswered', 'fixed', 'no_fixed']),
+            profit: text,
+            price: text,
+          }),
+          exitPlan: z.object({
+            choice: z.discriminatedUnion('kind', [
+              z.object({ kind: z.literal('inherit') }),
+              z.object({ kind: z.literal('unanswered') }),
+              z.object({ kind: z.literal('saved'), exitPlanId: z.string().max(64) }),
+              z.object({ kind: z.literal('customized') }),
+              z.object({ kind: z.literal('no_rule') }),
+            ]),
+            customText: z.string().max(4_000),
+            customBaseId: z.string().max(64).nullable(),
+          }),
+        })
+        .default(BLANK_CLOSE_PLAN),
+    })
+    /*
+      A FIGURE THE TRADER NEVER TYPED IS NOT KEPT AS THEIRS. An adopted exit
+      subtotal from before the canonical close would otherwise come back as a
+      stated total; the exits it summed are still there to add up again.
+    */
+    .transform(({ finalPnlAdopted, completeness: _completeness, ...answers }) => ({
+      ...answers,
+      finalPnl: finalPnlAdopted === true ? '' : answers.finalPnl,
+    })),
   submission: z.object({ key: z.string().uuid(), body: z.string().max(20_000) }).nullable(),
 });
 const submissionSchema = z

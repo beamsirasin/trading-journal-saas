@@ -45,7 +45,6 @@ import {
   closingExits,
   createAfterTradeDraft,
   exitField,
-  formatShare,
   FULL_CLOSE_EXIT_ID,
   isCompleteEntryTimestamp,
   removeEmotionsAnswer,
@@ -75,23 +74,25 @@ import {
   type AfterTradeErrors,
   type AfterTradeExitDraft,
   type AfterTradeField,
-  type AfterTradeValidation,
   type ClosingState,
 } from './after-trade-draft';
 import type { PlanOutcomeDraftError } from './plan-outcome-draft';
-import { RequirementBadge } from './requirement-badge';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
 import { ChoiceGroup, InlineAction, Tag, TextField } from './trade-at-entry-controls';
 import { formatEntryStamp, tradeDetailsRowId, TradeDetailsStep } from './trade-details-step';
 import { TradeEntryContextStep } from './trade-entry-context-step';
-import { ActualRReadoutRow, ExitTimeField, TraderOutcomeField } from './trade-exit-result-step';
+import {
+  ClosingStatusLine,
+  FinalExitTimeRow,
+  TradeResultCard,
+  TraderOutcomeCard,
+} from './trade-exit-result-step';
 import { datetimeLocalToIso } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import type { RecordingSaveControls } from './trade-recording-form';
-import { GroupCard } from './trade-recording-step-parts';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
 import { TradeSetupChecklistStep } from './trade-setup-checklist-step';
@@ -157,6 +158,19 @@ function fieldStep(field: AfterTradeField): number {
 }
 
 /** Stage 6's control ids on this form (`fieldTargetId` focuses them). */
+/** Step 5's Trade result controls — the same ids Record Closed has always used. */
+const RESULT_IDS = {
+  anchor: 'after-exits',
+  closeMode: 'after-close-mode',
+  partsResult: 'after-parts-result',
+  fullClose: {
+    pnl: `after-exit-${FULL_CLOSE_EXIT_ID}-pnl`,
+    price: `after-exit-${FULL_CLOSE_EXIT_ID}-price`,
+    reason: `after-exit-${FULL_CLOSE_EXIT_ID}-reason`,
+  },
+  statedTotal: 'after-finalPnl',
+} as const;
+
 const AFTER_CONTEXT_PREFIX = 'after-stage6';
 const AFTER_CONTEXT_IDS = afterTradeContextIds(AFTER_CONTEXT_PREFIX);
 const PLAN_OUTCOME_IDS = planOutcomeIds(AFTER_CONTEXT_PREFIX);
@@ -1262,97 +1276,26 @@ export function TradeAfterTradeForm({
             Record Closed never asks for a Part / All Remaining scope for the
             Trade here: it reconstructs a trade that is already closed.
           */}
-          <GroupCard data-result-outcome="">
-            <TraderOutcomeField
-              idPrefix="after-outcome"
-              value={draft.outcome}
-              contradicts={outcomeNotice !== undefined}
-              hint={a('result.outcomeHintShort')}
-              appearance="buttons"
-              badge={<RequirementBadge level="required" />}
-              onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
-            />
-          </GroupCard>
+          <TraderOutcomeCard
+            idPrefix="after-outcome"
+            value={draft.outcome}
+            contradicts={outcomeNotice !== undefined}
+            onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
+          />
 
-          {/*
-            THE TRADE RESULT IS HOW THE TRADE CLOSED (decision 57). One source:
-            the close. "Closed all at once" is one All remaining exit whose P&L
-            is the Final Net P&L; "Closed in parts" is a sequence of exits whose
-            P&L adds up to it once they account for the whole position. The
-            result below is read-only — never typed beside the close.
-          */}
-          <GroupCard
-            filled
-            title={a('sections.tradeResult')}
-            aside={<RequirementBadge level="required" />}
-            data-result-panel=""
-          >
-            <div id="after-exits" tabIndex={-1} className="min-w-0 outline-none">
-              <ChoiceGroup
-                idPrefix="after-close-mode"
-                legend={a('close.question')}
-                value={draft.closeMode === 'unanswered' ? null : draft.closeMode}
-                status={c('notAnswered')}
-                columns={2}
-                compact
-                fit="row"
-                aside={
-                  <InlineAction
-                    ariaLabel={a('close.removeAria')}
-                    onClick={() => apply((current) => setCloseMode(current, 'unanswered'))}
-                  >
-                    {c('removeAnswer')}
-                  </InlineAction>
-                }
-                onChange={(mode) => apply((current) => setCloseMode(current, mode))}
-                options={[
-                  { value: 'all_at_once', label: a('close.allAtOnce') },
-                  { value: 'in_parts', label: a('close.inParts') },
-                ]}
-              />
-            </div>
-
-            {draft.closeMode === 'all_at_once' ? (
-              <FullCloseFields
-                draft={draft}
-                currency={currency}
-                errorText={errorText}
-                onChange={(patch) => apply((current) => updateFullClose(current, patch))}
-              />
-            ) : null}
-
-            {/*
-              A CLOSE IN PARTS HAS ONE RESULT SOURCE TOO (decision 58): each
-              exit, whose sum is the result once they prove the close — or,
-              when the legs are not known, the final result the trader states.
-              Only the chosen way is shown and saved.
-            */}
-            {draft.closeMode === 'in_parts' ? (
-              <ChoiceGroup
-                idPrefix="after-parts-result"
-                legend={a('close.partsQuestion')}
-                value={draft.partsResult === 'unanswered' ? null : draft.partsResult}
-                status={c('notAnswered')}
-                columns={2}
-                compact
-                fit="row"
-                aside={
-                  <InlineAction
-                    ariaLabel={a('close.partsRemoveAria')}
-                    onClick={() => apply((current) => setPartsResult(current, 'unanswered'))}
-                  >
-                    {c('removeAnswer')}
-                  </InlineAction>
-                }
-                onChange={(mode) => apply((current) => setPartsResult(current, mode))}
-                options={[
-                  { value: 'each_exit', label: a('close.eachExit') },
-                  { value: 'total_only', label: a('close.totalOnly') },
-                ]}
-              />
-            ) : null}
-
-            {draft.closeMode === 'in_parts' && draft.partsResult === 'each_exit' ? (
+          <TradeResultCard
+            ids={RESULT_IDS}
+            currency={currency}
+            closeMode={draft.closeMode}
+            partsResult={draft.partsResult}
+            fullClose={draft.fullClose}
+            fullCloseErrors={{
+              pnl: errorText(exitField(FULL_CLOSE_EXIT_ID, 'pnl')),
+              price: errorText(exitField(FULL_CLOSE_EXIT_ID, 'price')),
+            }}
+            statedTotal={draft.statedTotal}
+            statedTotalError={errorText('finalPnl')}
+            eachExit={
               <ExitHistoryFields
                 draft={draft}
                 currency={currency}
@@ -1362,49 +1305,29 @@ export function TradeAfterTradeForm({
                 onRemove={(id) => apply((current) => removeExit(current, id))}
                 onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
               />
-            ) : null}
+            }
+            closing={validation.closing}
+            finalPnlMinor={validation.finalPnlMinor}
+            actualR={validation.actualR}
+            formatMoney={formatMoney}
+            onCloseMode={(mode) => apply((current) => setCloseMode(current, mode))}
+            onPartsResult={(mode) => apply((current) => setPartsResult(current, mode))}
+            onFullClose={(patch) => apply((current) => updateFullClose(current, patch))}
+            onStatedTotal={(value) => apply((current) => setStatedTotal(current, value))}
+          />
 
-            {draft.closeMode === 'in_parts' && draft.partsResult === 'total_only' ? (
-              <TextField
-                id="after-finalPnl"
-                label={a('close.statedTotal')}
-                value={draft.statedTotal}
-                onChange={(value) => apply((current) => setStatedTotal(current, value))}
-                suffix={currency}
-                inputMode="decimal"
-                size="lead"
-                figure
-                hint={a('close.statedTotalHint')}
-                error={errorText('finalPnl')}
-              />
-            ) : null}
-
-            <FinalResultReadout
-              closing={validation.closing}
-              finalPnlMinor={validation.finalPnlMinor}
-              actualR={validation.actualR}
-              formatMoney={formatMoney}
-            />
-          </GroupCard>
-
-          {/*
-            FINAL EXIT TIME: its own launcher, outside the result card — when
-            the Trade finally closed, not part of what it made.
-          */}
-          <div data-result-exit-time="" className="min-w-0">
-            <ExitTimeField
-              id="after-exitedAt"
-              label={a('times.exit')}
-              value={draft.exitedAt}
-              timezone={timezone}
-              locale={locale}
-              error={errorText('exitedAt')}
-              lastRecordedExit={
-                latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
-              }
-              onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-            />
-          </div>
+          <FinalExitTimeRow
+            id="after-exitedAt"
+            label={a('times.exit')}
+            value={draft.exitedAt}
+            timezone={timezone}
+            locale={locale}
+            error={errorText('exitedAt')}
+            lastRecordedExit={
+              latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
+            }
+            onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
+          />
         </>,
       )}
 
@@ -1560,201 +1483,6 @@ export function TradeAfterTradeForm({
         </>,
       )}
     </TradeStepFlow>
-  );
-}
-
-/** A signed amount: a gain reads with its plus sign, so it is never mistaken for a loss. */
-function signedMoney(minor: string, format: (minor: string) => string): string {
-  return BigInt(minor) > 0n ? `+${format(minor)}` : format(minor);
-}
-
-/**
- * WHERE THE CLOSE IN PARTS STANDS, above its exits: fully closed, or how much
- * of the position the exits account for and what remains — or, when an exit
- * states no share, that the allocation is unknown. Never an estimate.
- */
-function ClosingStatusLine({ closing }: { closing: ClosingState }) {
-  const s = useTranslations('trades.create.recording.contractAfter.close.status');
-  const bps = closing.accountedBps;
-  const state =
-    closing.exitCount === 0
-      ? 'none'
-      : closing.closed
-        ? 'closed'
-        : bps === null
-          ? 'unknown'
-          : 'partial';
-  return (
-    <div
-      data-closing-status={state}
-      data-accounted-bps={bps ?? 'unknown'}
-      aria-live="polite"
-      className="flex min-w-0 flex-col gap-1.5"
-    >
-      <p className="text-foreground text-sm font-semibold">
-        {state === 'none'
-          ? s('none')
-          : state === 'closed'
-            ? s('closed')
-            : state === 'unknown'
-              ? s('unknown')
-              : s('partial', { percent: formatShare(bps ?? 0) })}
-      </p>
-      {state === 'none' || bps === null ? null : (
-        <span
-          aria-hidden="true"
-          className="bg-muted block h-1.5 w-full max-w-60 overflow-hidden rounded-full"
-        >
-          <span
-            className="bg-primary block h-full rounded-full"
-            style={{ width: `${Math.min(bps, 10_000) / 100}%` }}
-          />
-        </span>
-      )}
-      {state === 'none' ? null : (
-        <p className="text-muted-foreground text-xs">
-          {state === 'partial'
-            ? s('partialDetail', {
-                count: closing.exitCount,
-                percent: formatShare(10_000 - (bps ?? 0)),
-              })
-            : state === 'unknown'
-              ? s('unknownDetail', { count: closing.exitCount })
-              : s('closedDetail', { count: closing.exitCount })}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** "Closed all at once": the one close — its P&L is the whole Trade's. */
-function FullCloseFields({
-  draft,
-  currency,
-  errorText,
-  onChange,
-}: {
-  draft: AfterTradeDraft;
-  currency: string;
-  errorText: (field: AfterTradeField) => string | undefined;
-  onChange: (patch: Partial<AfterTradeDraft['fullClose']>) => void;
-}) {
-  const a = useTranslations('trades.create.recording.contractAfter');
-  const c = useTranslations('trades.create.recording.contractEntry');
-  const prefix = `after-exit-${FULL_CLOSE_EXIT_ID}`;
-  return (
-    <div data-full-close="" className="flex min-w-0 flex-col gap-4">
-      <TextField
-        id={`${prefix}-pnl`}
-        label={a('close.pnl')}
-        value={draft.fullClose.pnl}
-        onChange={(pnl) => onChange({ pnl })}
-        suffix={currency}
-        inputMode="decimal"
-        size="lead"
-        figure
-        hint={a('close.pnlHint')}
-        error={errorText(exitField(FULL_CLOSE_EXIT_ID, 'pnl'))}
-      />
-      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-        <TextField
-          id={`${prefix}-price`}
-          label={a('exits.price')}
-          value={draft.fullClose.price}
-          onChange={(price) => onChange({ price })}
-          inputMode="decimal"
-          figure
-          labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
-          error={errorText(exitField(FULL_CLOSE_EXIT_ID, 'price'))}
-        />
-        <TextField
-          id={`${prefix}-reason`}
-          label={a('exits.reason')}
-          value={draft.fullClose.reason}
-          onChange={(reason) => onChange({ reason })}
-        />
-      </div>
-    </div>
-  );
-}
-
-/**
- * THE RESULT, READ-ONLY. The Final Net P&L exists only once the close proves
- * the whole position closed and every exit states its P&L; until then this
- * shows what was recorded so far — named as such — and what the result is
- * waiting for. Trader R follows the Final Net P&L, never a running figure.
- */
-function FinalResultReadout({
-  closing,
-  finalPnlMinor,
-  actualR,
-  formatMoney,
-}: {
-  closing: ClosingState;
-  finalPnlMinor: string | null;
-  actualR: AfterTradeValidation['actualR'];
-  formatMoney: (minor: string) => string;
-}) {
-  const s = useTranslations('trades.create.recording.contractAfter.close.result');
-  const waiting =
-    closing.mode === 'unanswered'
-      ? s('waitingForClose')
-      : closing.mode === 'all_at_once'
-        ? s('waitingForPnl')
-        : closing.partsResult === 'unanswered'
-          ? s('waitingForPartsChoice')
-          : closing.partsResult === 'total_only'
-            ? s('waitingForStatedTotal')
-            : closing.missingPnl
-              ? s('waitingForEveryPnl')
-              : closing.accountedBps === null
-                ? s('waitingForAllocation')
-                : s('waitingForRemaining');
-  return (
-    <div
-      data-final-result={finalPnlMinor === null ? 'waiting' : 'final'}
-      className="border-border flex min-w-0 flex-col gap-3 border-t pt-4"
-    >
-      <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-        {s('title')}
-      </p>
-      {finalPnlMinor === null ? (
-        <div className="flex min-w-0 flex-col gap-1">
-          {closing.recordedSoFarMinor === null ? null : (
-            <p data-recorded-so-far="" className="text-foreground text-sm tabular-nums">
-              {s('recordedSoFar', {
-                amount: signedMoney(closing.recordedSoFarMinor, formatMoney),
-              })}
-            </p>
-          )}
-          <p className="text-muted-foreground text-sm">{waiting}</p>
-        </div>
-      ) : (
-        <div
-          data-final-pnl-provenance={closing.source ?? undefined}
-          className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
-        >
-          <div className="min-w-0">
-            <p className="text-muted-foreground text-sm font-medium">{s('finalPnl')}</p>
-            {/* Where the one result came from, said once. */}
-            <p className="text-subtle-foreground text-xs">
-              {closing.source === 'stated_total'
-                ? s('fromStatedTotal')
-                : closing.source === 'exit_legs'
-                  ? s('fromExits')
-                  : s('fromFullClose')}
-            </p>
-          </div>
-          <p
-            data-final-pnl=""
-            className="text-foreground text-2xl leading-none font-semibold tabular-nums"
-          >
-            {signedMoney(finalPnlMinor, formatMoney)}
-          </p>
-        </div>
-      )}
-      <ActualRReadoutRow readout={actualR} variant="derived" />
-    </div>
   );
 }
 

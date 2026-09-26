@@ -53,6 +53,8 @@ export default async function AfterTradeContextPage({
   const [{ locale }, query] = await Promise.all([params, searchParams]);
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades.stage6');
+  const closeTitle = (await getTranslations('trades.stage5'))('page.closeTitle');
+  const fromClose = single(query.from) === 'close';
 
   const tradeParam = single(query.trade);
   const parsed = tradeParam === undefined ? null : TradeIdSchema.safeParse(tradeParam);
@@ -90,7 +92,14 @@ export default async function AfterTradeContextPage({
           </Link>
         </Button>
         <h1 className="text-foreground min-w-0 text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
-          {trade === null ? t('page.title') : `${t('page.title')} · ${trade.symbol}`}
+          {/*
+            ONE FLOW. Arriving from the Final Close, this is still Close trade —
+            now at its Step 6 — so the page keeps that name; the step names
+            itself below, exactly as Record Closed's does.
+          */}
+          {trade === null
+            ? t('page.title')
+            : `${fromClose ? closeTitle : t('page.title')} · ${trade.symbol}`}
         </h1>
       </header>
       <div className="mt-4 flex min-w-0 flex-1 flex-col">
@@ -105,11 +114,7 @@ export default async function AfterTradeContextPage({
             </Button>
           </div>
         ) : (
-          <TradeAfterTradeContextForm
-            trade={trade}
-            draftScope={draftScope}
-            fromClose={single(query.from) === 'close'}
-          />
+          <TradeAfterTradeContextForm trade={trade} draftScope={draftScope} fromClose={fromClose} />
         )}
       </div>
     </div>

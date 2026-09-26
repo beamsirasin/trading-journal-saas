@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 
@@ -16,7 +16,13 @@ import { cn } from '@/lib/utils';
 import { DateRangeMonthGrid } from '@/components/dashboard/toolbar/date-range-month-grid';
 import { Button } from '@/components/ui/button';
 
-import { entryTimestampParts } from './after-trade-draft';
+import {
+  entryTimestampParts,
+  formatShare,
+  type CloseMode,
+  type ClosingState,
+  type PartsResult,
+} from './after-trade-draft';
 import {
   setTimeDate,
   setTimeTime,
@@ -36,20 +42,26 @@ import {
 import { instantToDatetimeLocal } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { TradeLauncherRow } from './trade-launcher-row';
+import { GroupCard } from './trade-recording-step-parts';
 import { TradeTimeWheel } from './trade-time-wheel';
 
 /**
- * CANONICAL STAGE 5 — EXIT & RESULT, the shared pieces (Add Trade contract
- * §10–§12; UX Rules §20). Close Existing Open Trade (Part / All Remaining) and
- * Record Closed read with the same controls:
+ * CANONICAL STAGE 5 — TRADER RESULT, the shared pieces (Add Trade contract
+ * §10–§12 as amended by decisions 57–58; UX Rules §20). Record Closed and
+ * Close Existing Open Trade's Final Close read with the same components, in
+ * the same order:
  *
- *   final exit date & time → Final Net P&L → Actual R (derived) →
- *   Trader Outcome → exit detail / history (supporting evidence)
+ *   Trader Outcome → Trade result (how it closed → the close's answers →
+ *   the Final Net P&L it proves → Trader R, derived) → final exit time
  *
  * They own no semantics. Every answer goes back through the host's draft, and
  * nothing here fills one in: a time starts unanswered, "Use now" and "Use last
- * recorded exit time" are named actions, and the Final Net P&L becomes the
- * exit subtotal only through "Use recorded exits".
+ * recorded exit time" are named actions, and the Final Net P&L is only ever
+ * what the close proves — or the total the trader states.
+ *
+ * What differs by lifecycle comes in through props: Record Closed edits every
+ * exit of a Trade it reconstructs; a Final Close lists the exits already
+ * recorded and adds only the one that closes the rest.
  */
 
 // ---------------------------------------------------------------------------
@@ -406,84 +418,6 @@ function MonthStepButton({
 }
 
 // ---------------------------------------------------------------------------
-// Final Net P&L — authoritative, with its source said plainly
-// ---------------------------------------------------------------------------
-
-export type FinalPnlSource = 'typed' | 'adopted';
-
-/**
- * THE WHOLE TRADE'S RESULT, AS THE TRADER STATES IT. Never derived from price.
- * When the recorded exits can stand in for it (a Complete history, every leg
- * priced), "Use recorded exits" offers the subtotal — and the line under the
- * figure says where the figure now comes from, so an adopted value never reads
- * as one the trader typed.
- */
-export function FinalPnlField({
-  id,
-  value,
-  currency,
-  error,
-  source,
-  adoptable,
-  subtotal,
-  subtotalBlocked,
-  marker,
-  onChange,
-  onAdopt,
-}: {
-  id: string;
-  value: string;
-  currency: string;
-  error?: string | undefined;
-  /** Where the figure shown came from; `null` while nothing is recorded. */
-  source: FinalPnlSource | null;
-  /** "Use recorded exits" may be offered right now. */
-  adoptable: boolean;
-  /** The recorded exit subtotal, formatted, when every leg carries P&L. */
-  subtotal: string | null;
-  /** Why the subtotal cannot be offered yet, when that is worth saying. */
-  subtotalBlocked: string | null;
-  /** The host's requirement badge (decision 59); Optional when absent. */
-  marker?: ReactNode;
-  onChange: (value: string) => void;
-  onAdopt: () => void;
-}) {
-  const s = useTranslations('trades.stage5.pnl');
-  return (
-    <div data-final-pnl-source={source ?? 'none'} className="flex min-w-0 flex-col gap-2">
-      <TextField
-        id={id}
-        label={s('label')}
-        value={value}
-        onChange={onChange}
-        suffix={currency}
-        inputMode="decimal"
-        size="lead"
-        figure
-        hint={s('hint', { currency })}
-        error={error}
-        labelAside={marker ?? <OptionalTag />}
-      />
-      {source === null ? null : (
-        <p data-final-pnl-source-line="" className="text-muted-foreground text-xs">
-          {s(source === 'adopted' ? 'sourceAdopted' : 'sourceTyped')}
-        </p>
-      )}
-      {adoptable && subtotal !== null ? (
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="text-muted-foreground text-sm tabular-nums">
-            {s('subtotal', { amount: subtotal })}
-          </span>
-          <InlineAction onClick={onAdopt}>{s('useRecorded')}</InlineAction>
-        </div>
-      ) : subtotalBlocked === null ? null : (
-        <p className="text-muted-foreground text-xs">{subtotalBlocked}</p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Actual R — a readout, never a field
 // ---------------------------------------------------------------------------
 
@@ -713,6 +647,48 @@ export interface RecordedExitView {
   readonly exitedAt: string | null;
 }
 
+/** One recorded exit, read-only: which exit, what it closed, and what it records. */
+export function RecordedExitSummary({
+  exit,
+  currency,
+  timezone,
+  locale,
+}: {
+  exit: RecordedExitView;
+  currency: string;
+  timezone: string;
+  locale: string;
+}) {
+  const s = useTranslations('trades.stage5.history');
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const facts = [
+    exit.realizedPnlMinor === null
+      ? null
+      : `${a('exits.pnl')} ${formatTradeMoney(exit.realizedPnlMinor, currency) ?? ''}`,
+    exit.closedBps === null
+      ? null
+      : `${(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%`,
+    exit.exitPrice === null ? null : `${a('exits.price')} ${exit.exitPrice}`,
+    exit.exitedAt === null ? null : formatTradeInstant(exit.exitedAt, timezone, locale),
+  ].filter((fact): fact is string => fact !== null && fact !== '');
+  return (
+    <>
+      <p className="text-foreground text-sm font-semibold">
+        {a('exits.exitNumber', { number: exit.sequence })}
+        {exit.exitScope === 'part' ? (
+          <span className="text-muted-foreground font-normal"> · {a('exits.scopePart')}</span>
+        ) : null}
+      </p>
+      <p className="text-muted-foreground text-sm tabular-nums">
+        {facts.length === 0 ? s('noDetail') : facts.join(' · ')}
+      </p>
+      {exit.exitReason === null ? null : (
+        <p className="text-muted-foreground text-sm">{exit.exitReason}</p>
+      )}
+    </>
+  );
+}
+
 export function RecordedExitsList({
   exits,
   currency,
@@ -725,55 +701,534 @@ export function RecordedExitsList({
   locale: string;
 }) {
   const s = useTranslations('trades.stage5.history');
-  const a = useTranslations('trades.create.recording.contractAfter');
   if (exits.length === 0) {
     return <p className="text-muted-foreground text-sm">{s('none')}</p>;
   }
   return (
     <ol data-recorded-exits="" className="flex min-w-0 flex-col gap-2">
-      {exits.map((exit) => {
-        const facts = [
-          exit.realizedPnlMinor === null
-            ? null
-            : `${a('exits.pnl')} ${formatTradeMoney(exit.realizedPnlMinor, currency) ?? ''}`,
-          exit.closedBps === null
-            ? null
-            : `${(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%`,
-          exit.exitPrice === null ? null : `${a('exits.price')} ${exit.exitPrice}`,
-          exit.exitedAt === null ? null : formatTradeInstant(exit.exitedAt, timezone, locale),
-        ].filter((fact): fact is string => fact !== null && fact !== '');
-        return (
-          <li
-            key={exit.exitId}
-            data-recorded-exit={exit.sequence}
-            className="border-border flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2.5"
-          >
-            <p className="text-foreground text-sm font-semibold">
-              {a('exits.exitNumber', { number: exit.sequence })}
-              {exit.exitScope === 'part' ? (
-                <span className="text-muted-foreground font-normal"> · {a('exits.scopePart')}</span>
-              ) : null}
-            </p>
-            <p className="text-muted-foreground text-sm tabular-nums">
-              {facts.length === 0 ? s('noDetail') : facts.join(' · ')}
-            </p>
-            {exit.exitReason === null ? null : (
-              <p className="text-muted-foreground text-sm">{exit.exitReason}</p>
-            )}
-          </li>
-        );
-      })}
+      {exits.map((exit) => (
+        <li
+          key={exit.exitId}
+          data-recorded-exit={exit.sequence}
+          className="border-border flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2.5"
+        >
+          <RecordedExitSummary
+            exit={exit}
+            currency={currency}
+            timezone={timezone}
+            locale={locale}
+          />
+        </li>
+      ))}
     </ol>
   );
 }
 
-/** A quiet, non-blocking discrepancy note (contract §11). */
-export function ExitDiscrepancyNotice({ children }: { children: ReactNode }) {
+/**
+ * "RECORD EACH EXIT" FOR A FINAL CLOSE — Record Closed's exit list, as this
+ * lifecycle has it. The exits recorded while the Trade was open are listed as
+ * they were recorded (read-only: they are saved history), and the one exit
+ * this close adds follows them. That exit closes whatever is left, so its
+ * scope is All remaining by definition, never asked; its time is the final
+ * exit time, asked once on its own. The status line above reads exactly as
+ * Record Closed's.
+ */
+export function ClosingExitsEditor({
+  recorded,
+  closing,
+  leg,
+  idPrefix,
+  currency,
+  timezone,
+  locale,
+  errors,
+  onChange,
+}: {
+  recorded: readonly RecordedExitView[];
+  closing: ClosingState;
+  leg: ExitLegDraft;
+  idPrefix: string;
+  currency: string;
+  timezone: string;
+  locale: string;
+  errors: ExitLegFieldErrors;
+  onChange: (patch: Partial<ExitLegDraft>) => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const s = useTranslations('trades.stage5.history');
   return (
-    <Notice
-      icon={<History className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />}
+    <div className="flex min-w-0 flex-col gap-4 pb-3">
+      <ClosingStatusLine closing={closing} />
+      <ol className="divide-border flex min-w-0 flex-col divide-y">
+        {recorded.map((exit) => (
+          <li
+            key={exit.exitId}
+            data-recorded-exit={exit.sequence}
+            className="flex min-w-0 flex-col gap-1 py-4 first:pt-0"
+          >
+            <RecordedExitSummary
+              exit={exit}
+              currency={currency}
+              timezone={timezone}
+              locale={locale}
+            />
+          </li>
+        ))}
+        <li data-closing-exit="" className="flex min-w-0 flex-col gap-4 py-4 first:pt-0">
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="text-foreground flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold">
+              {a('exits.exitNumber', { number: recorded.length + 1 })}
+              <Tag tone="context">{a('exits.scopeAll')}</Tag>
+            </p>
+            <p className="text-muted-foreground text-xs">{s('closingLegHint')}</p>
+          </div>
+          <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+            <TextField
+              id={exitLegFieldId(idPrefix, 'pnl')}
+              label={a('exits.pnl')}
+              value={leg.pnl}
+              onChange={(pnl) => onChange({ pnl })}
+              suffix={currency}
+              inputMode="decimal"
+              figure
+              error={errors.pnl}
+            />
+            <TextField
+              id={exitLegFieldId(idPrefix, 'closedPercent')}
+              label={a('exits.percent')}
+              value={leg.closedPercent}
+              onChange={(closedPercent) => onChange({ closedPercent })}
+              suffix="%"
+              inputMode="decimal"
+              figure
+              error={errors.closedPercent}
+            />
+            <TextField
+              id={exitLegFieldId(idPrefix, 'price')}
+              label={a('exits.price')}
+              value={leg.price}
+              onChange={(price) => onChange({ price })}
+              inputMode="decimal"
+              figure
+              labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+              error={errors.price}
+            />
+          </div>
+          <TextField
+            id={exitLegFieldId(idPrefix, 'reason')}
+            label={a('exits.reason')}
+            value={leg.reason}
+            onChange={(reason) => onChange({ reason })}
+          />
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The Trader Result, as one step: outcome, result, final exit time
+// ---------------------------------------------------------------------------
+
+/** THE OUTCOME LEADS: the trader's own Win / BE / Loss, which the P&L never fills in. */
+export function TraderOutcomeCard({
+  idPrefix,
+  value,
+  contradicts,
+  onChange,
+}: {
+  idPrefix: string;
+  value: OutcomeValue | null;
+  contradicts: boolean;
+  onChange: (value: OutcomeValue | null) => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  return (
+    <GroupCard data-result-outcome="">
+      <TraderOutcomeField
+        idPrefix={idPrefix}
+        value={value}
+        contradicts={contradicts}
+        hint={a('result.outcomeHintShort')}
+        appearance="buttons"
+        badge={<RequirementBadge level="required" />}
+        onChange={onChange}
+      />
+    </GroupCard>
+  );
+}
+
+/** FINAL EXIT TIME: its own launcher, outside the result card — when it closed, not what it made. */
+export function FinalExitTimeRow(props: Parameters<typeof ExitTimeField>[0]) {
+  return (
+    <div data-result-exit-time="" className="min-w-0">
+      <ExitTimeField {...props} />
+    </div>
+  );
+}
+
+/** A signed amount: a gain reads with its plus sign, so it is never mistaken for a loss. */
+function signedMoney(minor: string, format: (minor: string) => string): string {
+  return BigInt(minor) > 0n ? `+${format(minor)}` : format(minor);
+}
+
+export interface TradeResultIds {
+  /** Focus anchor for the whole card. */
+  readonly anchor: string;
+  readonly closeMode: string;
+  readonly partsResult: string;
+  /** "Closed all at once": the one close's fields. */
+  readonly fullClose: { readonly pnl: string; readonly price: string; readonly reason: string };
+  /** "I only know the final result". */
+  readonly statedTotal: string;
+}
+
+/**
+ * THE TRADE RESULT IS HOW THE TRADE CLOSED (decisions 57–58). One source:
+ * the close. "Closed all at once" is one exit whose P&L is the Final Net P&L;
+ * "Closed in parts" is recorded exit by exit — their sum is the result once
+ * they prove the close — or as the one total the trader knows. The result
+ * below the answers is read-only, never typed beside the close.
+ *
+ * `closedInParts` is a lifecycle fact, not an answer: a Trade whose exits
+ * are already recorded was closed in parts, so the first question is replaced
+ * by what the recorded exits say. `eachExit` is the host's exit editor.
+ */
+export function TradeResultCard({
+  ids,
+  currency,
+  closeMode,
+  closedInParts = null,
+  partsResult,
+  fullClose,
+  fullCloseErrors,
+  statedTotal,
+  statedTotalError,
+  eachExit,
+  closing,
+  finalPnlMinor,
+  actualR,
+  formatMoney,
+  onCloseMode,
+  onPartsResult,
+  onFullClose,
+  onStatedTotal,
+}: {
+  ids: TradeResultIds;
+  currency: string;
+  closeMode: CloseMode;
+  /** Said instead of asking how it closed, when recorded exits already prove it. */
+  closedInParts?: ReactNode;
+  partsResult: PartsResult;
+  fullClose: { readonly pnl: string; readonly price: string; readonly reason: string };
+  fullCloseErrors: { readonly pnl?: string | undefined; readonly price?: string | undefined };
+  statedTotal: string;
+  statedTotalError?: string | undefined;
+  eachExit: ReactNode;
+  closing: ClosingState;
+  finalPnlMinor: string | null;
+  actualR: ActualRReadout;
+  formatMoney: (minor: string) => string;
+  onCloseMode: (mode: CloseMode) => void;
+  onPartsResult: (mode: PartsResult) => void;
+  onFullClose: (patch: Partial<{ pnl: string; price: string; reason: string }>) => void;
+  onStatedTotal: (value: string) => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  return (
+    <GroupCard
+      filled
+      title={a('sections.tradeResult')}
+      aside={<RequirementBadge level="required" />}
+      data-result-panel=""
     >
-      {children}
-    </Notice>
+      <div id={ids.anchor} tabIndex={-1} className="min-w-0 outline-none">
+        {closedInParts === null ? (
+          <ChoiceGroup
+            idPrefix={ids.closeMode}
+            legend={a('close.question')}
+            value={closeMode === 'unanswered' ? null : closeMode}
+            status={c('notAnswered')}
+            columns={2}
+            compact
+            fit="row"
+            aside={
+              <InlineAction
+                ariaLabel={a('close.removeAria')}
+                onClick={() => onCloseMode('unanswered')}
+              >
+                {c('removeAnswer')}
+              </InlineAction>
+            }
+            onChange={onCloseMode}
+            options={[
+              { value: 'all_at_once', label: a('close.allAtOnce') },
+              { value: 'in_parts', label: a('close.inParts') },
+            ]}
+          />
+        ) : (
+          <div data-closed-in-parts="" className="flex min-w-0 flex-col gap-1">
+            <p className="text-muted-foreground text-[0.8125rem] font-medium">
+              {a('close.question')}
+            </p>
+            <p className="text-foreground text-base font-semibold">{a('close.inParts')}</p>
+            <p className="text-muted-foreground text-xs">{closedInParts}</p>
+          </div>
+        )}
+      </div>
+
+      {closeMode === 'all_at_once' ? (
+        <FullCloseFields
+          ids={ids.fullClose}
+          value={fullClose}
+          currency={currency}
+          errors={fullCloseErrors}
+          onChange={onFullClose}
+        />
+      ) : null}
+
+      {closeMode === 'in_parts' ? (
+        <ChoiceGroup
+          idPrefix={ids.partsResult}
+          legend={a('close.partsQuestion')}
+          value={partsResult === 'unanswered' ? null : partsResult}
+          status={c('notAnswered')}
+          columns={2}
+          compact
+          fit="row"
+          aside={
+            <InlineAction
+              ariaLabel={a('close.partsRemoveAria')}
+              onClick={() => onPartsResult('unanswered')}
+            >
+              {c('removeAnswer')}
+            </InlineAction>
+          }
+          onChange={onPartsResult}
+          options={[
+            { value: 'each_exit', label: a('close.eachExit') },
+            { value: 'total_only', label: a('close.totalOnly') },
+          ]}
+        />
+      ) : null}
+
+      {closeMode === 'in_parts' && partsResult === 'each_exit' ? eachExit : null}
+
+      {closeMode === 'in_parts' && partsResult === 'total_only' ? (
+        <TextField
+          id={ids.statedTotal}
+          label={a('close.statedTotal')}
+          value={statedTotal}
+          onChange={onStatedTotal}
+          suffix={currency}
+          inputMode="decimal"
+          size="lead"
+          figure
+          hint={a('close.statedTotalHint')}
+          error={statedTotalError}
+        />
+      ) : null}
+
+      <FinalResultReadout
+        closing={closing}
+        finalPnlMinor={finalPnlMinor}
+        actualR={actualR}
+        formatMoney={formatMoney}
+      />
+    </GroupCard>
+  );
+}
+
+/** "Closed all at once": the one close — its P&L is the whole Trade's. */
+function FullCloseFields({
+  ids,
+  value,
+  currency,
+  errors,
+  onChange,
+}: {
+  ids: TradeResultIds['fullClose'];
+  value: { readonly pnl: string; readonly price: string; readonly reason: string };
+  currency: string;
+  errors: { readonly pnl?: string | undefined; readonly price?: string | undefined };
+  onChange: (patch: Partial<{ pnl: string; price: string; reason: string }>) => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  return (
+    <div data-full-close="" className="flex min-w-0 flex-col gap-4">
+      <TextField
+        id={ids.pnl}
+        label={a('close.pnl')}
+        value={value.pnl}
+        onChange={(pnl) => onChange({ pnl })}
+        suffix={currency}
+        inputMode="decimal"
+        size="lead"
+        figure
+        hint={a('close.pnlHint')}
+        error={errors.pnl}
+      />
+      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+        <TextField
+          id={ids.price}
+          label={a('exits.price')}
+          value={value.price}
+          onChange={(price) => onChange({ price })}
+          inputMode="decimal"
+          figure
+          labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+          error={errors.price}
+        />
+        <TextField
+          id={ids.reason}
+          label={a('exits.reason')}
+          value={value.reason}
+          onChange={(reason) => onChange({ reason })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * WHERE THE CLOSE IN PARTS STANDS, above its exits: fully closed, or how much
+ * of the position the exits account for and what remains — or, when an exit
+ * states no share, that the allocation is unknown. Never an estimate.
+ */
+export function ClosingStatusLine({ closing }: { closing: ClosingState }) {
+  const s = useTranslations('trades.create.recording.contractAfter.close.status');
+  const bps = closing.accountedBps;
+  const state =
+    closing.exitCount === 0
+      ? 'none'
+      : closing.closed
+        ? 'closed'
+        : bps === null
+          ? 'unknown'
+          : 'partial';
+  return (
+    <div
+      data-closing-status={state}
+      data-accounted-bps={bps ?? 'unknown'}
+      aria-live="polite"
+      className="flex min-w-0 flex-col gap-1.5"
+    >
+      <p className="text-foreground text-sm font-semibold">
+        {state === 'none'
+          ? s('none')
+          : state === 'closed'
+            ? s('closed')
+            : state === 'unknown'
+              ? s('unknown')
+              : s('partial', { percent: formatShare(bps ?? 0) })}
+      </p>
+      {state === 'none' || bps === null ? null : (
+        <span
+          aria-hidden="true"
+          className="bg-muted block h-1.5 w-full max-w-60 overflow-hidden rounded-full"
+        >
+          <span
+            className="bg-primary block h-full rounded-full"
+            style={{ width: `${Math.min(bps, 10_000) / 100}%` }}
+          />
+        </span>
+      )}
+      {state === 'none' ? null : (
+        <p className="text-muted-foreground text-xs">
+          {state === 'partial'
+            ? s('partialDetail', {
+                count: closing.exitCount,
+                percent: formatShare(10_000 - (bps ?? 0)),
+              })
+            : state === 'unknown'
+              ? s('unknownDetail', { count: closing.exitCount })
+              : s('closedDetail', { count: closing.exitCount })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * THE RESULT, READ-ONLY. The Final Net P&L exists only once the close proves
+ * the whole position closed and every exit states its P&L — or the trader
+ * states the total; until then this shows what was recorded so far, named as
+ * such, and what the result is waiting for. Trader R follows the Final Net
+ * P&L, never a running figure.
+ */
+function FinalResultReadout({
+  closing,
+  finalPnlMinor,
+  actualR,
+  formatMoney,
+}: {
+  closing: ClosingState;
+  finalPnlMinor: string | null;
+  actualR: ActualRReadout;
+  formatMoney: (minor: string) => string;
+}) {
+  const s = useTranslations('trades.create.recording.contractAfter.close.result');
+  const waiting =
+    closing.mode === 'unanswered'
+      ? s('waitingForClose')
+      : closing.mode === 'all_at_once'
+        ? s('waitingForPnl')
+        : closing.partsResult === 'unanswered'
+          ? s('waitingForPartsChoice')
+          : closing.partsResult === 'total_only'
+            ? s('waitingForStatedTotal')
+            : closing.missingPnl
+              ? s('waitingForEveryPnl')
+              : closing.accountedBps === null
+                ? s('waitingForAllocation')
+                : s('waitingForRemaining');
+  return (
+    <div
+      data-final-result={finalPnlMinor === null ? 'waiting' : 'final'}
+      className="border-border flex min-w-0 flex-col gap-3 border-t pt-4"
+    >
+      <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+        {s('title')}
+      </p>
+      {finalPnlMinor === null ? (
+        <div className="flex min-w-0 flex-col gap-1">
+          {closing.recordedSoFarMinor === null ? null : (
+            <p data-recorded-so-far="" className="text-foreground text-sm tabular-nums">
+              {s('recordedSoFar', {
+                amount: signedMoney(closing.recordedSoFarMinor, formatMoney),
+              })}
+            </p>
+          )}
+          <p className="text-muted-foreground text-sm">{waiting}</p>
+        </div>
+      ) : (
+        <div
+          data-final-pnl-provenance={closing.source ?? undefined}
+          className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+        >
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-sm font-medium">{s('finalPnl')}</p>
+            {/* Where the one result came from, said once. */}
+            <p className="text-subtle-foreground text-xs">
+              {closing.source === 'stated_total'
+                ? s('fromStatedTotal')
+                : closing.source === 'exit_legs'
+                  ? s('fromExits')
+                  : s('fromFullClose')}
+            </p>
+          </div>
+          <p
+            data-final-pnl=""
+            className="text-foreground text-2xl leading-none font-semibold tabular-nums"
+          >
+            {signedMoney(finalPnlMinor, formatMoney)}
+          </p>
+        </div>
+      )}
+      <ActualRReadoutRow readout={actualR} variant="derived" />
+    </div>
   );
 }

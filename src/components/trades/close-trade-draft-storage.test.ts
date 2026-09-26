@@ -28,9 +28,9 @@ function task(overrides: Partial<CloseDraftTask> = {}): CloseDraftTask {
       leg: { pnl: '50', closedPercent: '', exitedAt: '', price: '', reason: '' },
       finalExitedAt: '',
       finalPnl: '',
-      finalPnlAdopted: false,
+      closeMode: 'unanswered',
       outcome: null,
-      completeness: 'unanswered',
+      partsResult: 'unanswered',
       plan: BLANK_CLOSE_PLAN,
     },
     submission: null,
@@ -175,6 +175,36 @@ describe('Stage 6 in the same close-flow draft (version 2)', () => {
     expect(CLOSE_DRAFT_VERSION).toBe(2);
     expect(loadCloseTask(SCOPE, 'part', NOW)?.exitResult.leg.pnl).toBe('50');
     expect(loadAfterTradeContextTask(SCOPE, NOW)).toBeNull();
+  });
+
+  it('reads a Final Close saved before the canonical close with nothing chosen, and no adopted figure', () => {
+    const { closeMode: _closeMode, partsResult: _partsResult, ...old } = task().exitResult;
+    const envelope = (finalPnlAdopted: boolean) =>
+      JSON.stringify({
+        kind: 'tradechemist.close-draft',
+        version: CLOSE_DRAFT_VERSION,
+        savedAt: NOW.toISOString(),
+        symbol: 'XAUUSD',
+        tasks: {
+          all_remaining: {
+            ...task(),
+            exitResult: { ...old, finalPnl: '80', finalPnlAdopted, completeness: 'complete' },
+          },
+        },
+      });
+    window.localStorage.setItem(closeDraftStorageKey(SCOPE), envelope(false));
+    const typed = loadCloseTask(SCOPE, 'all_remaining', NOW)?.exitResult;
+    // The trader's own figure is kept; no way of closing is chosen for them.
+    expect(typed).toMatchObject({
+      closeMode: 'unanswered',
+      partsResult: 'unanswered',
+      finalPnl: '80',
+    });
+    expect(typed).not.toHaveProperty('completeness');
+    expect(typed).not.toHaveProperty('finalPnlAdopted');
+    // A figure "Use recorded exits" filled in was never typed: it is not kept as theirs.
+    window.localStorage.setItem(closeDraftStorageKey(SCOPE), envelope(true));
+    expect(loadCloseTask(SCOPE, 'all_remaining', NOW)?.exitResult.finalPnl).toBe('');
   });
 
   it('reads Stage 6 answers saved before the System Result as Unanswered there — never an answer', () => {

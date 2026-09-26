@@ -143,9 +143,13 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
       const finalTime = page.locator('[data-exit-time="close-finalExitedAt"]');
       await expect(finalTime).toHaveAttribute('data-value', '');
       await expect(page.locator('[data-actual-r]')).toHaveAttribute('data-actual-r', 'unavailable');
-      await page.getByRole('button', { name: 'Use now for Final exit date & time' }).click();
+      await page.getByRole('button', { name: 'Use now for Final exit time' }).click();
       await expect(finalTime).not.toHaveAttribute('data-value', '');
+      // Canonical Step 5: the Part exit already says it closed in parts.
+      await expect(page.locator('[data-closed-in-parts]')).toBeVisible();
+      await chooseChoice(page, 'I only know the final result');
       await page.getByLabel('Final net P&L').fill('-30');
+      await expect(page.locator('[data-final-result]')).toContainText('Stated by you');
       await expect(page.locator('[data-actual-r]')).toHaveText(/-0\.30R/);
       await chooseChoice(page, 'Loss');
       // Record Open left the Target unanswered: the close asks it (decision 59).
@@ -235,7 +239,8 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
 
     // Answers survive a real reload.
     await page.goto(`/en/app/trades/close?trade=${saved.id}&scope=all`);
-    await page.getByLabel('Final net P&L').fill('40');
+    await chooseChoice(page, 'Closed all at once');
+    await page.getByLabel('P&L for the close').fill('40');
     await chooseChoice(page, 'Win');
     // Only a record whose Required items are answered closes (decision 59):
     // the unanswered Target is asked here, and nothing is written meanwhile.
@@ -248,7 +253,10 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
     await chooseChoice(page, 'No fixed target');
     await expect.poll(closeDrafts).toBe(1);
     await page.reload();
-    await expect(page.getByLabel('Final net P&L')).toHaveValue('40');
+    await expect(page.getByLabel('P&L for the close')).toHaveValue('40');
+    await expect(
+      page.getByRole('radio', { name: 'Closed all at once', exact: true }),
+    ).toBeChecked();
     await expect(page.getByRole('radio', { name: 'Win', exact: true })).toBeChecked();
     await expect(page.getByRole('radio', { name: 'No fixed target', exact: true })).toBeChecked();
     // No Fixed Target makes the Exit Plan Required; No exit rule answers it.
@@ -282,9 +290,13 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
     await expect
       .poll(async () => (await latestTrade(workspaceId)).status, { timeout: 20_000 })
       .toBe('closed');
+    // One write: the close's result — from its one exit — with the plan answers it completed.
     expect(await latestTrade(workspaceId)).toMatchObject({
       netPnlMinor: 4000n,
+      finalPnlSource: 'exit_history',
       traderOutcome: 'win',
+      targetState: 'no_fixed',
+      exitPlanState: 'no_rule',
     });
   });
 });

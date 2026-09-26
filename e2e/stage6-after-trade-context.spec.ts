@@ -75,7 +75,8 @@ async function closeATrade(page: Page, workspaceId: string, symbol: string): Pro
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
   const saved = await latestTrade(workspaceId);
   await page.goto(`/en/app/trades/close?trade=${saved.id}&scope=all`);
-  await page.getByLabel('Final net P&L').fill('-25');
+  await chooseChoice(page, 'Closed all at once');
+  await page.getByLabel('P&L for the close').fill('-25');
   // Final Close asks every Required answer still missing (decision 59).
   await chooseChoice(page, 'Loss');
   await chooseChoice(page, 'Fixed target');

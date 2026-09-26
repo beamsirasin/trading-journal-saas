@@ -108,7 +108,8 @@ export default async function CloseTradePage({
       : closeDraftScopeKeys(workspaceContext.userId, workspaceContext.workspaceId, trade.tradeId);
 
   const title = scope === 'part' ? t('page.partTitle') : t('page.closeTitle');
-  const description = scope === 'part' ? t('page.partDescription') : t('page.closeDescription');
+  // A Final Close is canonical Step 5, whose own heading says what it asks.
+  const description = scope === 'part' ? t('page.partDescription') : null;
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-var(--shell-header-height))] w-full max-w-[46rem] min-w-0 flex-col px-4 pt-3 sm:px-6 lg:min-h-0 lg:pt-8 lg:pb-16">
@@ -122,7 +123,9 @@ export default async function CloseTradePage({
         <h1 className="text-foreground min-w-0 text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
           {trade === null ? title : `${title} · ${trade.symbol}`}
         </h1>
-        {blocked === null ? <p className="text-muted-foreground text-sm">{description}</p> : null}
+        {blocked === null && description !== null ? (
+          <p className="text-muted-foreground text-sm">{description}</p>
+        ) : null}
       </header>
       <div className="mt-4 flex min-w-0 flex-1 flex-col">
         {blocked !== null || trade === null || scope === null ? (

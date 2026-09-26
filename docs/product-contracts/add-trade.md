@@ -1865,10 +1865,26 @@ One result authority per Record Closed Trade, 2026-09-25 (item 58):
     figure is refused (`final_pnl_source_invalid`, or `exit_history_not_adoptable`) and nothing is
     written. This replaces decision 57's note that the service accepted a bare stated figure.
 
-    **Unchanged.** Close Existing Open Trade (the canonical Final Close) keeps its stated Final Net
-    P&L for All Remaining. Saved Trades are read as stored — a manual total beside disagreeing
-    exits included — and keep the saved-record correction and adoption paths. No schema change.
-    Amends §11 and §13. (§11, §13)
+    **Unchanged.** Saved Trades are read as stored — a manual total beside disagreeing exits
+    included — and keep the saved-record correction and adoption paths. No schema change. Amends
+    §11 and §13. (§11, §13)
+
+    **Amended 2026-09-26 — Close Existing converges on canonical Step 5.** Close Existing Open
+    Trade's Final Close (All Remaining) now records its result with the same close model and the
+    same shared components as Record Closed: _How did you close this trade?_ (Closed all at once /
+    Closed in parts) and, closed in parts, _Record each exit_ or _I only know the final result_.
+    Its lifecycle facts come in as props, never as a second design: exits recorded while the Trade
+    was open already prove it closed in parts, so that question is not asked again; they are
+    listed read-only and the one exit the close adds is All remaining by definition (its time is
+    the final exit time, asked once). The result is what the close proves — the full close's P&L,
+    or the exits' sum once every exit states its P&L, sent as adopted from the exits with the
+    history Complete and re-checked by the service — or the stated total (`manual_total`), and no
+    exit P&L is invented for it. The typed Final Net P&L beside the exits, "Use recorded exits",
+    the completeness question and the discrepancy notice are retired from this capture. Adding
+    several new exits inside one Final Close is not offered: the Final Close writes one closing
+    exit (earlier exits are recorded with "Record partial exit"). Service, schema and the decision
+    59 gate are unchanged. The Final Close continues into canonical Step 6 with Record Closed's
+    step heading. (§11, §13, Recording lifecycle)
 
 Required / Recommended / Optional, 2026-09-26 (item 59):
 

@@ -3,18 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { RecordContractExitSchema } from '@/lib/trades/schemas';
 
 import {
-  adoptRecordedExits,
   buildClosePayload,
   createCloseTradeDraft,
+  effectiveCloseMode,
   firstCloseErrorField,
   lastRecordedExitTime,
   serverErrorField,
-  setCompleteness,
+  setCloseMode,
   setFinalPnl,
   setOutcome,
+  setPartsResult,
   updateLeg,
   validateCloseDraft,
   type CloseTradeContext,
+  type CloseTradeDraft,
 } from './close-trade-draft';
 
 const TRADE_ID = '018f0000-0000-7000-8000-000000000099';
@@ -92,38 +94,148 @@ describe('Part exit', () => {
   });
 });
 
-describe('All Remaining — the Final Close', () => {
-  it('derives Actual R from Final Net P&L ÷ Risk at Entry, and says what is missing otherwise', () => {
-    const typed = setFinalPnl(createCloseTradeDraft('all_remaining'), '-50');
-    expect(validateCloseDraft(typed, context()).actualR).toEqual({
+/** A Final Close answered the way Record Closed would be. */
+const allAtOnce = (pnl: string): CloseTradeDraft =>
+  updateLeg(setCloseMode(createCloseTradeDraft('all_remaining'), 'all_at_once'), { pnl });
+const inParts = (partsResult: 'each_exit' | 'total_only'): CloseTradeDraft =>
+  setPartsResult(setCloseMode(createCloseTradeDraft('all_remaining'), 'in_parts'), partsResult);
+
+describe('All Remaining — the Final Close, as canonical Step 5 (decisions 57–58)', () => {
+  it('"Closed all at once": the closing exit\'s P&L is the result, sent as adopted from it', () => {
+    const draft = updateLeg(allAtOnce('-50'), { price: '2400', reason: '  stop  ' });
+    const validation = validateCloseDraft(draft, context());
+    expect(validation.errors).toEqual({});
+    expect(validation.finalPnlMinor).toBe('-5000');
+    expect(validation.actualR).toEqual({ status: 'known', value: '-0.5000' });
+    expect(validation.closing).toMatchObject({
+      mode: 'all_at_once',
+      source: 'full_close',
+      exitCount: 1,
+      closed: true,
+    });
+    const payload = buildClosePayload(draft, context(), IDS);
+    expect(payload).toEqual({
+      tradeId: TRADE_ID,
+      mutationKey: KEY,
+      scope: 'all_remaining',
+      realizedPnlMinor: '-5000',
+      closedBps: null,
+      exitPrice: '2400',
+      exitedAt: null,
+      exitReason: 'stop',
+      finalPnlMinor: '-5000',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
+      finalExitedAt: null,
+    });
+    expect(RecordContractExitSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('never fabricates a result: no close answer, no P&L — unknown, never 0R', () => {
+    expect(validateCloseDraft(createCloseTradeDraft('all_remaining'), context())).toMatchObject({
+      finalPnlMinor: null,
+      actualR: { status: 'unavailable', reason: 'needs_pnl' },
+      closing: { mode: 'unanswered', source: null },
+    });
+    expect(validateCloseDraft(allAtOnce(''), context()).finalPnlMinor).toBeNull();
+    // A stated zero is a real 0R.
+    expect(validateCloseDraft(allAtOnce('0'), context()).actualR).toEqual({
       status: 'known',
-      value: '-0.5000',
+      value: '0.0000',
     });
-    // No Final Net P&L: unknown, never 0R.
-    expect(validateCloseDraft(createCloseTradeDraft('all_remaining'), context()).actualR).toEqual({
-      status: 'unavailable',
-      reason: 'needs_pnl',
-    });
-    expect(validateCloseDraft(typed, context({ riskMinor: null })).actualR).toEqual({
+    expect(validateCloseDraft(allAtOnce('-50'), context({ riskMinor: null })).actualR).toEqual({
       status: 'unavailable',
       reason: 'needs_risk',
     });
-    // A stated zero is a real 0R.
-    expect(
-      validateCloseDraft(setFinalPnl(createCloseTradeDraft('all_remaining'), '0'), context())
-        .actualR,
-    ).toEqual({ status: 'known', value: '0.0000' });
+  });
+
+  it('a Trade with recorded exits was closed in parts: that is not asked again', () => {
+    const exits = [{ closedBps: 6_000, realizedPnlMinor: '4000', exitedAt: null }];
+    const draft = createCloseTradeDraft('all_remaining');
+    expect(effectiveCloseMode(draft, context())).toBe('unanswered');
+    expect(effectiveCloseMode(draft, context({ exits }))).toBe('in_parts');
+    // Even an answer given before the exits were recorded does not override them.
+    expect(effectiveCloseMode(setCloseMode(draft, 'all_at_once'), context({ exits }))).toBe(
+      'in_parts',
+    );
+  });
+
+  it('"Record each exit": the recorded exits plus the closing exit — final only once every one has P&L', () => {
+    const exits = [{ closedBps: 6_000, realizedPnlMinor: '4000', exitedAt: null }];
+    const waiting = validateCloseDraft(inParts('each_exit'), context({ exits }));
+    // The closing exit is All remaining, so the close is proven — the result is not.
+    expect(waiting.closing).toMatchObject({
+      mode: 'in_parts',
+      partsResult: 'each_exit',
+      exitCount: 2,
+      accountedBps: 10_000,
+      closed: true,
+      missingPnl: true,
+      recordedSoFarMinor: '4000',
+    });
+    expect(waiting.finalPnlMinor).toBeNull();
+
+    const draft = updateLeg(inParts('each_exit'), { pnl: '35', closedPercent: '40' });
+    const validation = validateCloseDraft(draft, context({ exits }));
+    expect(validation.finalPnlMinor).toBe('7500');
+    expect(validation.closing).toMatchObject({ source: 'exit_legs', missingPnl: false });
+    const payload = buildClosePayload(draft, context({ exits }), IDS);
+    expect(payload).toMatchObject({
+      realizedPnlMinor: '3500',
+      closedBps: 4_000,
+      finalPnlMinor: '7500',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
+    });
+    expect(RecordContractExitSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('an earlier exit without P&L keeps "Record each exit" waiting — never a partial sum', () => {
+    const exits = [{ closedBps: 5_000, realizedPnlMinor: null, exitedAt: null }];
+    const draft = updateLeg(inParts('each_exit'), { pnl: '35' });
+    const validation = validateCloseDraft(draft, context({ exits }));
+    expect(validation.finalPnlMinor).toBeNull();
+    expect(validation.closing).toMatchObject({ missingPnl: true, recordedSoFarMinor: '3500' });
+  });
+
+  it('"I only know the final result": the stated total, and no exit P&L made up for it', () => {
+    const exits = [{ closedBps: 5_000, realizedPnlMinor: '4000', exitedAt: null }];
+    // Answers given under another way of recording stay in the draft, unsent.
+    const draft = updateLeg(setFinalPnl(inParts('total_only'), '120'), {
+      pnl: '99',
+      price: '2400',
+      reason: 'kept, not sent',
+    });
+    const validation = validateCloseDraft(draft, context({ exits }));
+    expect(validation.finalPnlMinor).toBe('12000');
+    expect(validation.closing).toMatchObject({ source: 'stated_total', exitCount: 0 });
+    const payload = buildClosePayload(draft, context({ exits }), IDS);
+    expect(payload).toEqual({
+      tradeId: TRADE_ID,
+      mutationKey: KEY,
+      scope: 'all_remaining',
+      realizedPnlMinor: null,
+      closedBps: null,
+      exitPrice: null,
+      exitedAt: null,
+      finalPnlMinor: '12000',
+      finalExitedAt: null,
+    });
+    expect(RecordContractExitSchema.safeParse(payload).success).toBe(true);
+    expect(validateCloseDraft(setFinalPnl(draft, 'abc'), context({ exits })).errors).toEqual({
+      finalPnl: 'invalid_money',
+    });
   });
 
   it('keeps the outcome the trader chose, noticing — not blocking — a sign contradiction', () => {
-    const draft = setOutcome(setFinalPnl(createCloseTradeDraft('all_remaining'), '-20'), 'win');
+    const draft = setOutcome(allAtOnce('-20'), 'win');
     const validation = validateCloseDraft(draft, context());
     expect(validation.errors).toEqual({});
     expect(validation.outcomeContradictsPnl).toBe(true);
     expect(buildClosePayload(draft, context(), IDS)).toMatchObject({ traderOutcome: 'win' });
   });
 
-  it('sends nothing it was not told: no outcome, no completeness, no final time', () => {
+  it('sends nothing it was not told: no outcome, no result, no final time', () => {
     const payload = buildClosePayload(createCloseTradeDraft('all_remaining'), context(), IDS);
     expect(payload).toEqual({
       tradeId: TRADE_ID,
@@ -139,7 +251,7 @@ describe('All Remaining — the Final Close', () => {
     expect(RecordContractExitSchema.safeParse(payload).success).toBe(true);
   });
 
-  it('refuses a final exit time before a recorded exit, and before this closing leg', () => {
+  it('refuses a final exit time before a recorded exit', () => {
     const exits = [
       { closedBps: 5_000, realizedPnlMinor: '4000', exitedAt: '2026-09-20T05:00:00.000Z' },
     ];
@@ -147,49 +259,14 @@ describe('All Remaining — the Final Close', () => {
     expect(validateCloseDraft(early, context({ exits })).errors.finalExitedAt).toBe(
       'final_exit_before_recorded_exit',
     );
-    const legAfter = updateLeg(
-      { ...createCloseTradeDraft('all_remaining'), finalExitedAt: '2026-09-20T13:00' },
-      { exitedAt: '2026-09-20T14:00' },
-    );
-    expect(validateCloseDraft(legAfter, context()).errors.finalExitedAt).toBe(
-      'final_exit_before_recorded_exit',
-    );
     expect(lastRecordedExitTime(context({ exits }))).toBe('2026-09-20T05:00:00.000Z');
   });
 
-  it('offers the exit subtotal only for a Complete, fully priced history, and marks the adoption', () => {
-    const exits = [{ closedBps: 5_000, realizedPnlMinor: '4000', exitedAt: null }];
-    const base = updateLeg(setFinalPnl(createCloseTradeDraft('all_remaining'), '75'), {
-      pnl: '40',
-    });
-    // Not Complete: the subtotal is evidence only.
-    expect(validateCloseDraft(base, context({ exits })).canAdoptExitSubtotal).toBe(false);
-    const complete = setCompleteness(base, 'complete');
-    const validation = validateCloseDraft(complete, context({ exits }));
-    expect(validation.exitSubtotalMinor).toBe('8000');
-    expect(validation.canAdoptExitSubtotal).toBe(true);
-
-    const adopted = adoptRecordedExits(complete, '80.00');
-    expect(adopted.finalPnlAdopted).toBe(true);
-    expect(buildClosePayload(adopted, context({ exits }), IDS)).toMatchObject({
-      finalPnlMinor: '8000',
-      finalPnlAdoptedFromExits: true,
-      exitHistoryCompleteness: 'complete',
-    });
-    // Typing replaces the adopted figure with the trader's own.
-    expect(setFinalPnl(adopted, '79').finalPnlAdopted).toBe(false);
-    // An adoption the evidence no longer supports is caught before Save.
-    const stale = updateLeg(adopted, { pnl: '41' });
-    expect(validateCloseDraft(stale, context({ exits })).errors.finalPnl).toBe(
-      'exit_history_not_adoptable',
-    );
-  });
-
-  it('allows the closing leg to take exactly the rest of the position', () => {
+  it('allows the closing exit to take exactly the rest of the position', () => {
     const exits = [{ closedBps: 6_000, realizedPnlMinor: null, exitedAt: null }];
-    const rest = updateLeg(createCloseTradeDraft('all_remaining'), { closedPercent: '40' });
+    const rest = updateLeg(inParts('each_exit'), { closedPercent: '40' });
     expect(validateCloseDraft(rest, context({ exits })).errors).toEqual({});
-    const over = updateLeg(createCloseTradeDraft('all_remaining'), { closedPercent: '41' });
+    const over = updateLeg(inParts('each_exit'), { closedPercent: '41' });
     expect(validateCloseDraft(over, context({ exits })).errors['leg.closedPercent']).toBe(
       'percent_over_total',
     );
@@ -205,20 +282,15 @@ describe('blocked-action routing', () => {
   });
 
   it('sends each precise server exit-time error to the time it is about', () => {
-    const part = createCloseTradeDraft('part');
-    expect(serverErrorField('exit_time_in_future', part, context())).toBe('leg.exitedAt');
-    const finalOnly = {
-      ...createCloseTradeDraft('all_remaining'),
-      finalExitedAt: '2026-09-20T10:00',
-    };
-    expect(serverErrorField('exit_time_before_entry', finalOnly, context())).toBe('finalExitedAt');
-    const legOnly = updateLeg(createCloseTradeDraft('all_remaining'), {
-      exitedAt: '2026-09-20T10:00',
-    });
-    expect(serverErrorField('exit_time_in_future', legOnly, context())).toBe('leg.exitedAt');
-    expect(serverErrorField('final_exit_before_recorded_exit', finalOnly, context())).toBe(
-      'finalExitedAt',
+    expect(serverErrorField('exit_time_in_future', createCloseTradeDraft('part'))).toBe(
+      'leg.exitedAt',
     );
-    expect(serverErrorField('trade_not_found', finalOnly, context())).toBeNull();
+    // A Final Close sends one time — the final exit time.
+    const close = createCloseTradeDraft('all_remaining');
+    expect(serverErrorField('exit_time_before_entry', close)).toBe('finalExitedAt');
+    expect(serverErrorField('exit_time_in_future', close)).toBe('finalExitedAt');
+    expect(serverErrorField('final_exit_before_recorded_exit', close)).toBe('finalExitedAt');
+    expect(serverErrorField('exit_history_not_adoptable', close)).toBe('leg.pnl');
+    expect(serverErrorField('trade_not_found', close)).toBeNull();
   });
 });

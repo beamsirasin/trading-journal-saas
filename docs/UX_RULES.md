@@ -1173,8 +1173,15 @@ Implementation evidence only, recorded so redesign and migration work can find t
   Done (§5.9–§5.10).~~ Closed with the After Trade migration.
 - **Close Existing Open Trade, stage 5 (implemented 2026-09-22):** `/app/trades/close` —
   "Record partial exit" (Part) and "Close trade" (All Remaining) from the Trade's Execution panel,
-  scope chosen by the action, written through `recordContractExitAction`; Record Closed's Result
-  step uses the same Stage 5 controls. Since 2026-09-22 it is the only close path for a contract
+  scope chosen by the action, written through `recordContractExitAction`. **Since 2026-09-26 the
+  Final Close is canonical Step 5 itself:** below the Trade's context and — only where needed —
+  Complete the plan, it shows Record Closed's Step 5 heading ("Step 5 of 6 · Trader result") and
+  the same shared components in the same order: the outcome card, the Trade result card (how it
+  closed; each exit or the final result; the read-only Final result with Trader R) and the final
+  exit time launcher outside it. Lifecycle facts arrive as props: exits already recorded say
+  "Closed in parts" instead of asking, are listed read-only, and the closing exit is All
+  remaining. After the close, Step 6 carries Record Closed's step heading ("Step 6 of 6 · After
+  trade") under the kept "Close trade" page title. Since 2026-09-22 it is the only close path for a contract
   Trade: the legacy exit / close / exit-correction dialogs are hidden for it and their server
   actions refuse it (`contract_close_required`); legacy Trades keep them. Its answers persist in
   the Close Trade draft (§20.5) and the entry context is readable through "View entry details".

@@ -141,6 +141,18 @@ of the 3:1 a graphic needs), a passed step is that blue at 45%, and the rail is
 `--muted` in Dark and the light, nearly neutral `#e8eaef` in Light. An error
 segment stays `bg-destructive`.
 
+### Trader result (canonical Step 5)
+
+One set of components serves Record Closed and Close Existing Open Trade's Final Close —
+`src/components/trades/trade-exit-result-step.tsx`: `TraderOutcomeCard` (Win / BE / Loss
+buttons, Required), `TradeResultCard` (the close question, the full close, the parts choice, the
+stated total and the read-only Final result with Trader R), `ClosingStatusLine` and
+`FinalExitTimeRow` (its own launcher, outside the result card). Each task passes its exit
+editor into `TradeResultCard`'s `eachExit` slot — Record Closed its editable exit list, the
+Final Close `ClosingExitsEditor` (recorded exits read-only, then the All remaining closing exit).
+The step header is `StepHeading` (`trade-step-flow.tsx`), shared with `TradeStepFlow`. Never
+copy these into a task; pass a lifecycle difference in as a prop.
+
 ### Requirement badge
 
 `RequirementBadge` (`src/components/trades/requirement-badge.tsx`) is the one

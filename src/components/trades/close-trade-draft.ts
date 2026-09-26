@@ -2,11 +2,18 @@ import Decimal from 'decimal.js';
 import type { z } from 'zod';
 
 import { actualR } from '@/lib/calc/trade';
-import { reconcileExitHistory, traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
-import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constants';
+import { traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
+import type { OutcomeValue } from '@/lib/trades/constants';
 import type { RecordContractExitSchema } from '@/lib/trades/schemas';
 
-import { composeEntryTimestamp, entryTimestampParts, percentToBps } from './after-trade-draft';
+import {
+  composeEntryTimestamp,
+  entryTimestampParts,
+  percentToBps,
+  type CloseMode,
+  type ClosingState,
+  type PartsResult,
+} from './after-trade-draft';
 import type { ExitPlanDraft } from './at-entry-draft';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 
@@ -24,7 +31,7 @@ import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
  */
 
 export type CloseScope = 'part' | 'all_remaining';
-export type CloseCompleteness = 'unanswered' | ExitHistoryCompleteness;
+export type { CloseMode, PartsResult };
 
 /** One exit leg's answers — every one optional (contract §10). */
 export interface ExitLegDraft {
@@ -59,17 +66,35 @@ export const BLANK_CLOSE_PLAN: ClosePlanDraft = {
   exitPlan: { choice: { kind: 'unanswered' }, customText: '', customBaseId: null },
 };
 
+/**
+ * THE FINAL CLOSE READS AS CANONICAL STEP 5 (decisions 57–58), exactly as
+ * Record Closed asks it: how the Trade closed, and — closed in parts — how its
+ * result is recorded. One source for the result:
+ *
+ * - "Closed all at once": the closing exit is the only exit; its P&L is the
+ *   Final Net P&L (adopted from the exits, never typed beside them).
+ * - "Record each exit": the exits recorded before this close plus the closing
+ *   exit; their sum is the result once every one states its P&L.
+ * - "I only know the final result": a stated total (`finalPnl`); no exit P&L
+ *   is made up for it.
+ *
+ * The closing exit (`leg`) is always All remaining: a Final Close closes
+ * whatever is left. A Trade that already has exits was closed in parts — the
+ * recorded exits say so — so only the second question is asked then.
+ */
 export interface CloseTradeDraft {
   readonly scope: CloseScope;
+  /** Part: the one exit. All Remaining: the closing exit. */
   readonly leg: ExitLegDraft;
   /** All Remaining only: the Trade's final exit time. Never filled in for the trader. */
   readonly finalExitedAt: string;
-  /** All Remaining only: the authoritative Final Net P&L, as typed or explicitly adopted. */
+  /** All Remaining only: how the Trade closed. */
+  readonly closeMode: CloseMode;
+  /** All Remaining, closed in parts: how the result is recorded. */
+  readonly partsResult: PartsResult;
+  /** All Remaining, "I only know the final result": the stated Final Net P&L. */
   readonly finalPnl: string;
-  /** The Final Net P&L currently shown came from "Use recorded exits". */
-  readonly finalPnlAdopted: boolean;
   readonly outcome: OutcomeValue | null;
-  readonly completeness: CloseCompleteness;
   /** All Remaining only: Required plan answers the Trade lacks (decision 59). */
   readonly plan: ClosePlanDraft;
 }
@@ -137,7 +162,6 @@ export type CloseErrorCode =
   | 'exit_time_before_entry'
   | 'exit_time_in_future'
   | 'final_exit_before_recorded_exit'
-  | 'exit_history_not_adoptable'
   /** A Defined Risk given at the close needs its amount — or the answer removed. */
   | 'risk_amount_required'
   /** A Fixed Target given at the close needs Target Profit or a TP price. */
@@ -157,12 +181,11 @@ export type ActualRReadout =
 
 export interface CloseValidation {
   readonly errors: CloseErrors;
+  /** The Final Net P&L the close proves — never a running figure. */
   readonly finalPnlMinor: string | null;
   readonly actualR: ActualRReadout;
-  /** Every recorded exit plus this one, when each carries a valid P&L. */
-  readonly exitSubtotalMinor: string | null;
-  /** "Use recorded exits" may be offered: a Complete history, every leg priced. */
-  readonly canAdoptExitSubtotal: boolean;
+  /** Where the close stands, in Record Closed's own terms (decision 57). */
+  readonly closing: ClosingState;
   readonly outcomeContradictsPnl: boolean;
   /** A Defined Risk amount given at the close, when valid. */
   readonly planRiskMinor: string | null;
@@ -177,10 +200,10 @@ export function createCloseTradeDraft(scope: CloseScope): CloseTradeDraft {
     scope,
     leg: blankExitLeg(),
     finalExitedAt: '',
+    closeMode: 'unanswered',
+    partsResult: 'unanswered',
     finalPnl: '',
-    finalPnlAdopted: false,
     outcome: null,
-    completeness: 'unanswered',
     plan: BLANK_CLOSE_PLAN,
   };
 }
@@ -291,25 +314,37 @@ export function updateLeg(draft: CloseTradeDraft, patch: Partial<ExitLegDraft>):
   return { ...draft, leg: { ...draft.leg, ...patch } };
 }
 
-/** Typing the Final Net P&L makes it the trader's own figure again. */
+/** "I only know the final result": the trader's own total. */
 export function setFinalPnl(draft: CloseTradeDraft, finalPnl: string): CloseTradeDraft {
-  return { ...draft, finalPnl, finalPnlAdopted: false };
-}
-
-/** The explicit "Use recorded exits": the subtotal becomes the Final Net P&L, and says so. */
-export function adoptRecordedExits(draft: CloseTradeDraft, subtotalText: string): CloseTradeDraft {
-  return { ...draft, finalPnl: subtotalText, finalPnlAdopted: true };
+  return { ...draft, finalPnl };
 }
 
 export function setOutcome(draft: CloseTradeDraft, outcome: OutcomeValue | null): CloseTradeDraft {
   return { ...draft, outcome };
 }
 
-export function setCompleteness(
-  draft: CloseTradeDraft,
-  completeness: CloseCompleteness,
-): CloseTradeDraft {
-  return { ...draft, completeness };
+/** Choosing how the Trade closed; each way keeps its own answers. */
+export function setCloseMode(draft: CloseTradeDraft, closeMode: CloseMode): CloseTradeDraft {
+  return { ...draft, closeMode };
+}
+
+/** Choosing how a close in parts is recorded; each way keeps its own answers. */
+export function setPartsResult(draft: CloseTradeDraft, partsResult: PartsResult): CloseTradeDraft {
+  return { ...draft, partsResult };
+}
+
+/**
+ * HOW THIS TRADE CLOSED, AS THE STEP READS IT. Exits recorded before the
+ * Final Close already prove it closed in parts, so that is not asked again;
+ * otherwise it is the trader's own answer, Unanswered until given.
+ */
+export function effectiveCloseMode(draft: CloseTradeDraft, context: CloseTradeContext): CloseMode {
+  return context.exits.length > 0 ? 'in_parts' : draft.closeMode;
+}
+
+/** Whether the closing exit carries answers in this way of recording the close. */
+function closingLegUsed(mode: CloseMode, partsResult: PartsResult): boolean {
+  return mode === 'all_at_once' || (mode === 'in_parts' && partsResult === 'each_exit');
 }
 
 // ---------------------------------------------------------------------------
@@ -324,12 +359,18 @@ export function validateCloseDraft(
 ): CloseValidation {
   const errors: CloseErrors = {};
   const allRemaining = draft.scope === 'all_remaining';
+  const mode = allRemaining ? effectiveCloseMode(draft, context) : 'unanswered';
+  // The closing exit is read only where the chosen way of closing records it.
+  const legUsed = !allRemaining || closingLegUsed(mode, draft.partsResult);
 
-  const legTime = checkTime(draft.leg.exitedAt, context);
+  // A Final Close's closing exit takes the final exit time, asked once on its own.
+  const legTime: TimeCheck = allRemaining
+    ? { time: null, error: null }
+    : checkTime(draft.leg.exitedAt, context);
   if (legTime.error !== null) errors['leg.exitedAt'] = legTime.error;
 
   let legPnlMinor: string | null = null;
-  if (draft.leg.pnl.trim() !== '') {
+  if (legUsed && draft.leg.pnl.trim() !== '') {
     const parsed = parseTradeMoneyInput(draft.leg.pnl, context.currency, {
       allowNegative: true,
       allowZero: true,
@@ -338,7 +379,9 @@ export function validateCloseDraft(
     else errors['leg.pnl'] = 'invalid_money';
   }
 
-  const bps = percentToBps(draft.leg.closedPercent);
+  // "Closed all at once" asks no share: the one exit is the whole position.
+  const percentAsked = !allRemaining || (mode === 'in_parts' && draft.partsResult === 'each_exit');
+  const bps = percentAsked ? percentToBps(draft.leg.closedPercent) : null;
   if (bps === 'invalid') {
     errors['leg.closedPercent'] = 'invalid_percent';
   } else if (bps !== null) {
@@ -349,33 +392,71 @@ export function validateCloseDraft(
   }
 
   const price = draft.leg.price.trim();
-  if (price !== '' && (!PRICE.test(price) || new Decimal(price).lte(0))) {
+  if (legUsed && price !== '' && (!PRICE.test(price) || new Decimal(price).lte(0))) {
     errors['leg.price'] = 'invalid_price';
   }
 
-  let finalPnlMinor: string | null = null;
   if (allRemaining) {
     const finalTime = checkTime(draft.finalExitedAt, context);
     if (finalTime.error !== null) {
       errors.finalExitedAt = finalTime.error;
     } else if (finalTime.time !== null) {
-      const legTimes = [
-        ...context.exits.map((exit) => (exit.exitedAt === null ? null : Date.parse(exit.exitedAt))),
-        legTime.time,
-      ];
-      if (legTimes.some((time) => time !== null && time > (finalTime.time ?? 0))) {
+      const recordedTimes = context.exits.map((exit) =>
+        exit.exitedAt === null ? null : Date.parse(exit.exitedAt),
+      );
+      if (recordedTimes.some((time) => time !== null && time > (finalTime.time ?? 0))) {
         errors.finalExitedAt = 'final_exit_before_recorded_exit';
       }
     }
+  }
+
+  /*
+    ONE SOURCE (decisions 57–58), read exactly as Record Closed reads it. The
+    closing exit is All remaining, so a close recorded exit by exit is always
+    proven closed; its Final Net P&L is the sum of the exits once every one
+    states its P&L. A stated total is the trader's own, and nothing else.
+  */
+  const legsCounted = allRemaining && closingLegUsed(mode, draft.partsResult);
+  const priorPnl = context.exits.map((exit) =>
+    exit.realizedPnlMinor === null ? null : BigInt(exit.realizedPnlMinor),
+  );
+  const closingPnl = legPnlMinor === null ? null : BigInt(legPnlMinor);
+  const exitPnl = !legsCounted
+    ? []
+    : mode === 'all_at_once'
+      ? [closingPnl]
+      : [...priorPnl, closingPnl];
+  const knownPnl = exitPnl.filter((pnl): pnl is bigint => pnl !== null);
+  const sum = knownPnl.reduce((total, pnl) => total + pnl, 0n);
+  const everyPnl = exitPnl.length > 0 && exitPnl.every((pnl) => pnl !== null);
+  let finalPnlMinor: string | null = null;
+  let source: ClosingState['source'] = null;
+  if (legsCounted && everyPnl) {
+    finalPnlMinor = sum.toString();
+    source = mode === 'all_at_once' ? 'full_close' : 'exit_legs';
+  }
+  if (allRemaining && mode === 'in_parts' && draft.partsResult === 'total_only') {
     if (draft.finalPnl.trim() !== '') {
-      const parsed = parseTradeMoneyInput(draft.finalPnl, context.currency, {
+      const stated = parseTradeMoneyInput(draft.finalPnl, context.currency, {
         allowNegative: true,
         allowZero: true,
       });
-      if (parsed.ok) finalPnlMinor = parsed.value;
-      else errors.finalPnl = 'invalid_money';
+      if (stated.ok) {
+        finalPnlMinor = stated.value;
+        source = 'stated_total';
+      } else errors.finalPnl = 'invalid_money';
     }
   }
+  const closing: ClosingState = {
+    mode,
+    partsResult: draft.partsResult,
+    source,
+    exitCount: exitPnl.length,
+    accountedBps: legsCounted ? 10_000 : null,
+    closed: legsCounted,
+    missingPnl: legsCounted && !everyPnl,
+    recordedSoFarMinor: finalPnlMinor === null && knownPnl.length > 0 ? sum.toString() : null,
+  };
 
   /*
     PLAN ANSWERS GIVEN AT THE CLOSE (decision 59) — checked only where the
@@ -413,31 +494,6 @@ export function validateCloseDraft(
     tradePlan?.noDefinedRisk === true ||
     (tradePlan !== undefined && !tradePlan.riskAnswered && draft.plan.riskState === 'no_defined');
 
-  const legPnls = allRemaining
-    ? [
-        ...context.exits.map((exit) =>
-          exit.realizedPnlMinor === null ? null : BigInt(exit.realizedPnlMinor),
-        ),
-        errors['leg.pnl'] === undefined && legPnlMinor !== null ? BigInt(legPnlMinor) : null,
-      ]
-    : [];
-  const reconciliation = reconcileExitHistory({
-    completeness: draft.completeness === 'unanswered' ? null : draft.completeness,
-    exitPnlMinor: legPnls,
-    finalNetPnlMinor: finalPnlMinor === null ? null : BigInt(finalPnlMinor),
-  });
-  // An adopted figure that no longer matches the evidence is not adoptable any more.
-  if (
-    allRemaining &&
-    draft.finalPnlAdopted &&
-    finalPnlMinor !== null &&
-    (draft.completeness !== 'complete' ||
-      reconciliation.subtotalMinor === null ||
-      reconciliation.subtotalMinor.toString() !== finalPnlMinor)
-  ) {
-    errors.finalPnl ??= 'exit_history_not_adoptable';
-  }
-
   let readout: ActualRReadout;
   if (noDefinedRisk) {
     readout = { status: 'unavailable', reason: 'no_defined_risk' };
@@ -462,9 +518,7 @@ export function validateCloseDraft(
     errors,
     finalPnlMinor,
     actualR: readout,
-    exitSubtotalMinor:
-      reconciliation.subtotalMinor === null ? null : reconciliation.subtotalMinor.toString(),
-    canAdoptExitSubtotal: allRemaining && reconciliation.adoptable,
+    closing,
     outcomeContradictsPnl:
       allRemaining &&
       traderOutcomeContradictsPnl(
@@ -484,27 +538,19 @@ export function firstCloseErrorField(errors: CloseErrors): CloseField | null {
  * which time they are about; the client re-reads the draft to tell the leg's
  * own time from the Trade's final one.
  */
-export function serverErrorField(
-  code: string,
-  draft: CloseTradeDraft,
-  context: CloseTradeContext,
-): CloseField | null {
+export function serverErrorField(code: string, draft: CloseTradeDraft): CloseField | null {
   switch (code) {
     case 'exit_time_before_entry':
-    case 'exit_time_in_future': {
-      if (draft.scope === 'part') return 'leg.exitedAt';
-      const legError = checkTime(draft.leg.exitedAt, context).error;
-      if (draft.leg.exitedAt !== '' && (legError === code || draft.finalExitedAt === '')) {
-        return 'leg.exitedAt';
-      }
-      return 'finalExitedAt';
-    }
+    case 'exit_time_in_future':
+      // A Final Close sends one time: the final exit time.
+      return draft.scope === 'part' ? 'leg.exitedAt' : 'finalExitedAt';
     case 'final_exit_before_recorded_exit':
       return 'finalExitedAt';
     case 'invalid_closed_bps':
       return 'leg.closedPercent';
     case 'exit_history_not_adoptable':
-      return 'finalPnl';
+      // The result is the exits' own sum; a refusal belongs to the closing exit's P&L.
+      return 'leg.pnl';
     default:
       return null;
   }
@@ -577,42 +623,57 @@ export function buildClosePayload(
   context: CloseTradeContext,
   ids: { readonly tradeId: string; readonly mutationKey: string },
 ): RecordContractExitPayload {
-  const legPnl =
-    draft.leg.pnl.trim() === ''
-      ? null
-      : parseTradeMoneyInput(draft.leg.pnl, context.currency, {
-          allowNegative: true,
-          allowZero: true,
-        });
-  const bps = percentToBps(draft.leg.closedPercent);
-  const leg = {
-    realizedPnlMinor: legPnl !== null && legPnl.ok ? legPnl.value : null,
-    closedBps: typeof bps === 'number' ? bps : null,
-    exitPrice: draft.leg.price.trim() === '' ? null : draft.leg.price.trim(),
-    exitedAt: localToIso(draft.leg.exitedAt, context.timezone),
-    ...(draft.leg.reason.trim() === '' ? {} : { exitReason: draft.leg.reason.trim() }),
+  const money = (value: string) => {
+    if (value.trim() === '') return null;
+    const parsed = parseTradeMoneyInput(value, context.currency, {
+      allowNegative: true,
+      allowZero: true,
+    });
+    return parsed.ok ? parsed.value : null;
   };
+  const bps = percentToBps(draft.leg.closedPercent);
+  const reason = draft.leg.reason.trim();
+  const price = draft.leg.price.trim();
   if (draft.scope === 'part') {
-    return { tradeId: ids.tradeId, mutationKey: ids.mutationKey, scope: 'part', ...leg };
+    return {
+      tradeId: ids.tradeId,
+      mutationKey: ids.mutationKey,
+      scope: 'part',
+      realizedPnlMinor: money(draft.leg.pnl),
+      closedBps: typeof bps === 'number' ? bps : null,
+      exitPrice: price === '' ? null : price,
+      exitedAt: localToIso(draft.leg.exitedAt, context.timezone),
+      ...(reason === '' ? {} : { exitReason: reason }),
+    };
   }
-  const final =
-    draft.finalPnl.trim() === ''
-      ? null
-      : parseTradeMoneyInput(draft.finalPnl, context.currency, {
-          allowNegative: true,
-          allowZero: true,
-        });
+  const validation = validateCloseDraft(draft, context);
+  const { closing } = validation;
+  // Only the way of closing the trader chose is sent; a stated total makes no exit P&L up.
+  const legUsed = closingLegUsed(closing.mode, closing.partsResult);
+  const eachExit = closing.mode === 'in_parts' && closing.partsResult === 'each_exit';
   const plan = closePlanPayload(draft, context);
+  const fromExits = closing.source === 'full_close' || closing.source === 'exit_legs';
   return {
     tradeId: ids.tradeId,
     mutationKey: ids.mutationKey,
     scope: 'all_remaining',
-    ...leg,
+    realizedPnlMinor: legUsed ? money(draft.leg.pnl) : null,
+    closedBps: eachExit && typeof bps === 'number' ? bps : null,
+    exitPrice: legUsed && price !== '' ? price : null,
+    // The closing exit's time is the final exit time, sent once.
+    exitedAt: null,
+    ...(legUsed && reason !== '' ? { exitReason: reason } : {}),
     ...(plan === null ? {} : { plan }),
-    finalPnlMinor: final !== null && final.ok ? final.value : null,
-    ...(draft.finalPnlAdopted ? { finalPnlAdoptedFromExits: true as const } : {}),
+    finalPnlMinor: validation.finalPnlMinor,
+    /*
+      ONE SOURCE, RE-CHECKED BY THE SERVER. A result the exits add up to is
+      sent as adopted from them, with the history Complete — the closing exit
+      is All remaining, so the exits are every exit there is.
+    */
+    ...(fromExits
+      ? { finalPnlAdoptedFromExits: true as const, exitHistoryCompleteness: 'complete' as const }
+      : {}),
     ...(draft.outcome === null ? {} : { traderOutcome: draft.outcome }),
-    ...(draft.completeness === 'unanswered' ? {} : { exitHistoryCompleteness: draft.completeness }),
     finalExitedAt: localToIso(draft.finalExitedAt, context.timezone),
   };
 }

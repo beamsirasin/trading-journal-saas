@@ -112,6 +112,23 @@ describe('Stage 6 after a Final Close', () => {
     expect(screen.queryByText(/reflection|mistake|system assessment/i)).toBeNull();
   });
 
+  it('continues the close as canonical Step 6: its heading, then the System Result, then context', () => {
+    renderForm();
+    const heading = screen.getByRole('heading', { name: 'After trade' });
+    expect(heading.closest('[data-step-heading]')).toHaveTextContent('Step 6 of 6');
+    expect(heading.closest('[data-step-heading]')).toHaveTextContent(
+      'What your plan would have produced, and context from after the trade.',
+    );
+    const system = document.querySelector('[data-plan-outcome]')!;
+    const emotion = document.getElementById('stage6-post-emotions')!;
+    expect(heading.compareDocumentPosition(system) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(system.compareDocumentPosition(emotion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Opened later from the trade, it is not part of a close: no step heading.
+    cleanup();
+    renderForm(trade(), false);
+    expect(document.querySelector('[data-step-heading]')).toBeNull();
+  });
+
   it('sends no empty patch: skipping or saving nothing just finishes', async () => {
     renderForm();
     fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
@@ -206,9 +223,9 @@ describe('the Stage 6 draft', () => {
           leg: { pnl: '5', closedPercent: '', exitedAt: '', price: '', reason: '' },
           finalExitedAt: '',
           finalPnl: '',
-          finalPnlAdopted: false,
+          closeMode: 'unanswered',
           outcome: null,
-          completeness: 'unanswered',
+          partsResult: 'unanswered',
           plan: BLANK_CLOSE_PLAN,
         },
         submission: null,

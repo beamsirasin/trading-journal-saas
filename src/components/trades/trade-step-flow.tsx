@@ -333,27 +333,13 @@ export function TradeStepFlow({
               </div>
             )}
             {wide ? null : stepNav}
-            <div className="flex min-w-0 flex-col gap-1 pt-0.5 lg:gap-1.5">
-              {wide ? (
-                <span
-                  data-step-progress=""
-                  className="text-muted-foreground text-xs font-medium tracking-wide tabular-nums"
-                >
-                  {copy.progress}
-                </span>
-              ) : null}
-              <h2
-                id={headingId}
-                ref={headingRef}
-                tabIndex={-1}
-                className="text-foreground text-[1.375rem] leading-tight font-semibold tracking-tight outline-none sm:text-2xl lg:text-[1.75rem]"
-              >
-                {title}
-              </h2>
-              <p className="text-muted-foreground text-sm leading-relaxed lg:text-base">
-                {description}
-              </p>
-            </div>
+            <StepHeading
+              id={headingId}
+              headingRef={headingRef}
+              progress={wide ? copy.progress : null}
+              title={title}
+              description={description}
+            />
             {/*
               THE STEP SAYS WHAT IS WRONG WITH IT. A phone has no rail to read,
               so the count lives with the step; the error itself stays beside
@@ -570,5 +556,47 @@ export function TradeStepSection({
     >
       {children}
     </section>
+  );
+}
+
+/**
+ * A STEP'S OWN HEADING — "Step n of m", its title and its question — shared
+ * by every task that walks the canonical stages, so Close Existing's Step 5
+ * and Step 6 read exactly as Record Closed's do. `progress` is left out where
+ * something else on screen already draws it.
+ */
+export function StepHeading({
+  id,
+  headingRef,
+  progress,
+  title,
+  description,
+}: {
+  id?: string;
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+  progress: string | null;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div data-step-heading="" className="flex min-w-0 flex-col gap-1 pt-0.5 lg:gap-1.5">
+      {progress === null ? null : (
+        <span
+          data-step-progress=""
+          className="text-muted-foreground text-xs font-medium tracking-wide tabular-nums"
+        >
+          {progress}
+        </span>
+      )}
+      <h2
+        id={id}
+        ref={headingRef}
+        tabIndex={-1}
+        className="text-foreground text-[1.375rem] leading-tight font-semibold tracking-tight outline-none sm:text-2xl lg:text-[1.75rem]"
+      >
+        {title}
+      </h2>
+      <p className="text-muted-foreground text-sm leading-relaxed lg:text-base">{description}</p>
+    </div>
   );
 }
