@@ -442,6 +442,7 @@ export function ChoiceGroup<T extends string>({
   fit,
   appearance = 'cards',
   hideLegend = false,
+  badge,
 }: {
   idPrefix: string;
   legend: string;
@@ -484,6 +485,12 @@ export function ChoiceGroup<T extends string>({
    * legend stays for the accessible name and drops out of the picture.
    */
   hideLegend?: boolean;
+  /**
+   * The question's requirement badge (decision 59). It takes the place of the
+   * Unanswered status — the badge already says what is asked — and sits beside
+   * Remove answer once there is an answer.
+   */
+  badge?: ReactNode;
 }) {
   const name = useId();
   const scale = appearance === 'scale';
@@ -494,7 +501,20 @@ export function ChoiceGroup<T extends string>({
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
       <Legend
         aside={
-          value === null ? status === undefined ? null : <StateText>{status}</StateText> : aside
+          badge === undefined ? (
+            value === null ? (
+              status === undefined ? null : (
+                <StateText>{status}</StateText>
+              )
+            ) : (
+              aside
+            )
+          ) : (
+            <span className="flex items-center gap-2">
+              {value === null ? null : aside}
+              {badge}
+            </span>
+          )
         }
       >
         {hideLegend ? <span className="sr-only">{legend}</span> : legend}

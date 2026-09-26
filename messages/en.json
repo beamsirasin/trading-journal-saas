@@ -2270,7 +2270,7 @@
             "panelTitle": "Needed to save",
             "panelDescription": "Everything else can be added now or later.",
             "ready": "Ready to save. Everything else can wait.",
-            "remaining": "{count, plural, one {# required field still missing} other {# required fields still missing}}",
+            "remaining": "{count, plural, one {# more answer needed to save} other {# more answers needed to save}}",
             "blocked": "{count, plural, one {# thing needs attention} other {# things need attention}} before saving",
             "helper": "You can record exits and review this trade later.",
             "requirement": {
@@ -2441,17 +2441,10 @@
             "panelTitle": "Needed to save",
             "panelDescription": "Only these three. Everything else is optional.",
             "ready": "Ready to save.",
-            "remaining": "{count, plural, one {# required field still missing} other {# required fields still missing}}",
+            "remaining": "{count, plural, one {# more answer needed to save} other {# more answers needed to save}}",
             "blocked": "{count, plural, one {# thing needs attention} other {# things need attention}} before saving",
-            "recommendedTitle": "Worth recording",
-            "recommendedDescription": "Not required, but your trader results use them.",
-            "recommended": {
-              "finalPnl": "Final net P&L",
-              "outcome": "Your outcome"
-            },
             "recorded": "recorded",
             "notRecorded": "not recorded yet",
-            "promptMissing": "Final net P&L and your outcome are not recorded yet. You can still save.",
             "helper": "You can review this trade now or later."
           },
           "saved": {
@@ -2518,7 +2511,7 @@
             },
             "optional": "Optional",
             "required": "Required",
-            "requiredMissing": "{count, plural, one {# required field missing} other {# required fields missing}}",
+            "requiredMissing": "{count, plural, one {# required left} other {# required left}}",
             "quickSave": "Save now",
             "quickSaveHint": "You can add the rest later.",
             "cards": {
@@ -2531,7 +2524,8 @@
               "label": "After trade",
               "title": "After trade",
               "description": "What your plan would have produced, and context from after the trade. Then save."
-            }
+            },
+            "recommended": "Recommended"
           },
           "trade": {
             "editAria": "Edit {field}",
@@ -2849,7 +2843,9 @@
       "invalid_plan_outcome": "That plan outcome no longer fits this trade's plan. Check the answer and try again.",
       "actual_risk_retired": "Actual risk is no longer recorded. Reload the page and save again.",
       "contract_close_required": "This trade closes through Record partial exit or Close trade.",
-      "final_pnl_source_invalid": "This final net P&L has no single source. Record how the trade closed, or state the total for a trade closed in parts."
+      "final_pnl_source_invalid": "This final net P&L has no single source. Record how the trade closed, or state the total for a trade closed in parts.",
+      "final_close_incomplete": "Some required answers are still missing, so this trade cannot be closed yet. Answer them above, then close.",
+      "final_close_plan_already_answered": "This trade already has that answer. Reload the page to see it, then close."
     },
     "workspace": {
       "filterError": {
@@ -3220,19 +3216,23 @@
         "reason": "Why this trade",
         "notes": "Entry notes",
         "chart": "Chart link"
+      },
+      "plan": {
+        "title": "Complete the plan",
+        "hint": "This trade is missing required plan answers. Answer them to close it; they are saved with the close."
       }
     },
     "stage6": {
       "title": "After trade",
       "optional": "Optional",
-      "description": "Optional. Add anything useful while it is fresh. The trade is already saved.",
-      "descriptionRecordClosed": "Optional. Anything you add here is saved with the closed trade when you press Save.",
+      "description": "Add anything useful while it is fresh. The trade is already saved.",
+      "descriptionRecordClosed": "Anything you add here is saved with the closed trade when you press Save.",
       "close": "Close",
       "done": "Done",
       "planOutcome": {
         "title": "System result",
         "question": "What would the original plan have produced?",
-        "later": "Optional. You can answer later from the trade.",
+        "later": "Needed to complete the record. You can save now and answer it later from the trade.",
         "boundedLegend": "What happened first under the original plan?",
         "targetFirst": "Planned target",
         "riskFirst": "Planned risk limit",
@@ -3308,6 +3308,18 @@
         "add": "Add after-trade context",
         "edit": "Edit after-trade context"
       }
+    },
+    "requirement": {
+      "required": "Required",
+      "recommended": "Recommended",
+      "optional": "Optional",
+      "conditional": "Depends on target"
+    },
+    "completion": {
+      "left": "{count, plural, one {# required item left} other {# required items left}}. You can save now and finish them later.",
+      "readyToClose": "Ready to close.",
+      "readyOpen": "Required items complete.",
+      "closeBlocked": "{count, plural, one {# required item left} other {# required items left}} before you can close this trade."
     }
   },
   "strategies": {

@@ -23,6 +23,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
+import { withRequiredCloseAnswers } from '@/test/final-close';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { addTradeExit, closeRemainingTrade, correctTradeExit } from './trade-execution';
@@ -124,7 +125,11 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
 
   const ENTERED_AT = new Date(Date.now() - 10 * HOUR);
 
-  /** An Open Trade recorded by At Entry, with Risk at Entry 100.00. */
+  /**
+   * An Open Trade recorded by At Entry, with Risk at Entry 100.00 and a Fixed
+   * Target of 200.00 — its plan complete (decision 59), so a close here is
+   * gated only on its own answers.
+   */
   async function openContractTrade() {
     const created = await createTrade(workspaceId, actorUserId, {
       mutationKey: crypto.randomUUID(),
@@ -136,6 +141,8 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       systemPlanBasis: 'money',
       plannedRiskMinor: 10_000n,
       plannedRiskState: 'defined',
+      targetState: 'fixed',
+      plannedRewardMinor: 20_000n,
       enteredAt: ENTERED_AT,
       enteredAtSource: 'trader',
     });
@@ -161,13 +168,23 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
     return { mutationKey: crypto.randomUUID(), scope: 'all_remaining', ...extra };
   }
 
+  /**
+   * A Final Close here meets the completion rule (decision 59) unless a test
+   * says otherwise — this suite is about the close itself. The rule's own
+   * tests call `recordContractExit` directly.
+   */
   async function record(
     tradeId: string,
     input: RecordContractExitInput,
     ws = workspaceId,
     user = actorUserId,
   ) {
-    return recordContractExit(ws, user, tradeId, input);
+    return recordContractExit(
+      ws,
+      user,
+      tradeId,
+      input.scope === 'all_remaining' ? await withRequiredCloseAnswers(tradeId, input) : input,
+    );
   }
 
   async function readTrade(tradeId: string) {
@@ -324,14 +341,19 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       const tradeId = await openContractTrade();
       const result = await record(
         tradeId,
-        finalClose({ finalPnlMinor: 12_345n, finalExitedAt: at(3), exitPrice: '2420' }),
+        finalClose({
+          finalPnlMinor: 12_345n,
+          finalExitedAt: at(3),
+          exitPrice: '2420',
+          traderOutcome: 'win',
+        }),
       );
       expect(result).toMatchObject({
         ok: true,
         scope: 'all_remaining',
         status: 'closed',
         actualR: '1.2345',
-        traderOutcome: null,
+        traderOutcome: 'win',
       });
       expect(await readTrade(tradeId)).toMatchObject({
         status: 'closed',
@@ -339,8 +361,7 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
         finalPnlSource: 'manual_total',
         actualR: '1.2345',
         actualResultMode: 'money',
-        traderOutcome: null,
-        traderOutcomeSelectedAt: null,
+        traderOutcome: 'win',
         exitedAt: at(3),
         actualExit: null,
         calcVersion: 1,
@@ -370,36 +391,38 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       });
     });
 
-    it('never derives an outcome, and never fabricates 0R, when answers are missing', async () => {
-      // No Final Net P&L: no R, no outcome — not 0R, not a loss.
-      const noPnl = await openContractTrade();
-      expect(await record(noPnl, finalClose())).toMatchObject({
-        ok: true,
-        status: 'closed',
-        actualR: null,
-        traderOutcome: null,
+    /*
+      MISSING ANSWERS ARE NEVER FABRICATED — AND NO LONGER CLOSE (decision 59).
+      A close without a Final Net P&L or an outcome is refused and writes
+      nothing, rather than storing an unknown R or an outcome nobody chose.
+      A stated zero stays a real 0R, with the outcome the trader chose.
+    */
+    it('never fabricates an outcome or 0R: a close missing them is refused', async () => {
+      const tradeId = await openContractTrade();
+      expect(
+        await recordContractExit(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+        }),
+      ).toEqual({
+        ok: false,
+        code: 'final_close_incomplete',
+        missing: ['outcome', 'traderResult'],
       });
-      expect(await readTrade(noPnl)).toMatchObject({
-        status: 'closed',
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'open',
         netPnlMinor: null,
-        finalPnlSource: null,
         actualR: null,
         traderOutcome: null,
-        exitedAt: null,
       });
 
-      // A zero Final Net P&L is a stated zero: 0R is real here, and still no outcome.
       const zero = await openContractTrade();
-      await record(zero, finalClose({ finalPnlMinor: 0n }));
+      await record(zero, finalClose({ finalPnlMinor: 0n, traderOutcome: 'break_even' }));
       expect(await readTrade(zero)).toMatchObject({
         netPnlMinor: 0n,
         actualR: '0.0000',
-        traderOutcome: null,
+        traderOutcome: 'break_even',
       });
-
-      // A missing Risk at Entry is the other way to an unknown R, but an Open
-      // contract Trade cannot lack one (trades_status_consistency_check), so a
-      // live Final Close reaches an unknown R only through a missing Final Net P&L.
     });
 
     it('keeps the exit subtotal as evidence: a differing Final Net P&L stays authoritative', async () => {
@@ -938,13 +961,13 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
       });
       const result = await record(
         tradeId,
-        finalClose({ closedBps: 5_000, finalPnlMinor: -1_000n }),
+        finalClose({ closedBps: 5_000, finalPnlMinor: -1_000n, traderOutcome: 'loss' }),
       );
       expect(result).toMatchObject({
         ok: true,
         status: 'closed',
         actualR: '-0.1000',
-        traderOutcome: null,
+        traderOutcome: 'loss',
       });
       expect(await readTrade(tradeId)).toMatchObject({
         netPnlMinor: -1_000n,
@@ -1009,6 +1032,190 @@ describe('Add Trade contract Record Exit / Final Close (real database)', () => {
         code: 'invalid_status_transition',
       });
       expect(await readTrade(tradeId)).toEqual(before);
+    });
+  });
+
+  /*
+    ONLY A COMPLETE RECORD CLOSES (contract decision 59). A Final Close is
+    refused — and writes nothing — until every applicable Required item of
+    Steps 1–5 is answered, by the Trade or by the close itself; plan answers
+    given at the close only fill what is Unanswered. A Part is never gated.
+  */
+  describe('Final Close eligibility (decision 59)', () => {
+    async function openWith(extra: Record<string, unknown> = {}) {
+      const created = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: accountId,
+        symbol: 'XAUUSD',
+        direction: 'long',
+        recordingTiming: 'at_entry',
+        recordingContract: 'add_trade_v1',
+        enteredAt: ENTERED_AT,
+        enteredAtSource: 'trader',
+        ...extra,
+      });
+      if (!created.ok) throw new Error(`open failed: ${JSON.stringify(created)}`);
+      return created.tradeId;
+    }
+
+    async function nothingWritten(tradeId: string) {
+      expect(await readTrade(tradeId)).toMatchObject({ status: 'open', netPnlMinor: null });
+      expect(await readExits(tradeId)).toEqual([]);
+    }
+
+    it('refuses a close missing Required items, naming them, and writes nothing', async () => {
+      const tradeId = await openWith({
+        systemPlanBasis: 'money',
+        plannedRiskState: 'defined',
+        plannedRiskMinor: 10_000n,
+      });
+      const refused = await recordContractExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+      });
+      expect(refused).toEqual({
+        ok: false,
+        code: 'final_close_incomplete',
+        missing: ['target', 'outcome', 'traderResult'],
+      });
+      await nothingWritten(tradeId);
+    });
+
+    it('fills a missing Target at the close, atomically with it', async () => {
+      const tradeId = await openWith({
+        systemPlanBasis: 'money',
+        plannedRiskState: 'defined',
+        plannedRiskMinor: 10_000n,
+      });
+      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: 15_000n,
+        traderOutcome: 'win',
+        plan: { targetState: 'fixed', plannedRewardMinor: 20_000n },
+      });
+      expect(closed).toMatchObject({ ok: true, status: 'closed', actualR: '1.5000' });
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'closed',
+        targetState: 'fixed',
+        plannedRewardMinor: 20_000n,
+        plannedRiskMinor: 10_000n,
+      });
+    });
+
+    it('never overwrites an answer the Trade already holds', async () => {
+      const tradeId = await openWith({
+        systemPlanBasis: 'money',
+        plannedRiskState: 'defined',
+        plannedRiskMinor: 10_000n,
+      });
+      expect(
+        await recordContractExit(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 15_000n,
+          traderOutcome: 'win',
+          plan: { plannedRiskState: 'defined', plannedRiskMinor: 50_000n, targetState: 'no_fixed' },
+        }),
+      ).toEqual({ ok: false, code: 'final_close_plan_already_answered' });
+      await nothingWritten(tradeId);
+    });
+
+    it('with No Fixed Target requires an Exit Plan, and No exit rule answers it', async () => {
+      const tradeId = await openWith({
+        systemPlanBasis: 'money',
+        plannedRiskState: 'defined',
+        plannedRiskMinor: 10_000n,
+      });
+      const base = {
+        scope: 'all_remaining' as const,
+        finalPnlMinor: -5_000n,
+        traderOutcome: 'loss' as const,
+      };
+      expect(
+        await recordContractExit(workspaceId, actorUserId, tradeId, {
+          ...base,
+          mutationKey: crypto.randomUUID(),
+          plan: { targetState: 'no_fixed' },
+        }),
+      ).toEqual({ ok: false, code: 'final_close_incomplete', missing: ['exitPlan'] });
+      await nothingWritten(tradeId);
+      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
+        ...base,
+        mutationKey: crypto.randomUUID(),
+        plan: { targetState: 'no_fixed', exitPlan: { state: 'no_rule' } },
+      });
+      expect(closed).toMatchObject({ ok: true, status: 'closed' });
+      expect(await readTrade(tradeId)).toMatchObject({
+        targetState: 'no_fixed',
+        exitPlanState: 'no_rule',
+        exitPlanOrigin: 'recorded_during_trade',
+      });
+    });
+
+    it('opens with the risk decision Unanswered, and completes it at the close', async () => {
+      // Record Open saves without the decision (migration 0033).
+      const tradeId = await openWith();
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'open',
+        plannedRiskState: null,
+        plannedRiskMinor: null,
+      });
+      expect(
+        await recordContractExit(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 8_000n,
+          traderOutcome: 'win',
+        }),
+      ).toEqual({ ok: false, code: 'final_close_incomplete', missing: ['risk', 'target'] });
+      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: 8_000n,
+        traderOutcome: 'win',
+        plan: {
+          plannedRiskState: 'defined',
+          plannedRiskMinor: 5_000n,
+          targetState: 'fixed',
+          plannedRewardMinor: 10_000n,
+        },
+      });
+      expect(closed).toMatchObject({ ok: true, status: 'closed', actualR: '1.6000' });
+      expect(await readTrade(tradeId)).toMatchObject({
+        plannedRiskState: 'defined',
+        plannedRiskMinor: 5_000n,
+        actualR: '1.6000',
+      });
+    });
+
+    it('accepts No Defined Risk as the answer, with no R invented', async () => {
+      const tradeId = await openWith();
+      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: 8_000n,
+        traderOutcome: 'win',
+        plan: { plannedRiskState: 'no_defined', targetState: 'fixed', targetPrice: '2410' },
+      });
+      expect(closed).toMatchObject({ ok: true, status: 'closed', actualR: null });
+      expect(await readTrade(tradeId)).toMatchObject({
+        plannedRiskState: 'no_defined',
+        plannedRiskMinor: null,
+        actualR: null,
+      });
+    });
+
+    it('never gates a Part exit', async () => {
+      const tradeId = await openWith();
+      expect(
+        await recordContractExit(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'part',
+          realizedPnlMinor: 2_000n,
+          closedBps: 3_000,
+        }),
+      ).toMatchObject({ ok: true, status: 'open' });
     });
   });
 });

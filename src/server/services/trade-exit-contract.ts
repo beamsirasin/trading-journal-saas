@@ -6,7 +6,7 @@ import { CALC_VERSION } from '@/config/trade-calc';
 import { actualR } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { systemClock, type Clock } from '@/lib/time';
-import { isContractRow } from '@/lib/trades/add-trade-contract';
+import { isContractRow, laterCaptureOrigin } from '@/lib/trades/add-trade-contract';
 import {
   CLOSED_BPS_TOTAL,
   type ExitHistoryCompleteness,
@@ -21,7 +21,9 @@ import type { TradeExecutionTx } from './trade-execution';
 import {
   lockTradeRow,
   lockWorkspaceAndVerifyMembership,
+  resolveContractExitPlanInTx,
   resolveMutationDenial,
+  type CreateTradeExitPlanChoice,
   type WorkspaceAccessDenial,
 } from './trade-management';
 import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
@@ -105,7 +107,28 @@ export interface FinalCloseInput extends ContractExitLegInput {
    * explicit UI choice.
    */
   readonly finalExitedAt?: Date | null;
+  /**
+   * Required plan answers the Trade does not hold yet, given at the close
+   * (decision 59). Each may only FILL an Unanswered item — never overwrite an
+   * answer the Trade already has — and is written in the same transaction.
+   */
+  readonly plan?: FinalClosePlanAnswers;
 }
+
+/** The Step 2 Required answers a Final Close may complete. */
+export interface FinalClosePlanAnswers {
+  readonly plannedRiskState?: 'defined' | 'no_defined';
+  /** Only with Defined Risk; the 1R. */
+  readonly plannedRiskMinor?: bigint | null;
+  readonly targetState?: 'fixed' | 'no_fixed';
+  /** Only with a Fixed Target: Target Profit and/or a TP price (context). */
+  readonly plannedRewardMinor?: bigint | null;
+  readonly targetPrice?: string | null;
+  readonly exitPlan?: CreateTradeExitPlanChoice;
+}
+
+/** A Required item a Final Close is missing (decision 59). */
+export type FinalCloseMissing = 'risk' | 'target' | 'exitPlan' | 'outcome' | 'traderResult';
 
 export type RecordContractExitInput = RecordPartExitInput | FinalCloseInput;
 
@@ -121,6 +144,10 @@ export type RecordContractExitErrorCode =
   | 'exit_limit_reached'
   | 'exit_history_not_adoptable'
   | 'invalid_initial_risk'
+  | 'final_close_incomplete'
+  | 'final_close_plan_already_answered'
+  | 'invalid_plan'
+  | 'invalid_exit_plan'
   | 'mutation_replay_conflict';
 
 export type RecordContractExitResult =
@@ -141,6 +168,8 @@ export type RecordContractExitResult =
       /** With `mutation_replay_conflict`: whether the stored request could be compared at all. */
       readonly replayConflict?: 'different' | 'unverifiable';
       readonly calcReason?: CalcFailureReason;
+      /** With `final_close_incomplete`: the Required items still unanswered. */
+      readonly missing?: readonly FinalCloseMissing[];
     };
 
 /** The most exit legs one live Trade may record — the same bound After Trade uses. */
@@ -232,6 +261,7 @@ function validateLeg(
  */
 function composeFinalResult(
   trade: TradeRow,
+  riskMinor: bigint | null,
   exitPnl: readonly (bigint | null)[],
   input: FinalCloseInput,
 ):
@@ -264,8 +294,8 @@ function composeFinalResult(
   }
   // Risk at Entry is the one 1R baseline (contract §4); Actual Risk never is.
   let canonicalActualR: string | null = null;
-  if (finalPnlMinor !== null && trade.plannedRiskMinor !== null) {
-    const computed = actualR(finalPnlMinor, trade.plannedRiskMinor);
+  if (finalPnlMinor !== null && riskMinor !== null) {
+    const computed = actualR(finalPnlMinor, riskMinor);
     if (!computed.ok)
       return { ok: false, code: 'invalid_initial_risk', calcReason: computed.reason };
     canonicalActualR = computed.value;
@@ -276,6 +306,65 @@ function composeFinalResult(
     finalPnlSource: finalPnlMinor === null ? null : adopted ? 'exit_history' : 'manual_total',
     actualR: canonicalActualR,
   };
+}
+
+/** A risk decision the Trade already holds: No Defined Risk, or a recorded 1R. */
+function riskAnswered(trade: TradeRow): boolean {
+  return trade.plannedRiskState === 'no_defined' || trade.plannedRiskMinor !== null;
+}
+
+/**
+ * THE PLAN ANSWERS A FINAL CLOSE MAY GIVE — shaped, and only for items the
+ * Trade has not answered. An answer the Trade already holds is never
+ * overwritten here; changing it is a plan edit, not part of closing.
+ */
+function validatePlanAnswers(
+  trade: TradeRow,
+  plan: FinalClosePlanAnswers,
+): RecordContractExitErrorCode | null {
+  const risk = plan.plannedRiskState;
+  const riskMinor = plan.plannedRiskMinor ?? null;
+  if (risk !== undefined && riskAnswered(trade)) return 'final_close_plan_already_answered';
+  if (plan.targetState !== undefined && trade.targetState !== null) {
+    return 'final_close_plan_already_answered';
+  }
+  if (plan.exitPlan !== undefined && trade.exitPlanState !== null) {
+    return 'final_close_plan_already_answered';
+  }
+  if (risk === 'defined' && (riskMinor === null || riskMinor <= 0n)) return 'invalid_initial_risk';
+  if (risk !== 'defined' && riskMinor !== null) return 'invalid_initial_risk';
+  const reward = plan.plannedRewardMinor ?? null;
+  const price = plan.targetPrice ?? null;
+  if (plan.targetState === 'fixed') {
+    if ((reward === null && price === null) || reward === 0n) return 'invalid_plan';
+  } else if (reward !== null || price !== null) {
+    return 'invalid_plan';
+  }
+  return null;
+}
+
+/**
+ * FINAL CLOSE ELIGIBILITY (decision 59): every applicable Required item of
+ * Steps 1–5, from what the Trade holds plus what this close supplies. Account,
+ * Symbol and Direction are the Trade's identity and always present. The
+ * Step 6 System Result is not here: it is recorded after the close, and until
+ * then the record is closed but not complete.
+ */
+function missingForFinalClose(
+  trade: TradeRow,
+  input: FinalCloseInput,
+): readonly FinalCloseMissing[] {
+  const plan = input.plan ?? {};
+  const missing: FinalCloseMissing[] = [];
+  if (!riskAnswered(trade) && plan.plannedRiskState === undefined) missing.push('risk');
+  const targetState = trade.targetState ?? plan.targetState ?? null;
+  if (targetState === null) missing.push('target');
+  if (targetState === 'no_fixed' && trade.exitPlanState === null && plan.exitPlan === undefined) {
+    missing.push('exitPlan');
+  }
+  if (input.traderOutcome === undefined) missing.push('outcome');
+  if (input.finalPnlMinor == null) missing.push('traderResult');
+  return missing;
 }
 
 export async function recordContractExitInTx(
@@ -329,7 +418,44 @@ export async function recordContractExitInTx(
   if (legError !== null) return { ok: false, code: legError };
 
   let final: Extract<ReturnType<typeof composeFinalResult>, { ok: true }> | null = null;
+  let planWrite: Partial<TradeRow> = {};
   if (input.scope === 'all_remaining') {
+    /*
+      ONLY A COMPLETE RECORD CLOSES (decision 59). Every applicable Required
+      item of Steps 1–5 must be explicitly answered — by the Trade already or
+      by this close — or the close is refused with what is missing, and
+      nothing is written. A Part exit is never gated.
+    */
+    const plan = input.plan ?? {};
+    const planError = validatePlanAnswers(trade, plan);
+    if (planError !== null) return { ok: false, code: planError };
+    let exitPlanSnapshot: Partial<TradeRow> = {};
+    if (plan.exitPlan !== undefined) {
+      const resolved = await resolveContractExitPlanInTx(
+        tx,
+        workspaceId,
+        plan.exitPlan,
+        trade.strategyId ?? null,
+      );
+      if (!resolved.ok) return { ok: false, code: 'invalid_exit_plan' };
+      exitPlanSnapshot = { ...resolved.value, exitPlanOrigin: laterCaptureOrigin(trade.status) };
+    }
+    planWrite = {
+      ...(plan.plannedRiskState === undefined
+        ? {}
+        : {
+            plannedRiskState: plan.plannedRiskState,
+            plannedRiskMinor: plan.plannedRiskMinor ?? null,
+          }),
+      ...(plan.targetState === undefined
+        ? {}
+        : {
+            targetState: plan.targetState,
+            plannedRewardMinor: plan.plannedRewardMinor ?? null,
+            targetPrice: plan.targetPrice ?? null,
+          }),
+      ...exitPlanSnapshot,
+    };
     const finalExitedAt = input.finalExitedAt ?? null;
     const finalTimeError = exitTimeError(trade, finalExitedAt, now);
     if (finalTimeError !== null) return { ok: false, code: finalTimeError };
@@ -342,10 +468,15 @@ export async function recordContractExitInTx(
     }
     const composed = composeFinalResult(
       trade,
+      // The 1R this close completes counts for its own Actual R.
+      trade.plannedRiskMinor ?? input.plan?.plannedRiskMinor ?? null,
       [...exits.map((exit) => exit.realizedPnlMinor), input.realizedPnlMinor ?? null],
       input,
     );
     if (!composed.ok) return composed;
+    // Well-formed first, then complete: a malformed answer is named before a missing one.
+    const missing = missingForFinalClose(trade, input);
+    if (missing.length > 0) return { ok: false, code: 'final_close_incomplete', missing };
     final = composed;
   }
 
@@ -384,6 +515,7 @@ export async function recordContractExitInTx(
     const [row] = await tx
       .update(trades)
       .set({
+        ...planWrite,
         status: 'closed',
         netPnlMinor: final.netPnlMinor,
         finalPnlSource: final.finalPnlSource,

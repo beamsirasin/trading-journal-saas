@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { BLANK_CLOSE_PLAN } from './close-trade-draft';
 import {
   CLOSE_DRAFT_VERSION,
   closeBasisMatches,
@@ -30,6 +31,7 @@ function task(overrides: Partial<CloseDraftTask> = {}): CloseDraftTask {
       finalPnlAdopted: false,
       outcome: null,
       completeness: 'unanswered',
+      plan: BLANK_CLOSE_PLAN,
     },
     submission: null,
     ...overrides,

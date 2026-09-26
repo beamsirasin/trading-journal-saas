@@ -26,8 +26,14 @@ export interface TradeStepView {
   readonly summary: string | null;
   /** Blocking errors the step holds, so it is marked wherever it is listed. */
   readonly errors: number;
-  /** What Save is still waiting for on this step, said instead of its summary. */
+  /** What the step still needs — Required items left (decision 59) — said instead of its summary. */
   readonly pending: string | null;
+  /**
+   * What an untouched step says, from the requirement model rather than a
+   * fixed word: a step holding Required items is never called Optional, and a
+   * step whose items are Recommended says so. `null` falls back to Optional.
+   */
+  readonly empty?: string | null;
 }
 
 /** The words the frame speaks, resolved by the host for its own recording mode. */
@@ -189,7 +195,7 @@ export function TradeStepFlow({
                   >
                     {item.errors > 0
                       ? copy.needsAttention
-                      : (item.pending ?? item.summary ?? copy.optional)}
+                      : (item.pending ?? item.summary ?? item.empty ?? copy.optional)}
                   </span>
                 </span>
               </button>

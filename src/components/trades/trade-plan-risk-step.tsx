@@ -4,6 +4,7 @@ import { Crosshair, DollarSign, Waves } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 
+import { exitPlanLevel } from '@/lib/trades/requirements';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 
@@ -17,6 +18,7 @@ import {
   type RiskStateDraft,
   type TargetDraft,
 } from './at-entry-draft';
+import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   ChoiceGroup,
@@ -244,13 +246,7 @@ export function TradePlanRiskStep({
         id={ids.riskRow}
         rowRef={riskRow}
         label={rows('risk.label')}
-        marker={
-          atEntry ? (
-            <span className="text-muted-foreground text-xs font-medium">{a('steps.required')}</span>
-          ) : (
-            <StateText>{a('steps.optional')}</StateText>
-          )
-        }
+        marker={<RequirementBadge level="required" className="ml-auto" />}
         value={riskValue}
         support={riskState === 'defined' && riskAmount !== null ? rows('risk.oneR') : null}
         placeholder={c('notAnswered')}
@@ -267,6 +263,7 @@ export function TradePlanRiskStep({
         id={ids.targetRow}
         rowRef={targetRow}
         label={c('target.legend')}
+        marker={<RequirementBadge level="required" className="ml-auto" />}
         value={targetValue}
         support={targetSupport}
         placeholder={c('notAnswered')}
@@ -285,6 +282,9 @@ export function TradePlanRiskStep({
         presentation="row"
         rowId={ids.exitPlanRow}
         rowEditLabel={a('trade.editAria', { field: c('exitPlan.title') })}
+        // Recommended beside a Fixed Target, Required with No Fixed Target, and
+        // undecided while the Target is Unanswered (decision 59).
+        rowMarker={<RequirementBadge level={exitPlanLevel(target.state)} className="ml-auto" />}
         onChange={(next) => onExitPlanChange(next.exitPlan)}
         onLibraryChanged={onLibraryChanged}
         {...(atEntry
@@ -315,7 +315,7 @@ export function TradePlanRiskStep({
         id={ids.priceRow}
         rowRef={priceRow}
         label={a('steps.groups.price')}
-        marker={<StateText>{a('steps.optional')}</StateText>}
+        marker={<RequirementBadge level="optional" className="ml-auto" />}
         value={priceParts.length === 0 ? null : priceParts.join(' · ')}
         placeholder={c('summary.contextEmpty')}
         error={priceError}

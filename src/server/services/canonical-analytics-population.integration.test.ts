@@ -13,6 +13,7 @@ import {
   workspaces,
 } from '@/server/db/schema';
 import { activePaidPeriod } from '@/test/entitlement-fixtures';
+import { withRequiredCloseAnswers } from '@/test/final-close';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { closeDb } from '../db/client';
@@ -111,15 +112,26 @@ async function contractTrade(params: {
   );
   if (!created.ok) throw new Error('unreachable');
   must(
-    await recordContractExit(workspaceId, userId, created.tradeId, {
-      mutationKey: crypto.randomUUID(),
-      scope: 'all_remaining',
-      exitPrice: '2410',
-      finalPnlMinor: params.netPnlMinor,
-      finalExitedAt: params.exitedAt,
-    }),
+    await recordContractExit(
+      workspaceId,
+      userId,
+      created.tradeId,
+      await withRequiredCloseAnswers(created.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        exitPrice: '2410',
+        finalPnlMinor: params.netPnlMinor,
+        finalExitedAt: params.exitedAt,
+      }),
+    ),
     'contract close',
   );
+  // These fixtures stand for Trades closed before decision 59 gated the close
+  // on an outcome: the outcome stays Unanswered, as those closes stored it.
+  await db
+    .update(trades)
+    .set({ traderOutcome: null, traderOutcomeSelectedAt: null })
+    .where(eq(trades.id, created.tradeId));
   return created.tradeId;
 }
 
@@ -683,13 +695,18 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
       .where(eq(trades.id, legacyClosed));
     // Contract Final Close: a stated -1R with a selected Loss.
     must(
-      await recordContractExit(workspaceId, userId, await open(), {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: -10_000n,
-        traderOutcome: 'loss',
-        finalExitedAt: new Date('2026-08-10T11:00:00Z'),
-      }),
+      await recordContractExit(
+        workspaceId,
+        userId,
+        await open(),
+        await withRequiredCloseAnswers(await open(), {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: -10_000n,
+          traderOutcome: 'loss',
+          finalExitedAt: new Date('2026-08-10T11:00:00Z'),
+        }),
+      ),
       'contract Final Close',
     );
 

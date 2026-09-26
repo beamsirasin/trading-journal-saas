@@ -9,6 +9,7 @@ import type { TradeCreateSetupOption, TradeCreateStrategyOption } from '@/server
 
 import type { RecalledConditionStatus } from './after-trade-draft';
 import type { AnswerState, ConditionStatus } from './at-entry-draft';
+import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import { Helper, InlineAction, RadioMark, StateText } from './trade-at-entry-controls';
 import { TradeChoiceList } from './trade-choice-list';
@@ -161,6 +162,7 @@ export function TradeSetupChecklistStep(
         id={`${idPrefix}-strategy`}
         rowRef={strategyRow}
         label={c('strategy.label')}
+        marker={<RequirementBadge level="recommended" className="ml-auto" />}
         value={strategyValue}
         support={strategySupport}
         supportWraps
@@ -178,6 +180,7 @@ export function TradeSetupChecklistStep(
         id={`${idPrefix}-setup`}
         rowRef={setupRow}
         label={c('strategy.setup')}
+        marker={<RequirementBadge level="optional" className="ml-auto" />}
         value={setupValue}
         support={setupSupport}
         supportWraps
@@ -408,7 +411,10 @@ function Checklist(
     <GroupCard
       title={c('strategy.conditions')}
       aside={
-        <StateText>{c('summary.conditions', { answered, total: conditions.length })}</StateText>
+        <span className="flex items-center gap-2">
+          <StateText>{c('summary.conditions', { answered, total: conditions.length })}</StateText>
+          <RequirementBadge level="optional" />
+        </span>
       }
       data-checklist-state="conditions"
     >

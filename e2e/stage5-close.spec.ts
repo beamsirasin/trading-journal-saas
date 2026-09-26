@@ -148,6 +148,9 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
       await page.getByLabel('Final net P&L').fill('-30');
       await expect(page.locator('[data-actual-r]')).toHaveText(/-0\.30R/);
       await chooseChoice(page, 'Loss');
+      // Record Open left the Target unanswered: the close asks it (decision 59).
+      await chooseChoice(page, 'Fixed target');
+      await page.getByLabel('Target profit').fill('60');
       await expectNoOverflow(page, `${name} close`);
       await page.getByRole('button', { name: 'Close trade', exact: true }).click();
       // The Final Close continues into Stage 6 (optional After-Trade Context).
@@ -164,6 +167,8 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
         finalPnlSource: 'manual_total',
         actualR: '-0.3000',
         traderOutcome: 'loss',
+        targetState: 'fixed',
+        plannedRewardMinor: 6000n,
       });
       expect(closed.traderOutcomeSelectedAt).not.toBeNull();
       expect(closed.exitedAt).not.toBeNull();
@@ -232,10 +237,29 @@ test.describe('Stage 5 — Record partial exit and Close trade', () => {
     await page.goto(`/en/app/trades/close?trade=${saved.id}&scope=all`);
     await page.getByLabel('Final net P&L').fill('40');
     await chooseChoice(page, 'Win');
+    // Only a record whose Required items are answered closes (decision 59):
+    // the unanswered Target is asked here, and nothing is written meanwhile.
+    await page.getByRole('button', { name: 'Close trade', exact: true }).click();
+    await expect(page.locator('#close-plan-targetState-fixed')).toBeFocused();
+    await expect(
+      page.getByText('1 required item left before you can close this trade.'),
+    ).toBeVisible();
+    expect(await latestTrade(workspaceId)).toMatchObject({ status: 'open', targetState: null });
+    await chooseChoice(page, 'No fixed target');
     await expect.poll(closeDrafts).toBe(1);
     await page.reload();
     await expect(page.getByLabel('Final net P&L')).toHaveValue('40');
     await expect(page.getByRole('radio', { name: 'Win', exact: true })).toBeChecked();
+    await expect(page.getByRole('radio', { name: 'No fixed target', exact: true })).toBeChecked();
+    // No Fixed Target makes the Exit Plan Required; No exit rule answers it.
+    await page.locator('#close-plan-exitPlan').click();
+    const exitSheet = page.getByRole('dialog');
+    await exitSheet.getByRole('button', { name: 'No defined exit rule' }).click();
+    await exitSheet.getByRole('button', { name: 'Done' }).click();
+    await expect(page.locator('[data-close-completion]')).toHaveAttribute(
+      'data-close-completion',
+      'ready',
+    );
     await expect(
       page.getByText('Your unsaved answers for this close were restored.'),
     ).toBeVisible();

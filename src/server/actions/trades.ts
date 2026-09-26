@@ -147,6 +147,8 @@ export interface TradeActionError {
   readonly existingTradeId?: string;
   /** With `mutation_replay_conflict`: `different` content, or `unverifiable` (a pre-0024 Trade). */
   readonly replayConflict?: 'different' | 'unverifiable';
+  /** With `final_close_incomplete`: the Required items the close is still missing (decision 59). */
+  readonly missing?: readonly string[];
 }
 
 interface TradeActionFailure {
@@ -765,6 +767,12 @@ export async function recordContractExitAction(
             code: 'mutation_replay_conflict',
             replayConflict: result.replayConflict ?? 'different',
           },
+        };
+      }
+      if (result.code === 'final_close_incomplete') {
+        return {
+          ok: false,
+          error: { code: 'final_close_incomplete', missing: result.missing ?? [] },
         };
       }
       return serviceFailure(result.code);

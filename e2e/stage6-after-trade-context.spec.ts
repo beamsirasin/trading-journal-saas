@@ -76,12 +76,23 @@ async function closeATrade(page: Page, workspaceId: string, symbol: string): Pro
   const saved = await latestTrade(workspaceId);
   await page.goto(`/en/app/trades/close?trade=${saved.id}&scope=all`);
   await page.getByLabel('Final net P&L').fill('-25');
+  // Final Close asks every Required answer still missing (decision 59).
+  await chooseChoice(page, 'Loss');
+  await chooseChoice(page, 'Fixed target');
+  await page.getByLabel('Target profit').fill('200');
   await page.getByRole('button', { name: 'Close trade', exact: true }).click();
   await expect(page).toHaveURL(
     new RegExp(`/en/app/trades/after-trade\\?trade=${saved.id}&from=close`),
     { timeout: 60_000 },
   );
   return saved.id;
+}
+
+async function chooseChoice(page: Page, name: string) {
+  const radio = page.getByRole('radio', { name, exact: true });
+  const id = await radio.getAttribute('id');
+  await page.locator(`label[for="${id}"]`).click();
+  await expect(radio).toBeChecked();
 }
 
 async function chooseEmotion(page: Page, name: string) {

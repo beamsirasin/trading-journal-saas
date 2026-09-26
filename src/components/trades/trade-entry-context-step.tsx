@@ -9,6 +9,7 @@ import type { TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 
 import type { ContextDraft, EmotionsDraft } from './at-entry-draft';
+import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   ChoiceGroup,
@@ -126,6 +127,7 @@ export function TradeEntryContextStep({
           status={c('notAnswered')}
           columns={5}
           appearance="scale"
+          badge={<RequirementBadge level="recommended" />}
           aside={
             <InlineAction ariaLabel={c('confidence.removeAria')} onClick={() => onConfidence(null)}>
               {c('removeAnswer')}
@@ -141,6 +143,7 @@ export function TradeEntryContextStep({
           id={`${idPrefix}-entry-emotions`}
           rowRef={emotionRow}
           label={emotionLegend}
+          marker={<RequirementBadge level="recommended" className="ml-auto" />}
           value={emotionValue}
           placeholder={c('notAnswered')}
           editLabel={a('trade.editAria', { field: emotionLegend })}
@@ -152,7 +155,7 @@ export function TradeEntryContextStep({
       </GroupCard>
 
       {/* ENTRY CONTEXT: the thesis in the trader's words, then where and when. */}
-      <GroupCard title={e('contextTitle')}>
+      <GroupCard title={e('contextTitle')} aside={<RequirementBadge level="optional" />}>
         <TextAreaField
           id={`${idPrefix}-context-reason`}
           label={cx('reason')}
@@ -183,7 +186,7 @@ export function TradeEntryContextStep({
         are, and before-entry evidence — one concept whose first item is the
         chart link.
       */}
-      <GroupCard title={e('notesEvidenceTitle')}>
+      <GroupCard title={e('notesEvidenceTitle')} aside={<RequirementBadge level="optional" />}>
         <TextAreaField
           id={`${idPrefix}-context-notes`}
           label={e('notesTitle')}

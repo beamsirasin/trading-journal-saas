@@ -27,6 +27,7 @@ import {
   createAtEntryDraft,
   setRiskState,
 } from '@/components/trades/at-entry-draft';
+import { withRequiredCloseAnswers } from '@/test/final-close';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { createSetup, createSetupCondition, createStrategy } from './strategy-management';
@@ -285,12 +286,17 @@ describe('Add Trade contract At Entry (real database)', () => {
       // Recorded under the earlier contract: a Different answer of 300.
       const tradeId = await createContract(fw, ENTERED);
       await seedHistoricalActualRisk(tradeId, 'different', 30_000n);
-      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: 20_000n,
-        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
-      });
+      const closed = await recordContractExit(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        await withRequiredCloseAnswers(tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 20_000n,
+          finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+        }),
+      );
       // Trader R = 200 ÷ the Step 2 Risk of 100 — never ÷ the historical 300.
       expect(closed).toMatchObject({ ok: true, actualR: '2.0000' });
       const saved = await recordAfterTradeContext(workspaceId, actorUserId, tradeId, {
@@ -426,12 +432,17 @@ describe('Add Trade contract At Entry (real database)', () => {
       });
 
       // It closes on its stated result, and no R is ever built for it.
-      const closed = await recordContractExit(workspaceId, actorUserId, result.tradeId, {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: 12_000n,
-        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
-      });
+      const closed = await recordContractExit(
+        workspaceId,
+        actorUserId,
+        result.tradeId,
+        await withRequiredCloseAnswers(result.tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 12_000n,
+          finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+        }),
+      );
       expect(closed).toMatchObject({ ok: true, actualR: null });
       expect(await readTrade(result.tradeId)).toMatchObject({
         status: 'closed',
@@ -458,12 +469,17 @@ describe('Add Trade contract At Entry (real database)', () => {
       const fw = await freshFramework();
       const tradeId = await createContract(fw, ENTERED);
       await seedHistoricalActualRisk(tradeId, 'different', 30_000n);
-      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: 15_000n,
-        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
-      });
+      const closed = await recordContractExit(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        await withRequiredCloseAnswers(tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 15_000n,
+          finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+        }),
+      );
       expect(closed).toMatchObject({ ok: true, actualR: '1.5000' });
       const row = await readTrade(tradeId);
       expect(row.actualInitialRiskMinor).toBe(30_000n);
@@ -478,12 +494,17 @@ describe('Add Trade contract At Entry (real database)', () => {
         actualRiskAnswer: 'different',
         actualInitialRiskMinor: null,
       });
-      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: -5_000n,
-        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
-      });
+      const closed = await recordContractExit(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        await withRequiredCloseAnswers(tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: -5_000n,
+          finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+        }),
+      );
       expect(closed).toMatchObject({ ok: true, actualR: '-0.5000' });
     });
 
@@ -838,12 +859,17 @@ describe('Add Trade contract At Entry (real database)', () => {
     it('Plan edit on a closed Trade re-measures Actual R against the new Risk at Entry', async () => {
       const fw = await freshFramework();
       const tradeId = await createContract(fw, ENTERED);
-      await recordContractExit(workspaceId, actorUserId, tradeId, {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: 15_000n,
-        finalExitedAt: new Date('2026-09-01T12:00:00Z'),
-      });
+      await recordContractExit(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        await withRequiredCloseAnswers(tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 15_000n,
+          finalExitedAt: new Date('2026-09-01T12:00:00Z'),
+        }),
+      );
       expect(
         await updateTradePlan(workspaceId, actorUserId, tradeId, { plannedRiskMinor: 5_000n }),
       ).toMatchObject({ ok: true });

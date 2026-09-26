@@ -121,14 +121,22 @@ describe('At Entry draft — minimum Save and readiness', () => {
     complete answer that carries none. A trader is never forced to invent a
     monetary risk to get past this step.
   */
-  it('refuses to save while the risk decision is unanswered', () => {
+  /*
+    REQUIRED IS FOR COMPLETION, NOT FOR SAVING (decision 59). The risk
+    decision is Required to complete the Trade and is asked again before
+    Final Close — it never blocks saving the Open Trade, and Unanswered is
+    sent as nothing at all, never as a decision.
+  */
+  it('saves while the risk decision is unanswered, sending no decision', () => {
     const undecided = { ...minimum(), riskState: 'unanswered' as const, risk: '' };
     const validation = validateAtEntryDraft(undecided, context);
-    expect(validation.errors.risk).toBe('risk_decision_required');
-    expect(atEntryReadiness(validation).status).toBe('blocked');
-    expect(
-      buildAtEntryPayload(undecided, { ...context, mutationKey: ACCOUNT, options }),
-    ).toBeNull();
+    expect(validation.errors.risk).toBeUndefined();
+    expect(atEntryReadiness(validation).status).toBe('ready');
+    const payload = buildAtEntryPayload(undecided, { ...context, mutationKey: ACCOUNT, options });
+    expect(payload).not.toBeNull();
+    expect(payload).not.toHaveProperty('plannedRiskState');
+    expect(payload).not.toHaveProperty('plannedRiskMinor');
+    expect(CreateTradeSchema.safeParse(payload).success).toBe(true);
   });
 
   it('requires an amount greater than zero once risk is Defined', () => {
@@ -195,8 +203,11 @@ describe('At Entry draft — minimum Save and readiness', () => {
     };
     const validation = validateAtEntryDraft(priced, context);
     expect(priced.riskState).toBe('unanswered');
-    expect(validation.errors.risk).toBe('risk_decision_required');
-    expect(buildAtEntryPayload(priced, { ...context, mutationKey: ACCOUNT, options })).toBeNull();
+    expect(validation.errors.risk).toBeUndefined();
+    expect(validation.riskMinor).toBeNull();
+    const payload = buildAtEntryPayload(priced, { ...context, mutationKey: ACCOUNT, options });
+    expect(payload).not.toHaveProperty('plannedRiskState');
+    expect(payload).not.toHaveProperty('plannedRiskMinor');
   });
 
   /* Stop Method is retired from capture: no Save writes one (decision 54). */
@@ -210,7 +221,8 @@ describe('At Entry draft — minimum Save and readiness', () => {
 
   it('never reports Ready while any blocking error exists, including hidden ones', () => {
     const blank = validateAtEntryDraft(createAtEntryDraft(''), context);
-    expect(atEntryReadiness(blank)).toMatchObject({ status: 'blocked', count: 4 });
+    // Account, Symbol and Direction only: Risk is Required for completion, not Save.
+    expect(atEntryReadiness(blank)).toMatchObject({ status: 'blocked', count: 3 });
 
     // Only a malformed context price — inside a collapsed disclosure — is wrong.
     const hidden = { ...minimum(), context: { ...minimum().context, stopPrice: '12..5' } };
@@ -238,7 +250,6 @@ describe('At Entry draft — minimum Save and readiness', () => {
     expect(orderedErrorFields(validateAtEntryDraft(draft, context).errors)).toEqual([
       'symbol',
       'direction',
-      'risk',
       'targetProfit',
     ]);
   });

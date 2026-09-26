@@ -7,6 +7,7 @@ import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constan
 import type { RecordContractExitSchema } from '@/lib/trades/schemas';
 
 import { composeEntryTimestamp, entryTimestampParts, percentToBps } from './after-trade-draft';
+import type { ExitPlanDraft } from './at-entry-draft';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 
 /**
@@ -34,6 +35,30 @@ export interface ExitLegDraft {
   readonly reason: string;
 }
 
+/**
+ * THE REQUIRED PLAN ANSWERS A FINAL CLOSE MAY GIVE (decision 59): the Risk
+ * decision, the Target and — with No Fixed Target — the Exit Plan, asked only
+ * when the Trade does not hold them yet. Nothing here overwrites an answer the
+ * Trade already has; it fills what is missing, at the close.
+ */
+export interface ClosePlanDraft {
+  readonly riskState: 'unanswered' | 'defined' | 'no_defined';
+  readonly risk: string;
+  readonly target: {
+    readonly state: 'unanswered' | 'fixed' | 'no_fixed';
+    readonly profit: string;
+    readonly price: string;
+  };
+  readonly exitPlan: ExitPlanDraft;
+}
+
+export const BLANK_CLOSE_PLAN: ClosePlanDraft = {
+  riskState: 'unanswered',
+  risk: '',
+  target: { state: 'unanswered', profit: '', price: '' },
+  exitPlan: { choice: { kind: 'unanswered' }, customText: '', customBaseId: null },
+};
+
 export interface CloseTradeDraft {
   readonly scope: CloseScope;
   readonly leg: ExitLegDraft;
@@ -45,6 +70,8 @@ export interface CloseTradeDraft {
   readonly finalPnlAdopted: boolean;
   readonly outcome: OutcomeValue | null;
   readonly completeness: CloseCompleteness;
+  /** All Remaining only: Required plan answers the Trade lacks (decision 59). */
+  readonly plan: ClosePlanDraft;
 }
 
 /** What Stage 5 needs to know about the Trade it closes. */
@@ -61,13 +88,34 @@ export interface CloseTradeContext {
     readonly realizedPnlMinor: string | null;
     readonly exitedAt: string | null;
   }[];
+  /**
+   * What the Trade already answers of its Required plan (decision 59). A
+   * Risk counts once No Defined Risk or a 1R is on record.
+   */
+  readonly plan?: {
+    readonly riskAnswered: boolean;
+    readonly noDefinedRisk: boolean;
+    readonly targetState: 'fixed' | 'no_fixed' | null;
+    readonly exitPlanAnswered: boolean;
+  };
 }
 
 export type CloseField =
-  'leg.exitedAt' | 'leg.pnl' | 'leg.closedPercent' | 'leg.price' | 'finalExitedAt' | 'finalPnl';
+  | 'leg.exitedAt'
+  | 'leg.pnl'
+  | 'leg.closedPercent'
+  | 'leg.price'
+  | 'finalExitedAt'
+  | 'finalPnl'
+  | 'plan.risk'
+  | 'plan.targetProfit'
+  | 'plan.targetPrice';
 
 /** Reading order: where a blocked Save sends focus first. */
 export const CLOSE_FIELD_ORDER: readonly CloseField[] = [
+  'plan.risk',
+  'plan.targetProfit',
+  'plan.targetPrice',
   'finalExitedAt',
   'finalPnl',
   'leg.exitedAt',
@@ -90,6 +138,10 @@ export type CloseErrorCode =
   | 'exit_time_in_future'
   | 'final_exit_before_recorded_exit'
   | 'exit_history_not_adoptable'
+  /** A Defined Risk given at the close needs its amount — or the answer removed. */
+  | 'risk_amount_required'
+  /** A Fixed Target given at the close needs Target Profit or a TP price. */
+  | 'fixed_target_requires_value'
   /** Server-side only: a field the server refused that no specific code describes. */
   | 'not_accepted';
 
@@ -112,6 +164,8 @@ export interface CloseValidation {
   /** "Use recorded exits" may be offered: a Complete history, every leg priced. */
   readonly canAdoptExitSubtotal: boolean;
   readonly outcomeContradictsPnl: boolean;
+  /** A Defined Risk amount given at the close, when valid. */
+  readonly planRiskMinor: string | null;
 }
 
 export function blankExitLeg(): ExitLegDraft {
@@ -127,7 +181,67 @@ export function createCloseTradeDraft(scope: CloseScope): CloseTradeDraft {
     finalPnlAdopted: false,
     outcome: null,
     completeness: 'unanswered',
+    plan: BLANK_CLOSE_PLAN,
   };
+}
+
+export function updateClosePlan(
+  draft: CloseTradeDraft,
+  patch: Partial<ClosePlanDraft>,
+): CloseTradeDraft {
+  return { ...draft, plan: { ...draft.plan, ...patch } };
+}
+
+/** An Exit Plan answer given here: a library plan, the trader's own words, or No exit rule. */
+function exitPlanChosen(exitPlan: ExitPlanDraft): boolean {
+  const { choice } = exitPlan;
+  return (
+    choice.kind === 'saved' ||
+    choice.kind === 'no_rule' ||
+    (choice.kind === 'customized' && exitPlan.customText.trim() !== '')
+  );
+}
+
+/** The Target the Trade will hold after this close: its own, else the one given here. */
+export function effectiveCloseTarget(
+  draft: CloseTradeDraft,
+  context: CloseTradeContext,
+): 'fixed' | 'no_fixed' | null {
+  const own = context.plan?.targetState ?? null;
+  if (own !== null) return own;
+  return draft.plan.target.state === 'unanswered' ? null : draft.plan.target.state;
+}
+
+/**
+ * FINAL CLOSE ELIGIBILITY, AS THE SERVER CHECKS IT (decision 59): every
+ * applicable Required item of Steps 1–5, from what the Trade holds plus this
+ * close. Recommended and Optional never appear here.
+ */
+export function missingForFinalClose(
+  draft: CloseTradeDraft,
+  context: CloseTradeContext,
+  validation: Pick<CloseValidation, 'finalPnlMinor' | 'planRiskMinor'>,
+): readonly ('risk' | 'target' | 'exitPlan' | 'outcome' | 'traderResult')[] {
+  if (draft.scope !== 'all_remaining') return [];
+  const trade = context.plan ?? {
+    riskAnswered: true,
+    noDefinedRisk: false,
+    targetState: null,
+    exitPlanAnswered: false,
+  };
+  const missing: ('risk' | 'target' | 'exitPlan' | 'outcome' | 'traderResult')[] = [];
+  const riskGiven =
+    draft.plan.riskState === 'no_defined' ||
+    (draft.plan.riskState === 'defined' && validation.planRiskMinor !== null);
+  if (!trade.riskAnswered && !riskGiven) missing.push('risk');
+  const target = effectiveCloseTarget(draft, context);
+  if (target === null) missing.push('target');
+  if (target === 'no_fixed' && !trade.exitPlanAnswered && !exitPlanChosen(draft.plan.exitPlan)) {
+    missing.push('exitPlan');
+  }
+  if (draft.outcome === null) missing.push('outcome');
+  if (validation.finalPnlMinor === null) missing.push('traderResult');
+  return missing;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +377,42 @@ export function validateCloseDraft(
     }
   }
 
+  /*
+    PLAN ANSWERS GIVEN AT THE CLOSE (decision 59) — checked only where the
+    Trade does not already hold them. Defined Risk needs its amount; a Fixed
+    Target needs Target Profit or a TP price; both are half answers otherwise.
+  */
+  let planRiskMinor: string | null = null;
+  const tradePlan = context.plan;
+  if (allRemaining && tradePlan !== undefined && !tradePlan.riskAnswered) {
+    if (draft.plan.riskState === 'defined') {
+      if (draft.plan.risk.trim() === '') errors['plan.risk'] = 'risk_amount_required';
+      else {
+        const parsed = parseTradeMoneyInput(draft.plan.risk, context.currency);
+        if (parsed.ok) planRiskMinor = parsed.value;
+        else errors['plan.risk'] = 'invalid_money';
+      }
+    }
+  }
+  if (allRemaining && tradePlan !== undefined && tradePlan.targetState === null) {
+    if (draft.plan.target.state === 'fixed') {
+      const profit = draft.plan.target.profit.trim();
+      const tp = draft.plan.target.price.trim();
+      if (profit === '' && tp === '') errors['plan.targetProfit'] = 'fixed_target_requires_value';
+      if (profit !== '' && !parseTradeMoneyInput(profit, context.currency).ok) {
+        errors['plan.targetProfit'] = 'invalid_money';
+      }
+      if (tp !== '' && (!PRICE.test(tp) || new Decimal(tp).lte(0))) {
+        errors['plan.targetPrice'] = 'invalid_price';
+      }
+    }
+  }
+  // The 1R this close measures against: the Trade's own, else the one given here.
+  const riskMinor = context.riskMinor ?? planRiskMinor;
+  const noDefinedRisk =
+    tradePlan?.noDefinedRisk === true ||
+    (tradePlan !== undefined && !tradePlan.riskAnswered && draft.plan.riskState === 'no_defined');
+
   const legPnls = allRemaining
     ? [
         ...context.exits.map((exit) =>
@@ -289,18 +439,20 @@ export function validateCloseDraft(
   }
 
   let readout: ActualRReadout;
-  if (finalPnlMinor === null || context.riskMinor === null) {
+  if (noDefinedRisk) {
+    readout = { status: 'unavailable', reason: 'no_defined_risk' };
+  } else if (finalPnlMinor === null || riskMinor === null) {
     readout = {
       status: 'unavailable',
       reason:
-        finalPnlMinor === null && context.riskMinor === null
+        finalPnlMinor === null && riskMinor === null
           ? 'needs_pnl_and_risk'
-          : context.riskMinor === null
+          : riskMinor === null
             ? 'needs_risk'
             : 'needs_pnl',
     };
   } else {
-    const measured = actualR(BigInt(finalPnlMinor), BigInt(context.riskMinor));
+    const measured = actualR(BigInt(finalPnlMinor), BigInt(riskMinor));
     readout = measured.ok
       ? { status: 'known', value: measured.value }
       : { status: 'unavailable', reason: 'needs_risk' };
@@ -319,6 +471,7 @@ export function validateCloseDraft(
         draft.outcome,
         finalPnlMinor === null ? null : BigInt(finalPnlMinor),
       ),
+    planRiskMinor,
   };
 }
 
@@ -370,6 +523,52 @@ function localToIso(value: string, timezone: string): string | null {
 }
 
 /**
+ * THE PLAN ANSWERS THIS CLOSE COMPLETES (decision 59), for items the Trade
+ * does not hold. Unanswered here stays absent; an Exit Plan is sent only where
+ * it is Required — with No Fixed Target — and was given.
+ */
+function closePlanPayload(
+  draft: CloseTradeDraft,
+  context: CloseTradeContext,
+): NonNullable<Extract<RecordContractExitPayload, { scope: 'all_remaining' }>['plan']> | null {
+  const trade = context.plan;
+  if (trade === undefined) return null;
+  const plan: Record<string, unknown> = {};
+  if (!trade.riskAnswered && draft.plan.riskState !== 'unanswered') {
+    plan.plannedRiskState = draft.plan.riskState;
+    if (draft.plan.riskState === 'defined') {
+      const risk = parseTradeMoneyInput(draft.plan.risk, context.currency);
+      plan.plannedRiskMinor = risk.ok ? risk.value : null;
+    }
+  }
+  if (trade.targetState === null && draft.plan.target.state !== 'unanswered') {
+    plan.targetState = draft.plan.target.state;
+    if (draft.plan.target.state === 'fixed') {
+      const profit = draft.plan.target.profit.trim();
+      const parsed = profit === '' ? null : parseTradeMoneyInput(profit, context.currency);
+      plan.plannedRewardMinor = parsed !== null && parsed.ok ? parsed.value : null;
+      const tp = draft.plan.target.price.trim();
+      plan.targetPrice = tp === '' ? null : tp;
+    }
+  }
+  if (effectiveCloseTarget(draft, context) === 'no_fixed' && !trade.exitPlanAnswered) {
+    const { choice } = draft.plan.exitPlan;
+    if (choice.kind === 'saved') {
+      plan.exitPlan = { state: 'saved', exitPlanId: choice.exitPlanId, provenance: 'selected' };
+    } else if (choice.kind === 'no_rule') {
+      plan.exitPlan = { state: 'no_rule' };
+    } else if (choice.kind === 'customized' && draft.plan.exitPlan.customText.trim() !== '') {
+      plan.exitPlan = {
+        state: 'customized',
+        baseExitPlanId: draft.plan.exitPlan.customBaseId,
+        instructions: draft.plan.exitPlan.customText.trim(),
+      };
+    }
+  }
+  return Object.keys(plan).length === 0 ? null : (plan as never);
+}
+
+/**
  * The request for `recordContractExitAction`. Built only from a draft that
  * validated clean: unanswered stays absent, never zero, "now" or a guess.
  */
@@ -403,11 +602,13 @@ export function buildClosePayload(
           allowNegative: true,
           allowZero: true,
         });
+  const plan = closePlanPayload(draft, context);
   return {
     tradeId: ids.tradeId,
     mutationKey: ids.mutationKey,
     scope: 'all_remaining',
     ...leg,
+    ...(plan === null ? {} : { plan }),
     finalPnlMinor: final !== null && final.ok ? final.value : null,
     ...(draft.finalPnlAdopted ? { finalPnlAdoptedFromExits: true as const } : {}),
     ...(draft.outcome === null ? {} : { traderOutcome: draft.outcome }),

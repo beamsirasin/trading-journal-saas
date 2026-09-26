@@ -29,6 +29,8 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'historical_exit_conflict',
   'exit_history_not_adoptable',
   'final_pnl_source_invalid',
+  'final_close_incomplete',
+  'final_close_plan_already_answered',
   'mutation_replay_conflict',
   'no_plan_representation',
   'planned_r_mismatch',
@@ -126,6 +128,8 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'historical_exit_conflict',
   'exit_history_not_adoptable',
   'final_pnl_source_invalid',
+  'final_close_incomplete',
+  'final_close_plan_already_answered',
   'mutation_replay_conflict',
   'no_plan_representation',
   'planned_r_mismatch',
@@ -200,6 +204,8 @@ export function mapServiceErrorToPublicCode(
     case 'historical_exit_conflict':
     case 'exit_history_not_adoptable':
     case 'final_pnl_source_invalid':
+    case 'final_close_incomplete':
+    case 'final_close_plan_already_answered':
     case 'mutation_replay_conflict':
     case 'no_plan_representation':
     case 'planned_r_mismatch':

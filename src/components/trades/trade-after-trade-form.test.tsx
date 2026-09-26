@@ -522,10 +522,10 @@ beforeEach(() => {
 });
 
 describe('After Trade — the moment and its steps', () => {
-  it('counts the Trade’s missing required fields, never a share of a step', () => {
+  it('names what Save itself still needs, apart from what completes the Trade', () => {
     renderForm();
     goTo('after');
-    expect(statusText()).toMatch(/^[0-9]+ required fields? still missing$/);
+    expect(statusText()).toMatch(/^[0-9]+ more answers? needed to save$/);
     expect(statusText()).not.toMatch(/ of [0-9]/);
   });
 
@@ -2081,11 +2081,19 @@ describe('Save Closed Trade — only identity is required', () => {
     expect(CreateCompletedTradeSchema.safeParse(sent).success).toBe(true);
   });
 
-  it('prompts for Final Net P&L and the outcome without requiring them', async () => {
+  /*
+    REQUIRED IS FOR COMPLETION, NOT FOR SAVING (decision 59). With Risk,
+    Target, the outcome and the result all unanswered, the closed Trade still
+    saves; the footer counts what is left, quietly, never as an error.
+  */
+  it('counts the Required items left, and still saves without them', async () => {
     renderForm();
-    goTo('after');
-    expect(screen.getByText(/not recorded yet\. You can still save/)).toBeInTheDocument();
     fillIdentity();
+    goTo('after');
+    expect(statusText()).toMatch(
+      /^[0-9]+ required items? left\. You can save now and finish them later\.$/,
+    );
+    expect(document.querySelector('[data-save-status]')?.className).not.toContain('destructive');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
   });
@@ -2883,5 +2891,76 @@ describe('Record Closed — Trader R follows the risk decision', () => {
     goTo('result');
     expect(document.querySelector('[data-actual-r]')).toHaveAttribute('data-actual-r', 'known');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
+  });
+});
+
+/*
+  ONE REQUIREMENT MODEL, ONE BADGE (contract decision 59). Every step marks its
+  items from the shared model; the Exit Plan's level follows the Target answer
+  as it changes, without losing any answer; a step holding Required items is
+  never called Optional; and nothing Required blocks moving between steps.
+*/
+describe('Required / Recommended / Optional', () => {
+  const level = (element: Element | null) =>
+    element?.querySelector('[data-requirement]')?.getAttribute('data-requirement') ?? null;
+
+  it('marks each step’s items from the one model', () => {
+    renderForm();
+    const trade = stepSection('trade');
+    for (const concept of ['tradingAccountId', 'symbol', 'direction'] as const) {
+      expect(level(trade.querySelector(`[data-concept="${concept}"]`))).toBe('required');
+    }
+    expect(level(trade.querySelector('[data-concept="enteredAt"]'))).toBe('optional');
+    expect(level(stepSection('plan').querySelector('[data-plan-row="risk"]'))).toBe('required');
+    expect(level(stepSection('plan').querySelector('[data-plan-row="target"]'))).toBe('required');
+    expect(level(stepSection('plan').querySelector('[data-plan-row="price"]'))).toBe('optional');
+    expect(level(stepSection('setup').querySelector('[data-classification="strategy"]'))).toBe(
+      'recommended',
+    );
+    const context = stepSection('context');
+    expect(level(context.querySelector('[data-entry-emotions]'))).toBe('recommended');
+    // Confidence is the step's one fieldset with a badge in its header.
+    expect(context.querySelector('fieldset [data-requirement]')).toHaveAttribute(
+      'data-requirement',
+      'recommended',
+    );
+    const result = stepSection('result');
+    expect(level(result.querySelector('[data-result-outcome]'))).toBe('required');
+    expect(
+      result.querySelector('[data-result-panel] [data-requirement="required"]'),
+    ).not.toBeNull();
+    expect(level(result.querySelector('[data-result-exit-time]'))).toBe('optional');
+  });
+
+  it('updates the Exit Plan’s level with the Target answer, keeping every answer', () => {
+    renderForm();
+    const exitPlan = () => document.querySelector('[data-exit-plan-row]');
+    // Unanswered Target: the Exit Plan's level is not decided.
+    expect(level(exitPlan())).toBe('conditional');
+    typeInPlan('risk', 'Risk at entry', '50');
+    const target = openPlanRow('target');
+    fireEvent.click(within(target).getByRole('radio', { name: /^Fixed target/ }));
+    type('Target profit', '120', target);
+    closeEditor();
+    expect(level(exitPlan())).toBe('recommended');
+    const again = openPlanRow('target');
+    fireEvent.click(within(again).getByRole('radio', { name: /^No fixed target/ }));
+    closeEditor();
+    expect(level(exitPlan())).toBe('required');
+    // Nothing given was lost on the way.
+    expect(planRow('risk')).toHaveTextContent('50 USD');
+  });
+
+  it('never calls a step with Required items Optional, and never blocks navigation', () => {
+    renderForm();
+    const labels = Array.from(document.querySelectorAll('[data-step-link]')).map(
+      (link) => link.textContent ?? '',
+    );
+    // After trade holds nothing Required until the plan asks the System Result.
+    expect(labels.join(' | ')).not.toMatch(/Trade details[^|]*Optional/);
+    goTo('after');
+    expect(currentStep()).toBe('after');
+    goTo('trade');
+    expect(currentStep()).toBe('trade');
   });
 });

@@ -133,16 +133,33 @@ dark palette has to clear:
 
 ### Step progress
 
-The phone step rail (After Trade) has its own three tokens —
-`--progress-active`, `--progress-complete` and `--progress-rail`, used as
-`bg-progress-*` — so each theme can tune it without moving `--brand` or
-`--muted` for everything else. Dark maps them to exactly what the rail always
-drew: `--brand`, `--brand` at 45%, `--muted`. Light does not use its own
-`--brand` (`#0e7490`, a deep cyan chosen to read as text), which sat heavy as a
-6px bar on the near-white page over a cool blue-grey rail: the active segment
-is the product's teal `#3498b8` (3.2:1 on the page, 3.3:1 on the card — clear
-of the 3:1 a graphic needs), a passed step is that teal at 45%, and the rail is
-the light, nearly neutral `#e8eaef`. An error segment stays `bg-destructive`.
+The phone step rail has its own three tokens — `--progress-active`,
+`--progress-complete` and `--progress-rail`, used as `bg-progress-*` — so each
+theme can tune it without moving `--brand` or `--muted` for everything else.
+The active segment is the brand blue `#3b6ffe` in both themes (4.11–4.53:1, clear
+of the 3:1 a graphic needs), a passed step is that blue at 45%, and the rail is
+`--muted` in Dark and the light, nearly neutral `#e8eaef` in Light. An error
+segment stays `bg-destructive`.
+
+### Requirement badge
+
+`RequirementBadge` (`src/components/trades/requirement-badge.tsx`) is the one
+Required / Recommended / Optional marker across Record Open, Record Closed and
+Close Trade (Add Trade contract decision 59). Required means required to
+COMPLETE the record, never to save it. A compact pill in one secondary position —
+the right end of a row's label line (`ml-auto`), or a card or legend header's
+aside — so a column of them scans on a phone:
+
+| Level             | Look                                                                     |
+| ----------------- | ------------------------------------------------------------------------ |
+| Required          | `bg-primary/12` tint, `text-primary-text`                                |
+| Recommended       | `border-primary/35` outline, `text-primary-text` — quieter than Required |
+| Optional          | `border-border` outline, `text-muted-foreground`                         |
+| Depends on target | as Optional — the Exit Plan while the Target is Unanswered               |
+
+Never red and never an error: an unanswered Required item is progress still to
+make. Levels come from `src/lib/trades/requirements.ts`, never hardcoded per
+step; the Exit Plan's level follows the Target answer.
 
 ### Zone accents
 

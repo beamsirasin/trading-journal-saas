@@ -12,6 +12,7 @@ import {
 } from '@/lib/trades/plan-outcome';
 
 import type { PlanOutcomeDraft, PlanOutcomeDraftError } from './plan-outcome-draft';
+import { RequirementBadge } from './requirement-badge';
 import { ChoiceGroup, Helper, InlineAction, TextField } from './trade-at-entry-controls';
 import { parseTradeMoneyInput } from './trade-form-values';
 import { formatR, formatTradeMoney } from './trade-format';
@@ -122,7 +123,15 @@ export function TradePlanOutcomeSection({
   );
 
   return (
-    <GroupCard title={p('title')} data-plan-outcome={kind}>
+    <GroupCard
+      title={p('title')}
+      // Required where the plan asks the question (decision 59); a plan that
+      // asks nothing has nothing to require.
+      aside={
+        kind === 'bounded' || kind === 'exit_plan' ? <RequirementBadge level="required" /> : null
+      }
+      data-plan-outcome={kind}
+    >
       <div className="-mt-2 flex min-w-0 flex-col gap-1">
         <Helper>{p('question')}</Helper>
         {kind === 'bounded' || kind === 'exit_plan' ? <Helper>{p('later')}</Helper> : null}

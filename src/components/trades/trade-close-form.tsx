@@ -6,20 +6,24 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 
 import { generateId } from '@/lib/identifiers';
 import { recordContractExitAction } from '@/server/actions/trades';
-import type { TradeDetail } from '@/server/dal/trades';
+import type { TradeCreateOptions, TradeDetail } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 import { Link, useRouter } from '@/i18n/navigation';
 
+import { createAtEntryDraft } from './at-entry-draft';
 import {
   adoptRecordedExits,
   buildClosePayload,
   createCloseTradeDraft,
+  effectiveCloseTarget,
   firstCloseErrorField,
   lastRecordedExitTime,
+  missingForFinalClose,
   serverErrorField,
   setCompleteness,
   setFinalPnl,
   setOutcome,
+  updateClosePlan,
   updateLeg,
   validateCloseDraft,
   type CloseErrorCode,
@@ -38,7 +42,16 @@ import {
   type CloseDraftScope,
   type CloseDraftSubmission,
 } from './close-trade-draft-storage';
-import { ChoiceGroup, Helper, InlineAction, Notice } from './trade-at-entry-controls';
+import { RequirementBadge } from './requirement-badge';
+import {
+  ChoiceGroup,
+  Helper,
+  InlineAction,
+  Notice,
+  Tag,
+  TextField,
+} from './trade-at-entry-controls';
+import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { TradeEntryDetails } from './trade-entry-details';
 import {
   ActualRReadoutRow,
@@ -53,6 +66,11 @@ import {
 import { tradeMoneyInputValue } from './trade-form-values';
 import { formatTradeInstant, formatTradeMoney } from './trade-format';
 import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
+
+const NO_PLAN_OPTIONS: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'> = {
+  strategies: [],
+  exitPlans: [],
+};
 
 const LEG_PREFIX = 'close-leg';
 const FINAL_TIME_ID = 'close-finalExitedAt';
@@ -74,8 +92,35 @@ function fieldTargetId(field: CloseField): string {
       return exitLegFieldId(LEG_PREFIX, 'closedPercent');
     case 'leg.price':
       return exitLegFieldId(LEG_PREFIX, 'price');
+    case 'plan.risk':
+      return PLAN_IDS.risk;
+    case 'plan.targetProfit':
+      return PLAN_IDS.targetProfit;
+    case 'plan.targetPrice':
+      return PLAN_IDS.targetPrice;
   }
 }
+
+/** The Required plan controls a Final Close may ask (decision 59). */
+const PLAN_IDS = {
+  riskState: 'close-plan-riskState',
+  risk: 'close-plan-risk',
+  targetState: 'close-plan-targetState',
+  targetProfit: 'close-plan-targetProfit',
+  targetPrice: 'close-plan-targetPrice',
+  exitPlanRow: 'close-plan-exitPlan',
+} as const;
+
+/** Where a missing Required item is answered, for the first one a blocked close lands on. */
+const MISSING_TARGET: Readonly<
+  Record<'risk' | 'target' | 'exitPlan' | 'outcome' | 'traderResult', string>
+> = {
+  risk: `${PLAN_IDS.riskState}-defined`,
+  target: `${PLAN_IDS.targetState}-fixed`,
+  exitPlan: PLAN_IDS.exitPlanRow,
+  outcome: 'close-outcome-win',
+  traderResult: FINAL_PNL_ID,
+};
 
 const PRECISE_TIME_CODES: ReadonlySet<string> = new Set([
   'exit_time_before_entry',
@@ -105,10 +150,13 @@ export function TradeCloseForm({
   scope,
   timezone,
   draftScope = null,
+  planOptions = NO_PLAN_OPTIONS,
 }: {
   trade: TradeDetail;
   scope: CloseScope;
   timezone: string;
+  /** The Exit Plan library, for an Exit Plan this close must record (decision 59). */
+  planOptions?: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
   /** Where this close's unsaved answers persist; null keeps them in memory only. */
   draftScope?: CloseDraftScope | null;
 }) {
@@ -117,7 +165,10 @@ export function TradeCloseForm({
   const tErrors = useTranslations('trades.errors');
   const a = useTranslations('trades.create.recording.contractAfter');
   const c = useTranslations('trades.create.recording.contractEntry');
+  const rows = useTranslations('trades.create.recording.planRows');
+  const q = useTranslations('trades.completion');
   const router = useRouter();
+  const [library, setLibrary] = useState(planOptions);
   const [draft, setDraft] = useState<CloseTradeDraft>(() => createCloseTradeDraft(scope));
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<CloseErrors>({});
@@ -145,8 +196,27 @@ export function TradeCloseForm({
     enteredAt: trade.enteredAt,
     riskMinor: trade.plannedRiskMinor,
     exits: trade.exits,
+    plan: {
+      riskAnswered: trade.plannedRiskState === 'no_defined' || trade.plannedRiskMinor !== null,
+      noDefinedRisk: trade.plannedRiskState === 'no_defined',
+      targetState: trade.targetState,
+      exitPlanAnswered: trade.exitPlanState !== null,
+    },
   };
   const validation = validateCloseDraft(draft, context);
+  /*
+    ONLY A COMPLETE RECORD CLOSES (decision 59). Every applicable Required item
+    of Steps 1–5 must be answered — by the Trade already, or here — before
+    Close; the server checks the same list. A Part exit is never gated.
+  */
+  const missing = missingForFinalClose(draft, context, validation);
+  const needsRisk = allRemaining && !(context.plan?.riskAnswered ?? true);
+  const needsTarget =
+    allRemaining && context.plan !== undefined && context.plan.targetState === null;
+  const needsExitPlan =
+    allRemaining &&
+    effectiveCloseTarget(draft, context) === 'no_fixed' &&
+    !(context.plan?.exitPlanAnswered ?? true);
   const lastExit = lastRecordedExitTime(context);
   const tradeHref = `/app/trades?trade=${trade.tradeId}&tab=execution`;
   const currentBasis: CloseDraftBasis = {
@@ -271,6 +341,19 @@ export function TradeCloseForm({
     const blocked = firstCloseErrorField(current.errors);
     if (blocked !== null) {
       focusField(blocked);
+      return;
+    }
+    const stillMissing = missingForFinalClose(draft, context, current);
+    if (stillMissing.length > 0) {
+      setFormMessage(q('closeBlocked', { count: stillMissing.length }));
+      const first = stillMissing[0];
+      if (first !== undefined) {
+        requestAnimationFrame(() => {
+          const element = document.getElementById(MISSING_TARGET[first]);
+          element?.focus();
+          element?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        });
+      }
       return;
     }
     const body = JSON.stringify(
@@ -434,6 +517,142 @@ export function TradeCloseForm({
         </div>
       )}
 
+      {allRemaining && (needsRisk || needsTarget || needsExitPlan) ? (
+        /*
+          COMPLETE THE PLAN (decision 59). The Required plan answers this Trade
+          does not hold yet — and only those — asked here, so a Trade saved
+          before them can still close. An answer the Trade already has is
+          never shown for editing here: changing it is a plan edit.
+        */
+        <GroupCard
+          title={s('plan.title')}
+          aside={<RequirementBadge level="required" />}
+          data-close-plan=""
+        >
+          <Helper>{s('plan.hint')}</Helper>
+          {needsRisk ? (
+            <div className="flex min-w-0 flex-col gap-3">
+              <ChoiceGroup
+                idPrefix={PLAN_IDS.riskState}
+                legend={rows('risk.label')}
+                value={draft.plan.riskState === 'unanswered' ? null : draft.plan.riskState}
+                badge={<RequirementBadge level="required" />}
+                aside={
+                  <InlineAction
+                    ariaLabel={rows('risk.removeAria')}
+                    onClick={() =>
+                      apply((current) => updateClosePlan(current, { riskState: 'unanswered' }))
+                    }
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(riskState) =>
+                  apply((current) => updateClosePlan(current, { riskState }))
+                }
+                options={[
+                  { value: 'defined', label: rows('risk.defined') },
+                  { value: 'no_defined', label: rows('risk.noDefined') },
+                ]}
+              />
+              {draft.plan.riskState === 'defined' ? (
+                <TextField
+                  id={PLAN_IDS.risk}
+                  label={a('risk.label')}
+                  value={draft.plan.risk}
+                  onChange={(risk) => apply((current) => updateClosePlan(current, { risk }))}
+                  suffix={currency}
+                  inputMode="decimal"
+                  figure
+                  error={errorText('plan.risk')}
+                />
+              ) : draft.plan.riskState === 'no_defined' ? (
+                <Helper>{rows('risk.noDefinedHint')}</Helper>
+              ) : null}
+            </div>
+          ) : null}
+          {needsTarget ? (
+            <div className="flex min-w-0 flex-col gap-3">
+              <ChoiceGroup
+                idPrefix={PLAN_IDS.targetState}
+                legend={c('target.legend')}
+                value={draft.plan.target.state === 'unanswered' ? null : draft.plan.target.state}
+                badge={<RequirementBadge level="required" />}
+                aside={
+                  <InlineAction
+                    ariaLabel={c('target.removeAria')}
+                    onClick={() =>
+                      apply((current) =>
+                        updateClosePlan(current, {
+                          target: { ...current.plan.target, state: 'unanswered' },
+                        }),
+                      )
+                    }
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(state) =>
+                  apply((current) =>
+                    updateClosePlan(current, { target: { ...current.plan.target, state } }),
+                  )
+                }
+                options={[
+                  { value: 'fixed', label: c('target.fixed') },
+                  { value: 'no_fixed', label: c('target.noFixed') },
+                ]}
+              />
+              {draft.plan.target.state === 'fixed' ? (
+                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+                  <TextField
+                    id={PLAN_IDS.targetProfit}
+                    label={c('target.profit')}
+                    value={draft.plan.target.profit}
+                    onChange={(profit) =>
+                      apply((current) =>
+                        updateClosePlan(current, { target: { ...current.plan.target, profit } }),
+                      )
+                    }
+                    suffix={currency}
+                    inputMode="decimal"
+                    figure
+                    error={errorText('plan.targetProfit')}
+                  />
+                  <TextField
+                    id={PLAN_IDS.targetPrice}
+                    label={c('target.price')}
+                    value={draft.plan.target.price}
+                    onChange={(price) =>
+                      apply((current) =>
+                        updateClosePlan(current, { target: { ...current.plan.target, price } }),
+                      )
+                    }
+                    inputMode="decimal"
+                    figure
+                    labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+                    error={errorText('plan.targetPrice')}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {needsExitPlan ? (
+            <AtEntryExitPlan
+              draft={{ ...createAtEntryDraft(''), exitPlan: draft.plan.exitPlan }}
+              options={library}
+              presentation="row"
+              rowId={PLAN_IDS.exitPlanRow}
+              rowEditLabel={a('trade.editAria', { field: c('exitPlan.title') })}
+              rowMarker={<RequirementBadge level="required" className="ml-auto" />}
+              onChange={(next) =>
+                apply((current) => updateClosePlan(current, { exitPlan: next.exitPlan }))
+              }
+              onLibraryChanged={(exitPlans) => setLibrary((current) => ({ ...current, exitPlans }))}
+            />
+          ) : null}
+        </GroupCard>
+      ) : null}
+
       {allRemaining ? (
         <>
           {/* 1–3 — WHEN IT CLOSED, WHAT IT CAME TO, AND WHAT THAT IS IN R */}
@@ -460,6 +679,7 @@ export function TradeCloseForm({
               adoptable={validation.canAdoptExitSubtotal}
               subtotal={subtotal}
               subtotalBlocked={subtotalBlocked}
+              marker={<RequirementBadge level="required" className="ml-auto" />}
               onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
               onAdopt={() => {
                 if (validation.exitSubtotalMinor === null) return;
@@ -476,6 +696,7 @@ export function TradeCloseForm({
               idPrefix="close-outcome"
               value={draft.outcome}
               contradicts={validation.outcomeContradictsPnl}
+              badge={<RequirementBadge level="required" />}
               onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
             />
           </GroupCard>
@@ -590,6 +811,16 @@ export function TradeCloseForm({
         data-close-actions=""
         className="border-border bg-background sticky bottom-0 z-10 -mx-4 mt-auto flex min-w-0 flex-col gap-2 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:border-t-0 sm:px-0"
       >
+        {allRemaining && formMessage === null ? (
+          <p
+            data-close-completion={missing.length === 0 ? 'ready' : 'missing'}
+            className="text-muted-foreground text-sm"
+          >
+            {missing.length === 0
+              ? q('readyToClose')
+              : q('closeBlocked', { count: missing.length })}
+          </p>
+        ) : null}
         <p aria-live="polite" role="status" className="text-sm empty:hidden">
           {formMessage !== null ? (
             <span className="text-destructive">{formMessage}</span>

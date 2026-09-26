@@ -17,6 +17,13 @@ const pushMock = vi.fn();
 vi.mock('@/server/actions/trades', () => ({
   recordContractExitAction: (input: unknown) => recordContractExitActionMock(input),
 }));
+vi.mock('@/server/actions/exit-plans', () => ({
+  createExitPlanAction: vi.fn(),
+  updateExitPlanAction: vi.fn(),
+  archiveExitPlanAction: vi.fn(),
+  setExitPlanStrategyDefaultAction: vi.fn(),
+  removeExitPlanStrategyDefaultAction: vi.fn(),
+}));
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
   Link: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
@@ -55,8 +62,9 @@ function trade(exits: readonly Exit[] = [], overrides: Partial<TradeDetail> = {}
     setupConditionConfiguredCount: null,
     actualRiskAnswer: 'matched',
     actualInitialRiskMinor: null,
-    targetState: null,
-    plannedRewardMinor: null,
+    // The plan answered (decision 59), so a close here is gated only on its own answers.
+    targetState: 'fixed',
+    plannedRewardMinor: '20000',
     targetPrice: null,
     exitPlanName: null,
     exitPlanInstructions: null,
@@ -114,6 +122,11 @@ function type(label: string, value: string) {
 
 function submit(name: 'Record partial exit' | 'Close trade') {
   fireEvent.click(screen.getByRole('button', { name }));
+}
+
+/** A Final Close needs the trader's explicit outcome (decision 59). */
+function chooseOutcome(name: 'Win' | 'BE' | 'Loss') {
+  fireEvent.click(screen.getByRole('radio', { name }));
 }
 
 function lastPayload() {
@@ -338,6 +351,7 @@ describe('All Remaining — "Close trade"', () => {
     expect(
       screen.getByText('From your recorded exits. Type a figure to replace it.'),
     ).toBeInTheDocument();
+    chooseOutcome('Win');
     submit('Close trade');
     await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalled());
     expect(lastPayload()).toMatchObject({
@@ -355,6 +369,7 @@ describe('All Remaining — "Close trade"', () => {
     type('P&L for this exit', '40');
     fireEvent.click(screen.getByRole('radio', { name: 'These are all the exits' }));
     expect(screen.getByText(/but your final net P&L is/)).toBeInTheDocument();
+    chooseOutcome('Win');
     submit('Close trade');
     await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalled());
     expect(lastPayload()).toMatchObject({ finalPnlMinor: '7500' });
@@ -456,6 +471,7 @@ describe('the Close Trade draft', () => {
     expect(recordContractExitActionMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Keep my answers' }));
+    chooseOutcome('BE');
     submit('Close trade');
     await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(1));
     expect(lastPayload()).toMatchObject({ scope: 'all_remaining', finalPnlMinor: '2500' });
@@ -505,6 +521,7 @@ describe('after the close', () => {
   it('a Final Close continues into Stage 6; a Part exit never does', async () => {
     const closed = renderForm('all_remaining');
     type('Final net P&L', '10');
+    chooseOutcome('Win');
     submit('Close trade');
     await waitFor(() =>
       expect(pushMock).toHaveBeenCalledWith(
@@ -522,5 +539,109 @@ describe('after the close', () => {
       scroll: false,
     });
     expect(String(pushMock.mock.calls[0]?.[0])).not.toContain('after-trade');
+  });
+});
+
+/*
+  ONLY A COMPLETE RECORD CLOSES (contract decision 59). Final Close is the one
+  operation Required items gate: every applicable Required item of Steps 1–5 —
+  Risk, Target, the Exit Plan with No Fixed Target, the outcome and the result.
+  Missing plan answers are asked here, only for what the Trade lacks, and are
+  sent with the close. Recommended and Optional never block; a Part never does.
+*/
+describe('Final Close — Required for completion (decision 59)', () => {
+  const UNPLANNED = {
+    plannedRiskMinor: null,
+    plannedRiskState: null,
+    targetState: null,
+    plannedRewardMinor: null,
+    exitPlanState: null,
+  } as const;
+
+  it('asks the Required plan answers the Trade lacks, and blocks Close until they are given', async () => {
+    renderForm('all_remaining', trade([], UNPLANNED));
+    const section = document.querySelector<HTMLElement>('[data-close-plan]')!;
+    expect(section).not.toBeNull();
+    expect(within(section).getByRole('group', { name: 'Risk' })).toBeInTheDocument();
+    expect(within(section).getByRole('group', { name: 'Target' })).toBeInTheDocument();
+    type('Final net P&L', '80');
+    chooseOutcome('Win');
+    // Risk and Target still missing: never an error colour, and Close refuses.
+    expect(document.querySelector('[data-close-completion]')).toHaveTextContent(
+      '2 required items left before you can close this trade.',
+    );
+    submit('Close trade');
+    expect(await screen.findByText(/required items left before you can close/)).toBeVisible();
+    expect(recordContractExitActionMock).not.toHaveBeenCalled();
+
+    fireEvent.click(within(section).getByRole('radio', { name: 'Defined risk' }));
+    fireEvent.change(within(section).getByLabelText(/^Risk at entry/), {
+      target: { value: '50' },
+    });
+    fireEvent.click(within(section).getByRole('radio', { name: 'Fixed target' }));
+    fireEvent.change(within(section).getByLabelText('Target profit'), {
+      target: { value: '100' },
+    });
+    expect(document.querySelector('[data-close-completion]')).toHaveTextContent('Ready to close.');
+    submit('Close trade');
+    await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(1));
+    expect(lastPayload()).toMatchObject({
+      scope: 'all_remaining',
+      finalPnlMinor: '8000',
+      traderOutcome: 'win',
+      plan: {
+        plannedRiskState: 'defined',
+        plannedRiskMinor: '5000',
+        targetState: 'fixed',
+        plannedRewardMinor: '10000',
+      },
+    });
+    expect(RecordContractExitSchema.safeParse(lastPayload()).success).toBe(true);
+  });
+
+  it('accepts explicit negatives, and makes the Exit Plan Required only with No Fixed Target', () => {
+    renderForm('all_remaining', trade([], UNPLANNED));
+    const section = document.querySelector<HTMLElement>('[data-close-plan]')!;
+    fireEvent.click(within(section).getByRole('radio', { name: 'No defined risk' }));
+    expect(document.getElementById('close-plan-exitPlan')).toBeNull();
+    fireEvent.click(within(section).getByRole('radio', { name: 'No fixed target' }));
+    // The Exit Plan appears, Required, and the answers already given stay.
+    const exitPlan = document.getElementById('close-plan-exitPlan')!;
+    expect(exitPlan.querySelector('[data-requirement]')).toHaveAttribute(
+      'data-requirement',
+      'required',
+    );
+    expect(within(section).getByRole('radio', { name: 'No defined risk' })).toBeChecked();
+    type('Final net P&L', '80');
+    chooseOutcome('Win');
+    expect(document.querySelector('[data-close-completion]')).toHaveTextContent(
+      '1 required item left before you can close this trade.',
+    );
+  });
+
+  it('never asks what the Trade already answers, and gates only on the outcome and result then', async () => {
+    renderForm('all_remaining');
+    expect(document.querySelector('[data-close-plan]')).toBeNull();
+    // Outcome and Final Net P&L are Required here, and say so.
+    expect(
+      document.querySelector('[data-close-result] [data-requirement="required"]'),
+    ).not.toBeNull();
+    expect(document.querySelector('[data-close-completion]')).toHaveTextContent(
+      '2 required items left before you can close this trade.',
+    );
+    type('Final net P&L', '80');
+    chooseOutcome('Loss');
+    submit('Close trade');
+    await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(1));
+    expect(lastPayload()).not.toHaveProperty('plan');
+  });
+
+  it('never gates a Part exit', async () => {
+    renderForm('part', trade([], UNPLANNED));
+    expect(document.querySelector('[data-close-plan]')).toBeNull();
+    expect(document.querySelector('[data-close-completion]')).toBeNull();
+    type('P&L for this exit', '20');
+    submit('Record partial exit');
+    await waitFor(() => expect(recordContractExitActionMock).toHaveBeenCalledTimes(1));
   });
 });

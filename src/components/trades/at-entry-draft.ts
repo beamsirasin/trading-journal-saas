@@ -27,6 +27,7 @@ import type { z } from 'zod';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
 import type { PlannedRiskState, PlannedStopMethod } from '@/lib/trades/add-trade-contract';
+import type { RequirementAnswers } from '@/lib/trades/requirements';
 import type { CreateTradeSchema } from '@/lib/trades/schemas';
 import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
@@ -694,14 +695,15 @@ export function validateAtEntryDraft(
   if (draft.direction === '') errors.direction = 'required';
 
   /*
-    RECORD OPEN REQUIRES A RISK DECISION, NOT A NUMBER (contract decision 54).
-    Defined Risk needs its amount; No Defined Risk is a complete answer with
-    none; Unanswered blocks Save, because nobody has decided either way — and
-    a trader is never forced to invent a monetary risk to get past it.
+    A RISK DECISION, NOT A NUMBER (contract decision 54) — and REQUIRED FOR
+    COMPLETION, NOT FOR SAVING (decision 59). Unanswered saves as Unanswered
+    and is asked again before Final Close. Defined Risk needs its amount: a
+    Defined answer with none is half an answer, which is never saved nor
+    quietly dropped, so Save asks for the amount or for the answer to be
+    removed. No Defined Risk is a complete answer with none.
   */
   let riskMinor: string | null = null;
-  if (draft.riskState === 'unanswered') errors.risk = 'risk_decision_required';
-  else if (draft.riskState === 'defined') {
+  if (draft.riskState === 'defined') {
     if (draft.risk.trim() === '') errors.risk = 'required';
     else {
       const risk = parseTradeMoneyInput(draft.risk, context.currency);
@@ -880,7 +882,6 @@ export function buildAtEntryPayload(
   if (atEntryReadiness(validation).status !== 'ready') return null;
   // Defined Risk without its amount would be a contradiction, never a Save.
   if (draft.riskState === 'defined' && validation.riskMinor === null) return null;
-  if (draft.riskState === 'unanswered') return null;
   // A chosen answer whose source went away is resolved by the trader, never dropped.
   if (hasStaleSelection(staleSelections(draft, context.options))) return null;
   if (draft.direction === '') return null;
@@ -912,7 +913,7 @@ export function buildAtEntryPayload(
       : {}),
     symbol: draft.symbol.trim().toUpperCase(),
     direction: draft.direction,
-    plannedRiskState: draft.riskState,
+    ...(draft.riskState === 'unanswered' ? {} : { plannedRiskState: draft.riskState }),
     ...(validation.riskMinor === null ? {} : { plannedRiskMinor: validation.riskMinor }),
     /*
       ACTUAL RISK IS RETIRED FROM CAPTURE (contract decision 56). Risk at Entry
@@ -995,4 +996,45 @@ export function buildAtEntryPayload(
   if (exitPlan.inheritanceDeclined) payload.exitPlanInheritanceDeclined = true;
 
   return payload;
+}
+
+/**
+ * THIS DRAFT'S ANSWERS FOR THE SHARED REQUIREMENT MODEL (decision 59). Record
+ * Open asks Steps 1–4 only; the result and Step 6 are asked when the Trade
+ * closes. Every flag is an explicit answer — an Exit Plan counts when one is
+ * actually recorded (chosen, customized, No exit rule, or inherited from the
+ * Strategy's default, which the Save records as such).
+ */
+export function atEntryRequirementAnswers(
+  draft: AtEntryDraft,
+  validation: Pick<AtEntryValidation, 'riskMinor'>,
+  exitPlanAnswered: boolean,
+): RequirementAnswers {
+  const context = draft.context;
+  return {
+    account: draft.tradingAccountId !== '',
+    symbol: draft.symbol.trim() !== '',
+    direction: draft.direction !== '',
+    // The default 'now' is not an answer the trader gave.
+    entryTime: draft.entryTime.source !== 'default_now' && draft.entryTime.value !== '',
+    risk:
+      draft.riskState === 'no_defined' ||
+      (draft.riskState === 'defined' && validation.riskMinor !== null),
+    target: draft.target.state,
+    exitPlan: exitPlanAnswered,
+    priceLevels: [context.entryPrice, context.stopPrice, context.positionSize].some(
+      (value) => value.trim() !== '',
+    ),
+    strategy: draft.classification.strategy !== 'unanswered',
+    setup: Object.values(draft.classification.setupByStrategy).some(
+      (setup) => setup.answer !== 'unanswered',
+    ),
+    conditions: Object.keys(draft.classification.conditions).length > 0,
+    confidence: draft.confidence !== null,
+    entryEmotion: draft.emotions.answer !== 'unanswered',
+    entryContext: [context.reason, context.timeframe, context.session].some(
+      (value) => value.trim() !== '',
+    ),
+    notesEvidence: [context.notes, context.tradingviewUrl].some((value) => value.trim() !== ''),
+  };
 }

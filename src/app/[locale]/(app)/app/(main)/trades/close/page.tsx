@@ -10,7 +10,7 @@ import {
   getCurrentUserPreferences,
   getWorkspaceEntitlement,
 } from '@/server/auth/dal';
-import { getWorkspaceTradeDetail } from '@/server/dal/trades';
+import { getTradeCreateOptions, getWorkspaceTradeDetail } from '@/server/dal/trades';
 import { closeDraftScopeKeys } from '@/server/services/recording-draft-scope';
 import type { CloseScope } from '@/components/trades/close-trade-draft';
 import { CloseDraftCleanup } from '@/components/trades/trade-close-draft-cleanup';
@@ -77,11 +77,13 @@ export default async function CloseTradePage({
   const parsedTradeId = tradeParam === undefined ? null : TradeIdSchema.safeParse(tradeParam);
   const tradeId = parsedTradeId !== null && parsedTradeId.success ? parsedTradeId.data : null;
 
-  const [detail, entitlement, preferences, workspaceContext] = await Promise.all([
+  const [detail, entitlement, preferences, workspaceContext, createOptions] = await Promise.all([
     tradeId === null ? Promise.resolve(null) : getWorkspaceTradeDetail(tradeId),
     getWorkspaceEntitlement(),
     getCurrentUserPreferences(),
     getActiveWorkspaceContext(),
+    // The Exit Plan library, for a close that must record one (decision 59).
+    tradeId === null ? Promise.resolve(null) : getTradeCreateOptions(),
   ]);
   const trade = detail !== null && detail.ok ? detail.trade : null;
   const canWrite = authorizeWorkspaceMutation(entitlement, 'ordinary_write').allowed;
@@ -147,6 +149,14 @@ export default async function CloseTradePage({
             scope={scope}
             timezone={preferences.timezone}
             draftScope={draftScope}
+            {...(createOptions === null
+              ? {}
+              : {
+                  planOptions: {
+                    strategies: createOptions.strategies,
+                    exitPlans: createOptions.exitPlans,
+                  },
+                })}
           />
         )}
       </div>

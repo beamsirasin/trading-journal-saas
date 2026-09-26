@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { OUTCOME_VALUES } from '@/lib/trades/constants';
 import { PLAN_OUTCOMES, type PlanOutcome } from '@/lib/trades/plan-outcome';
 
-import type { CloseScope, CloseTradeDraft } from './close-trade-draft';
+import { BLANK_CLOSE_PLAN, type CloseScope, type CloseTradeDraft } from './close-trade-draft';
 
 /**
  * THE CLOSE TRADE DRAFT: the Close Existing Open Trade flow's own unsaved
@@ -127,6 +127,29 @@ const TaskSchema = z.object({
     finalPnlAdopted: z.boolean(),
     outcome: z.enum(OUTCOME_VALUES).nullable(),
     completeness: z.enum(['unanswered', 'complete', 'incomplete', 'unknown']),
+    // Decision 59. Absent from a task saved before it: nothing answered here.
+    plan: z
+      .object({
+        riskState: z.enum(['unanswered', 'defined', 'no_defined']),
+        risk: text,
+        target: z.object({
+          state: z.enum(['unanswered', 'fixed', 'no_fixed']),
+          profit: text,
+          price: text,
+        }),
+        exitPlan: z.object({
+          choice: z.discriminatedUnion('kind', [
+            z.object({ kind: z.literal('inherit') }),
+            z.object({ kind: z.literal('unanswered') }),
+            z.object({ kind: z.literal('saved'), exitPlanId: z.string().max(64) }),
+            z.object({ kind: z.literal('customized') }),
+            z.object({ kind: z.literal('no_rule') }),
+          ]),
+          customText: z.string().max(4_000),
+          customBaseId: z.string().max(64).nullable(),
+        }),
+      })
+      .default(BLANK_CLOSE_PLAN),
   }),
   submission: z.object({ key: z.string().uuid(), body: z.string().max(20_000) }).nullable(),
 });

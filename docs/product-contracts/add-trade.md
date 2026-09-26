@@ -7,7 +7,8 @@
 > decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49, the
 > recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52,
 > stage-placement amendment 53 and Planned Risk amendment 54 (2026-09-23), and the capture-order,
-> Actual Risk, closing-model and result-authority amendments 55–58 (2026-09-24/25) are recorded in the
+> Actual Risk, closing-model and result-authority amendments 55–58 (2026-09-24/25) and the
+> completion model 59 (2026-09-26) are recorded in the
 > [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
@@ -1868,3 +1869,66 @@ One result authority per Record Closed Trade, 2026-09-25 (item 58):
     P&L for All Remaining. Saved Trades are read as stored — a manual total beside disagreeing
     exits included — and keep the saved-record correction and adoption paths. No schema change.
     Amends §11 and §13. (§11, §13)
+
+Required / Recommended / Optional, 2026-09-26 (item 59):
+
+59. **Required = required for completion, not required for saving progress.** One completion
+    model — `src/lib/trades/requirements.ts` — serves Record Open, Record Closed and Close Existing
+    Open Trade, and every step shows it with one shared badge.
+
+    **The three levels.**
+
+    - **Required** — must be explicitly answered before the record is complete (Final Close
+      eligible). An explicit negative satisfies it where the model has one: No Defined Risk, No
+      Fixed Target, Can't determine.
+    - **Recommended** — useful for analysis; never blocks completion.
+    - **Optional** — supplementary context; never blocks completion.
+
+    Unanswered is never turned into an answer, and a missing observation is never a negative one
+    (§2, §8).
+
+    **The mapping.** Step 1: Trading Account, Symbol and Direction Required; entry date & time
+    Optional. Step 2: Risk Required (Defined Risk with a valid amount, or No Defined Risk) and Target
+    Required (Fixed or No Fixed Target); the Exit Plan is Recommended beside a Fixed Target and
+    Required with No Fixed Target — while the Target is Unanswered its level is undecided, never
+    silently set; price levels Optional. Step 3: Strategy Recommended; Setup and conditions Optional
+    (No Strategy / No Setup keep their meaning). Step 4: Confidence and Entry Emotion Recommended;
+    everything else Optional. Step 5: Trader Outcome Required (explicit Win, BE or Loss) and Trader
+    Result Required under the Step 5 result-authority model (decisions 57–58); final exit time and
+    exit context Optional. Step 6: the System Result decision is Required wherever the plan asks it
+    (Can't determine answers it); a plan that asks nothing has nothing to require. Post-Trade
+    Emotion, the after-trade note and evidence stay Optional.
+
+    **Two completion concepts.**
+
+    - **Final Close eligibility** — every applicable Required item of Steps 1–5.
+    - **Record completeness** — Final Close eligibility plus the Step 6 System Result where asked.
+
+    **What each flow gates.**
+
+    - **Saving never is.** A Save needs only the Trade's identity (Account, Symbol, Direction).
+    - **Record Open** saves an Open Trade with Required items still missing, including an Unanswered
+      risk decision. This amends decision 54's "Record Open requires the decision": the decision is
+      Required for completion and asked again before Final Close. Migration 0033 lets an Open
+      contract Trade hold Risk Unanswered (`planned_risk_state` and `planned_risk_minor` both
+      NULL); a Defined Risk still needs its amount, so a Defined answer with none is a half answer
+      the Save asks to complete or remove.
+    - **Record Closed** saves the closed Trade as it is. Completeness is a derived status — "N
+      required items left · You can save now and finish them later", or "Ready to close" — never a
+      Save gate.
+    - **Close Existing Open Trade's Final Close** is the one gated operation. It is refused
+      (`final_close_incomplete`, with the missing items) until every applicable Required item of
+      Steps 1–5 is answered. Risk, Target and — with No Fixed Target — the Exit Plan may be answered
+      on the close page itself when the Trade does not hold them. They only fill what is Unanswered
+      (`final_close_plan_already_answered` otherwise) and are written atomically with the close.
+      The System Result does not block the close: it is recorded after it, and until then the
+      record is closed but not complete. A Part exit is never gated.
+
+    **Status, not error.** Unanswered Required items are progress still to make: no red, no error
+    styling during normal entry; step navigation is never blocked. The desktop step rail derives
+    each step's status from the model — a step holding Required items is never called Optional,
+    and a step whose items are Recommended says so.
+
+    No analytics formula changes. Recommended items are not analytically mandatory; explicit
+    negatives such as No Defined Risk stay valid truth and are never turned into numbers.
+    Amends decision 54 and §13. (§2, §8, §13, Recording lifecycle)

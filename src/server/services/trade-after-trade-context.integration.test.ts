@@ -23,6 +23,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
+import { withRequiredCloseAnswers } from '@/test/final-close';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import {
@@ -150,13 +151,18 @@ describe('Stage 6 After-Trade Context (real database)', () => {
   /** Closed through the canonical Final Close: a stated -50.00, a selected Loss. */
   async function closedCanonicalTrade(): Promise<string> {
     const tradeId = await openContractTrade();
-    const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
-      mutationKey: crypto.randomUUID(),
-      scope: 'all_remaining',
-      finalPnlMinor: -5_000n,
-      traderOutcome: 'loss',
-      finalExitedAt: new Date(ENTERED_AT.getTime() + HOUR),
-    });
+    const closed = await recordContractExit(
+      workspaceId,
+      actorUserId,
+      tradeId,
+      await withRequiredCloseAnswers(tradeId, {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: -5_000n,
+        traderOutcome: 'loss',
+        finalExitedAt: new Date(ENTERED_AT.getTime() + HOUR),
+      }),
+    );
     if (!closed.ok) throw new Error(`close failed: ${closed.code}`);
     return tradeId;
   }
@@ -498,12 +504,17 @@ describe('Stage 6 After-Trade Context (real database)', () => {
         ...plan,
       });
       if (!created.ok) throw new Error(`create failed: ${created.code}`);
-      const closed = await recordContractExit(workspaceId, actorUserId, created.tradeId, {
-        mutationKey: crypto.randomUUID(),
-        scope: 'all_remaining',
-        finalPnlMinor: 2_000n,
-        finalExitedAt: new Date(ENTERED_AT.getTime() + HOUR),
-      });
+      const closed = await recordContractExit(
+        workspaceId,
+        actorUserId,
+        created.tradeId,
+        await withRequiredCloseAnswers(created.tradeId, {
+          mutationKey: crypto.randomUUID(),
+          scope: 'all_remaining',
+          finalPnlMinor: 2_000n,
+          finalExitedAt: new Date(ENTERED_AT.getTime() + HOUR),
+        }),
+      );
       if (!closed.ok) throw new Error(`close failed: ${closed.code}`);
       return created.tradeId;
     }
@@ -695,11 +706,16 @@ describe('Stage 6 After-Trade Context (real database)', () => {
     it('never shares a key with the Final Close', async () => {
       const tradeId = await openContractTrade();
       const key = crypto.randomUUID();
-      const closed = await recordContractExit(workspaceId, actorUserId, tradeId, {
-        mutationKey: key,
-        scope: 'all_remaining',
-        finalPnlMinor: 1_000n,
-      });
+      const closed = await recordContractExit(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        await withRequiredCloseAnswers(tradeId, {
+          mutationKey: key,
+          scope: 'all_remaining',
+          finalPnlMinor: 1_000n,
+        }),
+      );
       if (!closed.ok) throw new Error(closed.code);
       // The Final Close key does not answer a Stage 6 Save: it is a new Save.
       expect(

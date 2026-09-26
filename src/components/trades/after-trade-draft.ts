@@ -26,7 +26,13 @@ import { isCanonicalEmotionKey, type EmotionKey } from '@/config/emotions';
 import { actualR } from '@/lib/calc/trade';
 import { traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
 import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constants';
-import type { PlanOutcome, PlanOutcomePlan } from '@/lib/trades/plan-outcome';
+import {
+  planOutcomeCase,
+  planOutcomeChoices,
+  type PlanOutcome,
+  type PlanOutcomePlan,
+} from '@/lib/trades/plan-outcome';
+import type { RequirementAnswers } from '@/lib/trades/requirements';
 import { HISTORICAL_EXIT_LIMIT, type CreateCompletedTradeSchema } from '@/lib/trades/schemas';
 import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
@@ -1427,4 +1433,58 @@ export function buildAfterTradePayload(
   }
 
   return payload;
+}
+
+/**
+ * THIS DRAFT'S ANSWERS FOR THE SHARED REQUIREMENT MODEL (decision 59). Record
+ * Closed asks all six steps. The Trader Result is answered exactly when the
+ * Step 5 result-authority model gives a Final Net P&L (a full close's P&L, a
+ * close in parts that proves itself, or a stated total). The System Result is
+ * an item only where the plan asks it, and answered by any explicit choice —
+ * Can't determine included.
+ */
+export function afterTradeRequirementAnswers(
+  draft: AfterTradeDraft,
+  validation: Pick<AfterTradeValidation, 'riskMinor' | 'finalPnlMinor'>,
+  exitPlanAnswered: boolean,
+  currency: string,
+): RequirementAnswers {
+  const context = draft.context;
+  const asked =
+    planOutcomeChoices(
+      planOutcomeCase(afterTradePlanOutcomePlan(draft, validation.riskMinor, currency)),
+    ).length > 0;
+  return {
+    account: draft.tradingAccountId !== '',
+    symbol: draft.symbol.trim() !== '',
+    direction: draft.direction !== '',
+    entryTime: draft.enteredAt !== '',
+    risk:
+      draft.riskState === 'no_defined' ||
+      (draft.riskState === 'defined' && validation.riskMinor !== null),
+    target: draft.target.state,
+    exitPlan: exitPlanAnswered,
+    priceLevels: [context.entryPrice, context.stopPrice, context.positionSize].some(
+      (value) => value.trim() !== '',
+    ),
+    strategy: draft.classification.strategy !== 'unanswered',
+    setup: Object.values(draft.classification.setupByStrategy).some(
+      (setup) => setup.answer !== 'unanswered',
+    ),
+    conditions: Object.keys(draft.classification.conditions).length > 0,
+    confidence: draft.confidence !== null,
+    entryEmotion: draft.emotions.answer !== 'unanswered',
+    entryContext: [context.reason, context.timeframe, context.session].some(
+      (value) => value.trim() !== '',
+    ),
+    notesEvidence: [context.notes, context.tradingviewUrl].some((value) => value.trim() !== ''),
+    outcome: draft.outcome !== null,
+    traderResult: validation.finalPnlMinor !== null,
+    finalExitTime: draft.exitedAt !== '',
+    systemResult: asked ? draft.planOutcome.outcome !== null : null,
+    afterTradeContext:
+      draft.postTradeEmotions.answer !== 'unanswered' ||
+      draft.afterTradeNote.trim() !== '' ||
+      draft.afterTradeTradingviewUrl.trim() !== '',
+  };
 }

@@ -6,6 +6,11 @@ import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } fro
 import { composePlannedR } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
 import { confidenceLevelKey } from '@/lib/trades/constants';
+import {
+  missingRequired,
+  requirementItems,
+  stepRequirementStatus,
+} from '@/lib/trades/requirements';
 import { createTradeAction } from '@/server/actions/trades';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
@@ -20,6 +25,7 @@ import {
   answerNoSetup,
   answerNoStrategy,
   atEntryReadiness,
+  atEntryRequirementAnswers,
   buildAtEntryPayload,
   canDeselectEmotion,
   clearEntryTime,
@@ -259,6 +265,7 @@ export function TradeAtEntryForm({
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
   const s = useTranslations('trades.create.recording.contractEntry.steps');
+  const q = useTranslations('trades.completion');
   const router = useRouter();
   /*
     THE LIBRARY A TRADER JUST CHANGED WINS OVER THE PAGE'S COPY OF IT. A
@@ -350,6 +357,20 @@ export function TradeAtEntryForm({
   const readiness = atEntryReadiness(validation);
   const active = activeClassification(draft, options);
   const exitPlan = resolveExitPlan(draft, options);
+  /*
+    REQUIRED IS FOR COMPLETION, NOT FOR SAVING (decision 59). Save needs only
+    Account, Symbol and Direction; the Risk decision, the Target and — with No
+    Fixed Target — the Exit Plan are Required to complete the Trade, asked
+    again before Final Close, and never block this Save.
+  */
+  const requirementItemList = requirementItems(
+    atEntryRequirementAnswers(
+      draft,
+      validation,
+      exitPlan.resolved.status !== 'not_recorded' && exitPlan.resolved.status !== 'unavailable',
+    ),
+  );
+  const requiredLeft = missingRequired(requirementItemList).length;
   const stale = staleSelections(draft, options);
   const summary = analysisSummary(draft, options);
 
@@ -430,7 +451,6 @@ export function TradeAtEntryForm({
     { key: 'account', field: 'tradingAccountId', step: 0, done: draft.tradingAccountId !== '' },
     { key: 'symbol', field: 'symbol', step: 0, done: draft.symbol.trim() !== '' },
     { key: 'direction', field: 'direction', step: 0, done: draft.direction !== '' },
-    { key: 'risk', field: 'risk', step: 1, done: validation.riskMinor !== null },
   ] as const;
   const missingRequirements = requirements.filter(
     (item) => !item.done || visibleErrors[item.field] !== undefined,
@@ -442,7 +462,9 @@ export function TradeAtEntryForm({
     ? c('save.saving')
     : (serverMessage ??
       (readiness.status === 'ready'
-        ? c('save.ready')
+        ? requiredLeft > 0
+          ? q('left', { count: requiredLeft })
+          : q('readyOpen')
         : statusBlocked
           ? c('save.blocked', { count: blockedCount })
           : c('save.remaining', { count: remaining })));
@@ -738,14 +760,18 @@ export function TradeAtEntryForm({
       modeShort={s('modeShort')}
       onDiscardDraft={onDiscardDraft}
       steps={STEPS.map((key, index) => {
-        const missing = missingRequirements.filter((item) => item.step === index).length;
+        // What the step asks, from the shared requirement model (decision 59).
+        const needs = stepRequirementStatus(requirementItemList, key);
         return {
           key,
           label: stepLabel(key),
           summary: stepSummaries[key],
           errors: stepErrorCounts[index] ?? 0,
-          // Only the first two steps hold anything Save needs.
-          pending: missing === 0 ? null : a('steps.requiredMissing', { count: missing }),
+          pending:
+            needs.requiredLeft === 0
+              ? null
+              : a('steps.requiredMissing', { count: needs.requiredLeft }),
+          empty: needs.required === 0 && needs.recommended > 0 ? a('steps.recommended') : null,
         };
       })}
       step={step}
@@ -766,7 +792,8 @@ export function TradeAtEntryForm({
         nextTo: (label) => a('steps.nextTo', { step: label }),
       }}
       status={{
-        show: onLastStep || pending || serverMessage !== null,
+        // The completion line is read on every step, never only at the end.
+        show: true,
         text: statusLine,
         tone: statusTone,
       }}
@@ -793,7 +820,7 @@ export function TradeAtEntryForm({
       requirements={{
         ready: missingRequirements.length === 0,
         readyText: c('save.ready'),
-        missing: a('steps.requiredMissing', { count: missingRequirements.length }),
+        missing: c('save.remaining', { count: missingRequirements.length }),
         list: missingRequirements.map((item) => c(`save.requirement.${item.key}`)).join(' · '),
       }}
     >

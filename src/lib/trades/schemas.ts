@@ -560,12 +560,13 @@ function addAddTradeContractIssues(
   }
   if (data.actualResultMode !== undefined) issue('contract_price_is_context', 'actualResultMode');
   /*
-    A RISK DECISION IS REQUIRED; A MONETARY RISK IS NOT (decision 54). Defined
-    Risk must carry its amount, and No Defined Risk must carry none — an
-    amount beside it would contradict the answer it was saved with.
+    THE RISK DECISION IS REQUIRED FOR COMPLETION, NOT FOR SAVING (decisions 54,
+    59). Unanswered saves with no amount; Defined Risk must carry its amount,
+    and No Defined Risk must carry none — an amount beside either answer
+    would contradict what was saved.
   */
   if (data.plannedRiskState === undefined) {
-    issue('contract_requires_risk_decision', 'plannedRiskState');
+    if (data.plannedRiskMinor != null) issue('contract_requires_risk_decision', 'plannedRiskState');
   } else if (data.plannedRiskState === 'defined' && data.plannedRiskMinor == null) {
     issue('contract_requires_risk_at_entry', 'plannedRiskMinor');
   } else if (data.plannedRiskState === 'no_defined' && data.plannedRiskMinor != null) {
@@ -1554,6 +1555,21 @@ const FinalCloseSchema = z
     exitHistoryCompleteness: z.enum(EXIT_HISTORY_COMPLETENESS_VALUES).optional(),
     /** The Trade's final exit time. Optional; never filled in by the server. Post-Trade Emotion is not part of a close (stage 6). */
     finalExitedAt: nullableInstantField(),
+    /**
+     * Required plan answers the Trade does not hold yet (decision 59), given
+     * at the close. The service lets them only fill Unanswered items.
+     */
+    plan: z
+      .object({
+        plannedRiskState: z.enum(['defined', 'no_defined']).optional(),
+        plannedRiskMinor: nullablePositiveMinorField(),
+        targetState: z.enum(['fixed', 'no_fixed']).optional(),
+        plannedRewardMinor: nullablePositiveMinorField(),
+        targetPrice: nullablePositiveDecimalField(),
+        exitPlan: exitPlanChoiceField().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

@@ -14,6 +14,11 @@ import {
 
 import { generateId } from '@/lib/identifiers';
 import { confidenceLevelKey } from '@/lib/trades/constants';
+import {
+  missingRequired,
+  requirementItems,
+  stepRequirementStatus,
+} from '@/lib/trades/requirements';
 import { HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
@@ -28,6 +33,7 @@ import {
   afterTradeFieldSection,
   afterTradePlanOutcomePlan,
   afterTradeReadiness,
+  afterTradeRequirementAnswers,
   answerCondition,
   answerNoEmotions,
   answerNoSetup,
@@ -73,6 +79,7 @@ import {
   type ClosingState,
 } from './after-trade-draft';
 import type { PlanOutcomeDraftError } from './plan-outcome-draft';
+import { RequirementBadge } from './requirement-badge';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
 import { ChoiceGroup, InlineAction, Tag, TextField } from './trade-at-entry-controls';
@@ -379,6 +386,7 @@ export function TradeAfterTradeForm({
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
   const s6 = useTranslations('trades.stage6');
+  const q = useTranslations('trades.completion');
   const r = useTranslations('trades.create.replay');
   const locale = useLocale();
   const router = useRouter();
@@ -448,6 +456,34 @@ export function TradeAfterTradeForm({
   const currency = selectedAccount?.baseCurrency ?? 'USD';
   const now = new Date();
   const validation = validateAfterTradeDraft(draft, { currency, timezone, now });
+  const recordedExitPlan = (() => {
+    const { choice } = draft.exitPlan;
+    if (choice.kind === 'saved') {
+      const plan = options.exitPlans.find((item) => item.exitPlanId === choice.exitPlanId);
+      return plan === undefined ? null : { name: plan.name, instructions: plan.instructions };
+    }
+    if (choice.kind === 'customized' && draft.exitPlan.customText.trim() !== '') {
+      return { name: null, instructions: draft.exitPlan.customText.trim() };
+    }
+    return null;
+  })();
+  /*
+    REQUIRED IS FOR COMPLETION, NOT FOR SAVING (decision 59). Save still needs
+    only Account, Symbol and Direction; every other Required item — Risk,
+    Target, the Exit Plan with No Fixed Target, the outcome, the Trader Result
+    and the System Result where it is asked — is counted toward "Ready to
+    close" and never blocks this Save. A record saved without them is simply
+    not complete yet.
+  */
+  const requirementItemList = requirementItems(
+    afterTradeRequirementAnswers(
+      draft,
+      validation,
+      recordedExitPlan !== null || draft.exitPlan.choice.kind === 'no_rule',
+      currency,
+    ),
+  );
+  const requiredLeft = missingRequired(requirementItemList).length;
   const readiness = afterTradeReadiness(draft, validation);
   const summary = afterTradeAnalysisSummary(draft, options);
   // Strategy, Setup and conditions as resolved against what is still offered.
@@ -560,7 +596,9 @@ export function TradeAfterTradeForm({
     ? a('save.saving')
     : (serverMessage ??
       (readiness.status === 'ready'
-        ? a('save.ready')
+        ? requiredLeft > 0
+          ? q('left', { count: requiredLeft })
+          : q('readyToClose')
         : statusBlocked
           ? a('save.blocked', { count: blockedCount })
           : a('save.remaining', { count: remaining })));
@@ -568,11 +606,6 @@ export function TradeAfterTradeForm({
     serverMessage !== null || (attempted && readiness.status === 'blocked')
       ? 'text-destructive'
       : 'text-muted-foreground';
-  const recommended = [
-    { key: 'finalPnl', done: validation.finalPnlMinor !== null },
-    { key: 'outcome', done: draft.outcome !== null },
-  ] as const;
-  const promptMissing = recommended.some((item) => !item.done);
 
   /**
    * Show one step. With targets, the first rendered one is brought into view
@@ -847,17 +880,6 @@ export function TradeAfterTradeForm({
         validation.errors.planOutcome === 'plan_outcome_stale'
         ? 'plan_outcome_stale'
         : null;
-  const recordedExitPlan = (() => {
-    const { choice } = draft.exitPlan;
-    if (choice.kind === 'saved') {
-      const plan = options.exitPlans.find((item) => item.exitPlanId === choice.exitPlanId);
-      return plan === undefined ? null : { name: plan.name, instructions: plan.instructions };
-    }
-    if (choice.kind === 'customized' && draft.exitPlan.customText.trim() !== '') {
-      return { name: null, instructions: draft.exitPlan.customText.trim() };
-    }
-    return null;
-  })();
   const planOutcomeSummary =
     draft.planOutcome.outcome === null
       ? null
@@ -1007,17 +1029,21 @@ export function TradeAfterTradeForm({
       modeSentence={a('subtitle')}
       modeShort={a('steps.modeShort')}
       onDiscardDraft={onDiscardDraft}
-      steps={STEPS.map((key, index) => ({
-        key,
-        label: stepLabel(key),
-        summary: stepSummaries[key],
-        errors: stepErrorCounts[index] ?? 0,
-        // Step 1 is the only step holding anything Save needs.
-        pending:
-          key === 'trade' && missingRequirements.length > 0
-            ? a('steps.requiredMissing', { count: missingRequirements.length })
-            : null,
-      }))}
+      steps={STEPS.map((key, index) => {
+        // What the step asks, from the shared requirement model (decision 59).
+        const needs = stepRequirementStatus(requirementItemList, key);
+        return {
+          key,
+          label: stepLabel(key),
+          summary: stepSummaries[key],
+          errors: stepErrorCounts[index] ?? 0,
+          pending:
+            needs.requiredLeft === 0
+              ? null
+              : a('steps.requiredMissing', { count: needs.requiredLeft }),
+          empty: needs.required === 0 && needs.recommended > 0 ? a('steps.recommended') : null,
+        };
+      })}
       step={step}
       onShowStep={(index) => showStep(index)}
       headingId={ids.step}
@@ -1036,7 +1062,8 @@ export function TradeAfterTradeForm({
         nextTo: (label) => a('steps.nextTo', { step: label }),
       }}
       status={{
-        show: onLastStep || pending || serverMessage !== null,
+        // The completion line is read on every step, never only at the end.
+        show: true,
         text: statusLine,
         tone: statusTone,
       }}
@@ -1052,18 +1079,12 @@ export function TradeAfterTradeForm({
           : null
       }
       save={{ label: a('save.action'), pendingLabel: a('save.saving'), pending }}
-      footerNote={
-        promptMissing ? (
-          <p data-save-prompt="" className="text-muted-foreground text-xs">
-            {a('save.promptMissing')}
-          </p>
-        ) : null
-      }
+      footerNote={null}
       replayPanel={replayConflict === null ? null : replayConflictPanel}
       requirements={{
         ready: missingRequirements.length === 0,
         readyText: a('save.ready'),
-        missing: a('steps.requiredMissing', { count: missingRequirements.length }),
+        missing: a('save.remaining', { count: missingRequirements.length }),
         list: missingRequirements.map((item) => c(`save.requirement.${item.key}`)).join(' · '),
       }}
     >
@@ -1248,6 +1269,7 @@ export function TradeAfterTradeForm({
               contradicts={outcomeNotice !== undefined}
               hint={a('result.outcomeHintShort')}
               appearance="buttons"
+              badge={<RequirementBadge level="required" />}
               onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
             />
           </GroupCard>
@@ -1259,7 +1281,12 @@ export function TradeAfterTradeForm({
             P&L adds up to it once they account for the whole position. The
             result below is read-only — never typed beside the close.
           */}
-          <GroupCard filled title={a('sections.tradeResult')} data-result-panel="">
+          <GroupCard
+            filled
+            title={a('sections.tradeResult')}
+            aside={<RequirementBadge level="required" />}
+            data-result-panel=""
+          >
             <div id="after-exits" tabIndex={-1} className="min-w-0 outline-none">
               <ChoiceGroup
                 idPrefix="after-close-mode"
@@ -1375,7 +1402,6 @@ export function TradeAfterTradeForm({
               lastRecordedExit={
                 latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
               }
-              optionalMarker={false}
               onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
             />
           </div>

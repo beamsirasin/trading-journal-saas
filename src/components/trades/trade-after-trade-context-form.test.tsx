@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TradeDetail } from '@/server/dal/trades';
 
 import en from '../../../messages/en.json';
+import { BLANK_CLOSE_PLAN } from './close-trade-draft';
 import { loadCloseTask, saveCloseTask } from './close-trade-draft-storage';
 import { TradeAfterTradeContextForm } from './trade-after-trade-context-form';
 
@@ -208,6 +209,7 @@ describe('the Stage 6 draft', () => {
           finalPnlAdopted: false,
           outcome: null,
           completeness: 'unanswered',
+          plan: BLANK_CLOSE_PLAN,
         },
         submission: null,
       },
@@ -277,7 +279,10 @@ describe('Stage 6 System Result on a closed trade (decision 55)', () => {
     expect(
       section.compareDocumentPosition(emotion) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(section).toHaveTextContent('You can answer later from the trade.');
+    // Required for a complete record (decision 59) — never Optional — yet it never blocks.
+    expect(section).toHaveTextContent(
+      'Needed to complete the record. You can save now and answer it later from the trade.',
+    );
     // Nothing answered, nothing sent.
     fireEvent.click(screen.getByRole('button', { name: 'Save context' }));
     expect(await screen.findByRole('heading', { name: 'Trade saved' })).toBeVisible();

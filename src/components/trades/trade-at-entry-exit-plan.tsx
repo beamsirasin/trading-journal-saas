@@ -2,7 +2,7 @@
 
 import { GitBranch, Route } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
@@ -58,6 +58,7 @@ export function AtEntryExitPlan({
   rowId = 'exit-plan-row',
   rowLabel,
   rowEditLabel,
+  rowMarker = null,
 }: {
   draft: AtEntryDraft;
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
@@ -75,6 +76,8 @@ export function AtEntryExitPlan({
   rowId?: string;
   rowLabel?: string;
   rowEditLabel?: string;
+  /** The row's requirement badge (decision 59), decided by the host from the Target answer. */
+  rowMarker?: ReactNode;
 }) {
   const t = useTranslations('trades.create.recording.contractEntry.exitPlan');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -322,6 +325,7 @@ export function AtEntryExitPlan({
             id={rowId}
             rowRef={rowRef}
             label={rowLabel ?? t('title')}
+            marker={rowMarker}
             value={resolved.status === 'not_recorded' ? null : stateSummary}
             support={rowSupport}
             placeholder={t('notRecorded')}

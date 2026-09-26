@@ -23,6 +23,7 @@ import {
   type ActualRReadout,
   type ExitLegDraft,
 } from './close-trade-draft';
+import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   ChoiceGroup,
@@ -303,9 +304,9 @@ export function ExitTimeField({
   );
 }
 
+/** The shared requirement badge (decision 59), at the right end of the label line. */
 function OptionalTag() {
-  const s = useTranslations('trades.stage5');
-  return <Tag tone="context">{s('optional')}</Tag>;
+  return <RequirementBadge level="optional" className="ml-auto" />;
 }
 
 /** One half of the exit stamp: a disclosure row inside the sheet (Step 1's `EntryStampRow` language). */
@@ -426,6 +427,7 @@ export function FinalPnlField({
   adoptable,
   subtotal,
   subtotalBlocked,
+  marker,
   onChange,
   onAdopt,
 }: {
@@ -441,6 +443,8 @@ export function FinalPnlField({
   subtotal: string | null;
   /** Why the subtotal cannot be offered yet, when that is worth saying. */
   subtotalBlocked: string | null;
+  /** The host's requirement badge (decision 59); Optional when absent. */
+  marker?: ReactNode;
   onChange: (value: string) => void;
   onAdopt: () => void;
 }) {
@@ -458,7 +462,7 @@ export function FinalPnlField({
         figure
         hint={s('hint', { currency })}
         error={error}
-        labelAside={<OptionalTag />}
+        labelAside={marker ?? <OptionalTag />}
       />
       {source === null ? null : (
         <p data-final-pnl-source-line="" className="text-muted-foreground text-xs">
@@ -542,10 +546,13 @@ export function TraderOutcomeField({
   contradicts,
   hint,
   appearance = 'cards',
+  badge,
   onChange,
 }: {
   idPrefix: string;
   value: OutcomeValue | null;
+  /** The outcome's requirement badge (decision 59): Required wherever it is asked. */
+  badge?: ReactNode;
   /** A host's own shorter wording of the outcome hint. */
   hint?: string;
   /**
@@ -569,6 +576,7 @@ export function TraderOutcomeField({
         columns={3}
         fit="row"
         appearance={appearance}
+        {...(badge === undefined ? {} : { badge })}
         aside={
           <InlineAction ariaLabel={a('result.removeOutcomeAria')} onClick={() => onChange(null)}>
             {c('removeAnswer')}

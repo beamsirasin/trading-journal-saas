@@ -29,6 +29,7 @@ import { DateRangeMonthGrid } from '@/components/dashboard/toolbar/date-range-mo
 import { Button } from '@/components/ui/button';
 
 import { entryTimestampParts } from './after-trade-draft';
+import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import { FieldError, InlineAction, Tag, type ChoiceTone } from './trade-at-entry-controls';
 import { TradeChoiceList } from './trade-choice-list';
@@ -1032,19 +1033,14 @@ function ConceptRow({
 }
 
 /**
- * REQUIRED AND OPTIONAL, SAID QUIETLY. Both are words beside the concept, at
- * caption size and below the value in weight — a trader scans the values, and
- * a necessity marker that outshouts them is working against that. Required is
- * a shade stronger than Optional and neither is a filled pill or destructive
- * colour: nothing here is wrong yet (DESIGN.md §6, "Optional" in muted text
- * after the label).
+ * REQUIRED AND OPTIONAL, AS THE SHARED BADGE (decision 59). Required means
+ * required to complete the record, never to save it; the badge sits at the
+ * right end of the label line and is never an error colour.
  */
 function RequiredTag() {
-  const a = useTranslations('trades.create.recording.contractAfter');
-  return <span className="text-muted-foreground text-xs font-medium">{a('steps.required')}</span>;
+  return <RequirementBadge level="required" className="ml-auto" />;
 }
 
 function OptionalTag() {
-  const a = useTranslations('trades.create.recording.contractAfter');
-  return <span className="text-subtle-foreground text-xs">{a('steps.optional')}</span>;
+  return <RequirementBadge level="optional" className="ml-auto" />;
 }

@@ -422,17 +422,23 @@ describe('Record Open — Save and Save now', () => {
     expect(createTradeMock).not.toHaveBeenCalled();
   });
 
-  it('takes a blocked Save to Plan & Risk when the risk decision is missing', async () => {
+  /*
+    REQUIRED IS FOR COMPLETION, NOT FOR SAVING (decision 59). With the risk
+    decision still missing the Open Trade saves; the footer says what is left
+    to complete, quietly, never as an error.
+  */
+  it('saves with the risk decision missing, and says what is left to complete', async () => {
     renderForm();
     chooseSymbol('xauusd');
     chooseDirection('Short');
     goTo('context');
+    expect(statusText()).toMatch(/required items? left\. You can save now and finish them later\./);
+    expect(document.querySelector('[data-save-status]')?.className).not.toContain('destructive');
     fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
-    await waitFor(() => expect(currentStep()).toBe('plan'));
-    await waitFor(() => expect(planRow('risk')).toHaveFocus());
-    // The question is which decision, not which number (decision 54).
-    expect(screen.getByText('Say how risk was defined for this trade.')).toBeVisible();
-    expect(createTradeMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    const payload = createTradeMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('plannedRiskState');
+    expect(payload).not.toHaveProperty('plannedRiskMinor');
   });
 
   it('never saves early from Enter on an earlier step', () => {
@@ -589,11 +595,11 @@ describe('Record Open — Plan & Risk: Target', () => {
 });
 
 describe('Record Open — readiness and errors', () => {
-  it('counts the Trade’s missing required fields, never a share of this step', () => {
+  it('names what Save itself still needs, apart from what completes the Trade', () => {
     renderForm();
     goTo('context');
-    // Step 4 asks nothing required, so the count must name what it counts.
-    expect(statusText()).toMatch(/^[0-9]+ required fields? still missing$/);
+    // Account, Symbol and Direction are what a Save needs; nothing else blocks it.
+    expect(statusText()).toMatch(/^[0-9]+ more answers? needed to save$/);
     expect(statusText()).not.toMatch(/ of [0-9]/);
   });
 
@@ -601,7 +607,8 @@ describe('Record Open — readiness and errors', () => {
     renderForm();
     fillMinimum();
     goTo('context');
-    expect(statusText()).toContain('Ready to save');
+    // Saveable: the line speaks of completion, not of anything blocking.
+    expect(statusText()).toMatch(/You can save now|Required items complete/);
 
     fireEvent.change(openPlanRow('price').getByLabelText('SL price'), {
       target: { value: '12..5' },
@@ -610,7 +617,7 @@ describe('Record Open — readiness and errors', () => {
     // An error is never hidden behind a tap: the closed row carries it.
     expect(planRow('price')).toHaveAttribute('data-invalid', 'true');
     goTo('context');
-    expect(statusText()).not.toContain('Ready to save');
+    expect(statusText()).not.toMatch(/You can save now|Required items complete/);
     expect(statusText()).toContain('attention');
   });
 
@@ -1153,10 +1160,11 @@ describe('Record Open — the step list beside a wide form', () => {
       renderForm();
       const rail = () => document.querySelector('aside')!;
       const link = (key: string) => rail().querySelector<HTMLElement>(`[data-step-link="${key}"]`)!;
-      // Save still needs Symbol and Direction on Step 1, Risk on Step 2.
-      expect(link('trade')).toHaveTextContent('2 required fields missing');
-      expect(link('plan')).toHaveTextContent('1 required field missing');
-      expect(link('setup')).toHaveTextContent('Optional');
+      // Required items left per step (decision 59): Symbol and Direction on
+      // Step 1, Risk and Target on Step 2. Step 3 is Recommended, never Optional.
+      expect(link('trade')).toHaveTextContent('2 required left');
+      expect(link('plan')).toHaveTextContent('2 required left');
+      expect(link('setup')).toHaveTextContent('Recommended');
       expect(document.querySelector('[data-required-status]')).toHaveAttribute(
         'data-required-status',
         'missing',
@@ -1183,7 +1191,8 @@ describe('Record Open — the step list beside a wide form', () => {
       renderForm({ initialDraft: filled });
 
       expect(link('trade')).toHaveTextContent('XAUUSD · Long · Main USD');
-      expect(link('plan')).toHaveTextContent('Risk at entry 100.00 USD');
+      // Risk answered, Target not yet: the step says what is left.
+      expect(link('plan')).toHaveTextContent('1 required left');
       expect(link('setup')).toHaveTextContent('Breakout · Retest · 1 of 2 conditions answered');
       expect(link('context')).toHaveTextContent('No emotions');
       expect(document.querySelector('[data-required-status]')).toHaveAttribute(

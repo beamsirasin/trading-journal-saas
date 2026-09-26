@@ -62,6 +62,12 @@ The non-negotiables. Each points to the full rule; the full rule governs.
    user work, not unconfirmed system assumptions (§5, §5.5).
 4. **Optional-for-save is not analytically unimportant.** Strategy, Setup, conditions and psychology
    stay visible and inviting (§2.4).
+   - **Required = required for completion, not for saving progress** _(contract decision 59)_.
+     Every capture step marks its items Required / Recommended / Optional with the one shared
+     badge; Save needs only the Trade's identity, and only Close Existing Trade's Final Close is
+     gated on Required items. Unanswered Required items are a quiet completion status ("N required
+     items left · You can save now and finish them later" / "Ready to close"), never an error, and
+     never block step navigation.
 5. **Money is result authority; Price is context.** No Money/Price basis switch; price inconsistency
    is a notice, never a result or a block (§8.1–§8.2).
 6. **Trader Outcome is trader-selected.** Win / BE / Loss is never derived; a sign contradiction is a
@@ -369,7 +375,8 @@ a state showing that it is still only a default until the trader confirms or cha
      close.
    - **Information** — neutral context, such as an inherited Exit Plan or a recovered draft.
 4. **Timing.** Required-field errors do not appear before the trader has interacted with the field
-   or attempted to save. On a save attempt:
+   or attempted to save. A Required item that is merely unanswered is not an error at all (contract
+   decision 59): it counts toward completion and never blocks a Save. On a save attempt:
    - all blocking errors appear at once, inline;
    - a summary identifies them;
    - focus moves to the summary or to the first invalid field.

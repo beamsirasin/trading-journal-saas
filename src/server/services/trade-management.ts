@@ -717,12 +717,15 @@ function validateContractCreate(
     if (input.exitPlanInheritanceDeclined === true) return 'invalid_exit_plan';
   } else {
     /*
-      A RISK DECISION, NOT NECESSARILY AN AMOUNT (contract decision 54). An
-      Open contract Trade records Defined Risk with its 1R, or an explicit No
-      Defined Risk with none; Unanswered is not a Save. A payload that claims
-      No Defined Risk while carrying an amount contradicts itself.
+      A RISK DECISION, NOT NECESSARILY AN AMOUNT (contract decision 54), and
+      not before saving (decision 59). An Open contract Trade records Defined
+      Risk with its 1R, an explicit No Defined Risk with none, or — saved, not
+      complete — Unanswered with no amount; the decision is asked again before
+      Final Close. A payload whose amount contradicts its answer is refused.
     */
-    if (input.plannedRiskState === undefined) return 'invalid_initial_risk';
+    if (input.plannedRiskState === undefined && input.plannedRiskMinor != null) {
+      return 'invalid_initial_risk';
+    }
     if (input.plannedRiskState === 'defined' && input.plannedRiskMinor == null) {
       return 'invalid_initial_risk';
     }
@@ -820,7 +823,7 @@ const NO_EXIT_PLAN_SNAPSHOT: ContractExitPlanSnapshot = {
  * customized plan keeps the trader's own instructions and, when it started
  * from a library plan, that plan's identity as provenance.
  */
-async function resolveContractExitPlanInTx(
+export async function resolveContractExitPlanInTx(
   tx: Executor,
   workspaceId: string,
   choice: CreateTradeExitPlanChoice | undefined,

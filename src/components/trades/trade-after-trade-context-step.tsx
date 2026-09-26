@@ -9,6 +9,7 @@ import type { TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 
 import type { EmotionsDraft } from './at-entry-draft';
+import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import { Helper, StateText, TextAreaField, TextField } from './trade-at-entry-controls';
 import { TradeEmotionFields } from './trade-emotion-fields';
@@ -105,7 +106,7 @@ export function TradeAfterTradeContextStep({
       {systemResult}
 
       {/* 1 — POST-TRADE EMOTION: how it felt afterwards, apart from Entry Emotion. */}
-      <GroupCard title={s('emotion.title')}>
+      <GroupCard title={s('emotion.title')} aside={<RequirementBadge level="optional" />}>
         <TradeLauncherRow
           id={ids.emotions}
           rowRef={emotionRow}
@@ -121,7 +122,14 @@ export function TradeAfterTradeContextStep({
       </GroupCard>
 
       {/* 2 — AFTER-TRADE NOTE: a direct field, never the entry notes. Its label is its heading. */}
-      <GroupCard aside={note.trim() === '' ? <StateText>{c('notAnswered')}</StateText> : null}>
+      <GroupCard
+        aside={
+          <span className="flex items-center gap-2">
+            {note.trim() === '' ? <StateText>{c('notAnswered')}</StateText> : null}
+            <RequirementBadge level="optional" />
+          </span>
+        }
+      >
         <TextAreaField
           id={ids.note}
           label={s('note.label')}
@@ -136,7 +144,12 @@ export function TradeAfterTradeContextStep({
       {/* 3 — AFTER-TRADE EVIDENCE: its own chart link, never the before-entry one. */}
       <GroupCard
         title={s('evidence.title')}
-        aside={tradingviewUrl.trim() === '' ? <StateText>{c('notAnswered')}</StateText> : null}
+        aside={
+          <span className="flex items-center gap-2">
+            {tradingviewUrl.trim() === '' ? <StateText>{c('notAnswered')}</StateText> : null}
+            <RequirementBadge level="optional" />
+          </span>
+        }
         data-after-trade-evidence=""
       >
         <Helper>{s('evidence.hint')}</Helper>

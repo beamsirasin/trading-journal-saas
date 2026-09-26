@@ -924,6 +924,7 @@ export const trades = pgTable(
           ${table.status} <> 'open'
           OR ${table.plannedRiskMinor} IS NOT NULL
           OR ${table.plannedRiskState} = 'no_defined'
+          OR (${table.plannedRiskState} IS NULL AND ${table.plannedRiskMinor} IS NULL)
         )
       )`,
     ),
@@ -1296,6 +1297,7 @@ export const trades = pgTable(
               ${table.actualInitialRiskMinor} IS NOT NULL
               OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskMinor} IS NOT NULL)
               OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskState} = 'no_defined')
+              OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskState} IS NULL AND ${table.plannedRiskMinor} IS NULL)
             )
           )
         )

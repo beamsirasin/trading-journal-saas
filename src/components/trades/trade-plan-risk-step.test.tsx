@@ -215,14 +215,27 @@ describe('Plan & Risk — four rows, each opening its own editor', () => {
     expect(row('risk')).toHaveAttribute('data-risk-state', 'defined');
   });
 
-  it('says Risk at Entry is required to save an open trade, and optional after the trade', () => {
-    renderStep({ mode: 'at_entry' });
-    expect(within(row('risk')).getByText('Required')).toBeInTheDocument();
-    cleanup();
-    renderStep({ mode: 'after_trade' });
-    expect(within(row('risk')).getByText('Optional')).toBeInTheDocument();
-    expect(within(row('risk')).queryByText('Required')).toBeNull();
-  });
+  /*
+    ONE REQUIREMENT MODEL IN BOTH RECORDING MOMENTS (decision 59): Risk and
+    Target are Required to complete the Trade, Price levels Optional, and the
+    Exit Plan follows the Target — never decided by an Unanswered one.
+  */
+  it.each(['at_entry', 'after_trade'] as const)(
+    'marks Risk and Target Required and Price levels Optional (%s)',
+    (mode) => {
+      renderStep({ mode });
+      for (const concept of ['risk', 'target'] as const) {
+        expect(row(concept).querySelector('[data-requirement]')).toHaveAttribute(
+          'data-requirement',
+          'required',
+        );
+      }
+      expect(row('price').querySelector('[data-requirement]')).toHaveAttribute(
+        'data-requirement',
+        'optional',
+      );
+    },
+  );
 
   it('keeps a blank Risk at Entry blank, never zero, and carries the error on the closed row', () => {
     renderStep({ mode: 'at_entry', errors: { risk: 'Enter a risk greater than zero.' } });
