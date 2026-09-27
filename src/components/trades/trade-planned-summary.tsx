@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -84,33 +85,58 @@ export function TradePlannedSummary({
           : c('notAnswered');
 
   return (
+    <SummaryCard title={summary('title')} data={{ 'data-planned-summary': riskState }}>
+      <SummaryLine label={summary('risk')} value={riskValue} data="risk" muted={noDefinedRisk} />
+      <SummaryLine label={summary('target')} value={targetValue} data="target" />
+      <SummaryLine
+        label={summary('rr')}
+        value={rrValue}
+        data="rr"
+        muted={plannedRR === null}
+        wide={exitPlanLabel === null}
+      />
+      {exitPlanLabel === null ? null : (
+        <SummaryLine label={summary('exitPlan')} value={exitPlanLabel} data="exitPlan" />
+      )}
+    </SummaryCard>
+  );
+}
+
+/**
+ * A READ-ONLY SUMMARY CARD beneath a step's launcher rows — Step 2's Planned
+ * summary and Step 5's Trade result. Every value in one is answered in a row
+ * above it; the card only reads them back. `footnote` is one short line under
+ * the pairs, for why a figure is not there yet.
+ */
+export function SummaryCard({
+  title,
+  data,
+  footnote = null,
+  children,
+}: {
+  title: string;
+  data: Record<`data-${string}`, string>;
+  footnote?: string | null;
+  children: ReactNode;
+}) {
+  return (
     <div
-      data-planned-summary={riskState}
+      {...data}
       className="bg-muted/40 border-border/60 flex min-w-0 flex-col gap-2 rounded-lg border px-4 py-3"
     >
-      <p className="text-muted-foreground text-[0.8125rem] leading-5 font-medium">
-        {summary('title')}
-      </p>
-      <dl className="grid min-w-0 gap-x-4 gap-y-1.5 text-sm min-[420px]:grid-cols-2">
-        <Line label={summary('risk')} value={riskValue} data="risk" muted={noDefinedRisk} />
-        <Line label={summary('target')} value={targetValue} data="target" />
-        <Line
-          label={summary('rr')}
-          value={rrValue}
-          data="rr"
-          muted={plannedRR === null}
-          wide={exitPlanLabel === null}
-        />
-        {exitPlanLabel === null ? null : (
-          <Line label={summary('exitPlan')} value={exitPlanLabel} data="exitPlan" />
-        )}
-      </dl>
+      <p className="text-muted-foreground text-[0.8125rem] leading-5 font-medium">{title}</p>
+      <dl className="grid min-w-0 gap-x-4 gap-y-1.5 text-sm min-[420px]:grid-cols-2">{children}</dl>
+      {footnote === null ? null : (
+        <p data-summary-footnote="" className="text-muted-foreground text-xs leading-5">
+          {footnote}
+        </p>
+      )}
     </div>
   );
 }
 
-/** One read-only pair: what it is, and what the plan says it is. */
-function Line({
+/** One read-only pair: what it is, and what the answers say it is. */
+export function SummaryLine({
   label,
   value,
   data,
@@ -125,6 +151,7 @@ function Line({
 }) {
   return (
     <div
+      data-summary-line={data}
       data-planned-line={data}
       className={cn(
         'flex min-w-0 items-baseline justify-between gap-3',

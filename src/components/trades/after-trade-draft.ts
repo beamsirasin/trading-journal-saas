@@ -337,11 +337,28 @@ export function closingExits(draft: AfterTradeDraft): readonly AfterTradeExitDra
       },
     ];
   }
-  // Only "Record each exit" saves exit legs; a stated total makes none up.
+  /*
+    "RECORD EACH EXIT" IS AN ORDERED SEQUENCE OF RESULTS (2026-09-27). Each
+    exit records what it made, in order; the last one is the Final exit —
+    the remainder of the position — so the sequence closes the trade without
+    any share or scope to reconstruct. Only exits with something in them
+    count. A stated total makes none up.
+  */
   if (draft.closeMode === 'in_parts' && draft.partsResult === 'each_exit') {
     return draft.exits.filter(meaningfulExit);
   }
   return [];
+}
+
+/**
+ * THE EXITS AS SAVED, for "Record each exit": the order kept, the last one
+ * sent as All remaining — the stored meaning of "closes whatever was left",
+ * which is exactly what the Final exit is — and the earlier ones with no
+ * scope. No share of the position is sent: the ordered contract asks none.
+ * Scope or share a draft carries from before it stays in the draft, unsent.
+ */
+export function orderedExitScope(index: number, count: number): 'all_remaining' | null {
+  return index === count - 1 ? 'all_remaining' : null;
 }
 
 /**
@@ -942,7 +959,6 @@ export function validateAfterTradeDraft(
 
   const recorded = closingExits(draft);
   const exitPnl: (bigint | null)[] = [];
-  let knownBps = 0;
   for (const exit of recorded) {
     let pnl: bigint | null = null;
     if (exit.pnl.trim() !== '') {
@@ -954,13 +970,7 @@ export function validateAfterTradeDraft(
       else errors[exitField(exit.id, 'pnl')] = 'invalid_money';
     }
     exitPnl.push(pnl);
-    const bps = percentToBps(exit.closedPercent);
-    if (bps === 'invalid') errors[exitField(exit.id, 'closedPercent')] = 'invalid_percent';
-    else if (bps !== null) {
-      knownBps += bps;
-      // Flagged on the exit that crosses 100%; percentages short of it are fine.
-      if (knownBps > 10_000) errors[exitField(exit.id, 'closedPercent')] = 'percent_over_total';
-    }
+    // No share of the position is asked or sent for these exits, so none is checked.
     if (parsePositiveDecimal(exit.price) === 'invalid') {
       errors[exitField(exit.id, 'price')] = 'invalid_price';
     }
@@ -1007,12 +1017,13 @@ export function validateAfterTradeDraft(
   if (!planOutcome.ok) errors.planOutcome = planOutcome.error;
 
   /*
-    ONE SOURCE (decision 57). The Final Net P&L is what the close adds up to:
-    only once the exits prove the whole position closed, and only when every
-    exit states its P&L. Anything less is a running figure, not a result.
+    ONE SOURCE (decision 57), AS AN ORDERED SEQUENCE (2026-09-27). The Final
+    Net P&L is what the close adds up to: once there is an exit — the last one
+    is the Final exit, so the trade is closed — and every exit states its P&L.
+    Anything less is a running figure, not a result. "Closed all at once" is
+    one exit, which is its own Final exit.
   */
-  const coverage = exitHistoryStatus(recorded);
-  const closed = coverage.accountedBps === 10_000;
+  const closed = recorded.length > 0;
   const everyPnl = exitPnl.length > 0 && exitPnl.every((pnl) => pnl !== null);
   const knownPnl = exitPnl.filter((pnl): pnl is bigint => pnl !== null);
   const sum = knownPnl.reduce((total, pnl) => total + pnl, 0n);
@@ -1039,7 +1050,7 @@ export function validateAfterTradeDraft(
     partsResult: draft.partsResult,
     source,
     exitCount: recorded.length,
-    accountedBps: coverage.accountedBps,
+    accountedBps: closed ? 10_000 : null,
     closed,
     missingPnl: closed && !everyPnl,
     recordedSoFarMinor: finalPnlMinor === null && knownPnl.length > 0 ? sum.toString() : null,
@@ -1356,11 +1367,10 @@ export function buildAfterTradePayload(
     ...(recordedExits.length > 0 && validation.closing.closed
       ? { exitHistoryCompleteness: 'complete' }
       : {}),
-    exits: recordedExits.map((exit) => {
-      const bps = percentToBps(exit.closedPercent);
+    exits: recordedExits.map((exit, index) => {
       return {
-        closedBps: typeof bps === 'number' ? bps : null,
-        exitScope: exit.scope === '' ? null : exit.scope,
+        closedBps: null,
+        exitScope: orderedExitScope(index, recordedExits.length),
         exitPrice: trimmedOrUndefined(exit.price) ?? null,
         realizedPnlMinor: money(exit.pnl, true),
         ...(trimmedOrUndefined(exit.reason) === undefined

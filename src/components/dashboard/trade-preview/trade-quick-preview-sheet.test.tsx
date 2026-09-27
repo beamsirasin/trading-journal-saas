@@ -214,6 +214,33 @@ describe('Quick Preview execution legs', () => {
    * Trade. The legs of a partially closed position live here, where scaling
    * out is the actual subject.
    */
+  it("names an ordered history's last leg the Final exit, with no share (decision 60)", async () => {
+    const user = userEvent.setup();
+    const leg = (sequence: number, exitScope: string | null, realizedPnlMinor: string) => ({
+      exitId: `exit-${sequence}`,
+      sequence,
+      closedBps: null,
+      exitScope,
+      exitPrice: null,
+      realizedPnlMinor,
+      exitReason: null,
+      exitedAt: null,
+    });
+    renderSheet(
+      model({
+        tabs: ['overview', 'executions'],
+        closedBps: null,
+        remainingBps: null,
+        exits: [leg(1, null, '2000'), leg(2, 'all_remaining', '5000')],
+      }),
+    );
+    await user.click(screen.getByRole('tab', { name: 'Executions' }));
+    expect(screen.getByText('Exit 1')).toBeInTheDocument();
+    expect(screen.getByText('Final exit')).toBeInTheDocument();
+    expect(screen.queryByText('Exit 2')).toBeNull();
+    expect(screen.queryByText(/%/)).toBeNull();
+  });
+
   it('lists every exit leg of a partially closed position', async () => {
     const user = userEvent.setup();
     renderSheet(
@@ -226,6 +253,7 @@ describe('Quick Preview execution legs', () => {
             exitId: 'exit-1',
             sequence: 1,
             closedBps: 4000,
+            exitScope: null,
             exitPrice: '2410.5',
             realizedPnlMinor: '12000',
             exitReason: 'target',
@@ -235,6 +263,7 @@ describe('Quick Preview execution legs', () => {
             exitId: 'exit-2',
             sequence: 2,
             closedBps: 2000,
+            exitScope: null,
             exitPrice: '2415.0',
             realizedPnlMinor: '5000',
             exitReason: null,

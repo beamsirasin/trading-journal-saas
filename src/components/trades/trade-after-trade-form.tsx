@@ -1,6 +1,6 @@
 'use client';
 
-import { CircleAlert, Plus, Trash2 } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   useEffect,
@@ -19,7 +19,6 @@ import {
   requirementItems,
   stepRequirementStatus,
 } from '@/lib/trades/requirements';
-import { HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
@@ -28,7 +27,6 @@ import { useRouter } from '@/i18n/navigation';
 
 import {
   activeAfterTradeClassification,
-  addExit,
   afterTradeAnalysisSummary,
   afterTradeFieldSection,
   afterTradePlanOutcomePlan,
@@ -39,55 +37,38 @@ import {
   answerNoSetup,
   answerNoStrategy,
   buildAfterTradePayload,
-  canAddExit,
   canDeselectEmotion,
   clearEntryTimestamp,
   closingExits,
   createAfterTradeDraft,
-  exitField,
-  FULL_CLOSE_EXIT_ID,
   isCompleteEntryTimestamp,
   removeEmotionsAnswer,
-  removeExit,
   removeSetupAnswer,
   removeStrategyAnswer,
   selectSetup,
   selectStrategy,
-  setCloseMode,
   setConfidence,
   setEntryDate,
   setEntryTime,
-  setOutcome,
-  setPartsResult,
   setPlanOutcomeAmountText,
   setPlanOutcomeAnswer,
   setRiskState,
-  setStatedTotal,
   setTargetState,
   setTargetValue,
   toggleEmotion,
-  updateExit,
-  updateFullClose,
   validateAfterTradeDraft,
   type AfterTradeDraft,
   type AfterTradeErrorCode,
   type AfterTradeErrors,
   type AfterTradeExitDraft,
   type AfterTradeField,
-  type ClosingState,
 } from './after-trade-draft';
 import type { PlanOutcomeDraftError } from './plan-outcome-draft';
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { afterTradeContextIds, TradeAfterTradeContextStep } from './trade-after-trade-context-step';
-import { ChoiceGroup, InlineAction, Tag, TextField } from './trade-at-entry-controls';
+import { InlineAction } from './trade-at-entry-controls';
 import { formatEntryStamp, tradeDetailsRowId, TradeDetailsStep } from './trade-details-step';
 import { TradeEntryContextStep } from './trade-entry-context-step';
-import {
-  ClosingStatusLine,
-  FinalExitTimeRow,
-  TradeResultCard,
-  TraderOutcomeCard,
-} from './trade-exit-result-step';
 import { datetimeLocalToIso } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { planOutcomeIds, TradePlanOutcomeSection } from './trade-plan-outcome-section';
@@ -97,6 +78,11 @@ import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
 import { TradeSetupChecklistStep } from './trade-setup-checklist-step';
 import { TradeStepFlow, TradeStepSection } from './trade-step-flow';
+import {
+  isClosingField,
+  TRADER_RESULT_IDS,
+  TradeTraderResultStep,
+} from './trade-trader-result-step';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 /**
@@ -158,19 +144,6 @@ function fieldStep(field: AfterTradeField): number {
 }
 
 /** Stage 6's control ids on this form (`fieldTargetId` focuses them). */
-/** Step 5's Trade result controls — the same ids Record Closed has always used. */
-const RESULT_IDS = {
-  anchor: 'after-exits',
-  closeMode: 'after-close-mode',
-  partsResult: 'after-parts-result',
-  fullClose: {
-    pnl: `after-exit-${FULL_CLOSE_EXIT_ID}-pnl`,
-    price: `after-exit-${FULL_CLOSE_EXIT_ID}-price`,
-    reason: `after-exit-${FULL_CLOSE_EXIT_ID}-reason`,
-  },
-  statedTotal: 'after-finalPnl',
-} as const;
-
 const AFTER_CONTEXT_PREFIX = 'after-stage6';
 const AFTER_CONTEXT_IDS = afterTradeContextIds(AFTER_CONTEXT_PREFIX);
 const PLAN_OUTCOME_IDS = planOutcomeIds(AFTER_CONTEXT_PREFIX);
@@ -203,10 +176,8 @@ function useIsWideViewport(): boolean {
  * control in one press.
  */
 function fieldTargetId(field: AfterTradeField): string {
-  if (field.startsWith('exit:')) {
-    const [, id, part] = field.split(':');
-    return `after-exit-${id}-${part}`;
-  }
+  // Step 5's close answers live in the Closing details editor: its row takes focus.
+  if (isClosingField(field)) return TRADER_RESULT_IDS.closingRow;
   switch (field) {
     case 'tradingAccountId':
     case 'symbol':
@@ -1259,76 +1230,31 @@ export function TradeAfterTradeForm({
       {section(
         'result',
         'gap-4',
-        <>
-          {/*
-            CANONICAL STAGE 5 — the same outcome, Final Net P&L, Trader R, final
-            exit time and exit history controls Close Trade uses, read as what
-            the trader actually did:
-
-            1. THE OUTCOME LEADS — the trader's own Win / BE / Loss, an explicit
-               judgement that the P&L never fills in.
-            2. ONE CLOSE CARD — the whole trade's Final Net P&L (authoritative),
-               what it comes to in R (calculated), when it finally closed, and
-               the exit history as its supporting breakdown, whose status reads
-               on the collapsed row: a full close in one exit, or how much of
-               the position the recorded exits account for.
-
-            Record Closed never asks for a Part / All Remaining scope for the
-            Trade here: it reconstructs a trade that is already closed.
-          */}
-          <TraderOutcomeCard
-            idPrefix="after-outcome"
-            value={draft.outcome}
-            contradicts={outcomeNotice !== undefined}
-            onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
-          />
-
-          <TradeResultCard
-            ids={RESULT_IDS}
-            currency={currency}
-            closeMode={draft.closeMode}
-            partsResult={draft.partsResult}
-            fullClose={draft.fullClose}
-            fullCloseErrors={{
-              pnl: errorText(exitField(FULL_CLOSE_EXIT_ID, 'pnl')),
-              price: errorText(exitField(FULL_CLOSE_EXIT_ID, 'price')),
-            }}
-            statedTotal={draft.statedTotal}
-            statedTotalError={errorText('finalPnl')}
-            eachExit={
-              <ExitHistoryFields
-                draft={draft}
-                currency={currency}
-                errorText={errorText}
-                closing={validation.closing}
-                onAdd={() => apply((current) => addExit(current, generateId()))}
-                onRemove={(id) => apply((current) => removeExit(current, id))}
-                onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
-              />
-            }
-            closing={validation.closing}
-            finalPnlMinor={validation.finalPnlMinor}
-            actualR={validation.actualR}
-            formatMoney={formatMoney}
-            onCloseMode={(mode) => apply((current) => setCloseMode(current, mode))}
-            onPartsResult={(mode) => apply((current) => setPartsResult(current, mode))}
-            onFullClose={(patch) => apply((current) => updateFullClose(current, patch))}
-            onStatedTotal={(value) => apply((current) => setStatedTotal(current, value))}
-          />
-
-          <FinalExitTimeRow
-            id="after-exitedAt"
-            label={a('times.exit')}
-            value={draft.exitedAt}
-            timezone={timezone}
-            locale={locale}
-            error={errorText('exitedAt')}
-            lastRecordedExit={
-              latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
-            }
-            onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-          />
-        </>,
+        /*
+          CANONICAL STAGE 5, READ LIKE STEPS 1–4: launcher rows for the
+          outcome, the closing details and the final exit time, each opening
+          its own focused editor, and the result read back beneath them. Record
+          Closed never asks for a Part / All Remaining scope for the Trade: it
+          reconstructs a trade that is already closed.
+        */
+        <TradeTraderResultStep
+          draft={draft}
+          validation={validation}
+          outcomeContradicts={outcomeNotice !== undefined}
+          currency={currency}
+          timezone={timezone}
+          locale={locale}
+          lastRecordedExit={
+            latestExitLocal === null ? null : new Date(latestExitLocal.time).toISOString()
+          }
+          errorText={errorText}
+          closingErrorCount={
+            Object.keys(visibleErrors).filter((field) => isClosingField(field as AfterTradeField))
+              .length
+          }
+          formatMoney={formatMoney}
+          apply={apply}
+        />,
       )}
 
       {/* 6 — AFTER TRADE (canonical Stage 6): System Result, then context; then the read-back and Save */}
@@ -1483,151 +1409,5 @@ export function TradeAfterTradeForm({
         </>,
       )}
     </TradeStepFlow>
-  );
-}
-
-function ExitHistoryFields({
-  draft,
-  currency,
-  errorText,
-  closing,
-  onAdd,
-  onRemove,
-  onChange,
-}: {
-  draft: AfterTradeDraft;
-  currency: string;
-  errorText: (field: AfterTradeField) => string | undefined;
-  closing: ClosingState;
-  onAdd: () => void;
-  onRemove: (id: string) => void;
-  onChange: (id: string, patch: Partial<Omit<AfterTradeExitDraft, 'id'>>) => void;
-}) {
-  const a = useTranslations('trades.create.recording.contractAfter');
-  const c = useTranslations('trades.create.recording.contractEntry');
-  return (
-    <div className="flex min-w-0 flex-col gap-4 pb-3">
-      <ClosingStatusLine closing={closing} />
-      {/* The disclosure's own summary already says there are none. */}
-      {draft.exits.length === 0 ? null : (
-        <ol className="divide-border flex min-w-0 flex-col divide-y">
-          {draft.exits.map((exit, index) => {
-            const number = index + 1;
-            const prefix = `after-exit-${exit.id}`;
-            return (
-              <li
-                key={exit.id}
-                data-after-exit=""
-                className="flex min-w-0 flex-col gap-4 py-4 first:pt-0"
-              >
-                <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <p className="text-foreground text-sm font-semibold">
-                    {a('exits.exitNumber', { number })}
-                  </p>
-                  <InlineAction
-                    ariaLabel={a('exits.removeAria', { number })}
-                    onClick={() => onRemove(exit.id)}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      <Trash2 className="size-3.5" aria-hidden="true" />
-                      {a('exits.remove')}
-                    </span>
-                  </InlineAction>
-                </div>
-                <ChoiceGroup
-                  idPrefix={`${prefix}-scope`}
-                  legend={a('exits.scope')}
-                  value={exit.scope === '' ? null : exit.scope}
-                  status={c('notAnswered')}
-                  columns={3}
-                  compact
-                  fit="split"
-                  aside={
-                    <InlineAction
-                      ariaLabel={a('exits.removeScopeAria', { number })}
-                      onClick={() => onChange(exit.id, { scope: '' })}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(scope) => onChange(exit.id, { scope })}
-                  options={[
-                    { value: 'part', label: a('exits.scopePart') },
-                    { value: 'all_remaining', label: a('exits.scopeAll') },
-                    { value: 'unknown', label: a('exits.scopeUnknown') },
-                  ]}
-                />
-                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-                  <TextField
-                    id={`${prefix}-pnl`}
-                    label={a('exits.pnl')}
-                    value={exit.pnl}
-                    onChange={(pnl) => onChange(exit.id, { pnl })}
-                    suffix={currency}
-                    inputMode="decimal"
-                    figure
-                    error={errorText(exitField(exit.id, 'pnl'))}
-                  />
-                  <TextField
-                    id={`${prefix}-closedPercent`}
-                    label={a('exits.percent')}
-                    value={exit.closedPercent}
-                    onChange={(closedPercent) => onChange(exit.id, { closedPercent })}
-                    suffix="%"
-                    inputMode="decimal"
-                    figure
-                    error={errorText(exitField(exit.id, 'closedPercent'))}
-                  />
-                  <TextField
-                    id={`${prefix}-exitedAt`}
-                    type="datetime-local"
-                    label={a('exits.time')}
-                    value={exit.exitedAt}
-                    onChange={(exitedAt) => onChange(exit.id, { exitedAt })}
-                    figure
-                    error={errorText(exitField(exit.id, 'exitedAt'))}
-                  />
-                  <TextField
-                    id={`${prefix}-price`}
-                    label={a('exits.price')}
-                    value={exit.price}
-                    onChange={(price) => onChange(exit.id, { price })}
-                    inputMode="decimal"
-                    figure
-                    labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
-                    error={errorText(exitField(exit.id, 'price'))}
-                  />
-                </div>
-                <TextField
-                  id={`${prefix}-reason`}
-                  label={a('exits.reason')}
-                  value={exit.reason}
-                  onChange={(reason) => onChange(exit.id, { reason })}
-                />
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      <div className="flex min-w-0 flex-col gap-1">
-        <div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onAdd}
-            disabled={!canAddExit(draft)}
-          >
-            <Plus aria-hidden="true" />
-            {a('exits.add')}
-          </Button>
-        </div>
-        {canAddExit(draft) ? null : (
-          <p className="text-muted-foreground text-xs">
-            {a('exits.limitReached', { limit: HISTORICAL_EXIT_LIMIT })}
-          </p>
-        )}
-      </div>
-    </div>
   );
 }

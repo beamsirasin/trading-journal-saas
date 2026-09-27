@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { isOrderedExitHistory, orderedExitLabel } from '@/lib/trades/exit-sequence';
 import { cn } from '@/lib/utils';
 import type { TradeDetail } from '@/server/dal/trades';
 import { ActualSection } from '@/components/trades/trade-actual-section';
@@ -112,7 +113,9 @@ function ExecutionTimeline({
     });
   }
 
-  for (const exit of trade.exits) {
+  // An ordered exit history names its last exit the Final exit (decision 60).
+  const orderedExits = isOrderedExitHistory(trade.exits);
+  for (const [index, exit] of trade.exits.entries()) {
     const lines: string[] = [];
     if (exit.exitPrice !== null) lines.push(`${tTrades('field.exit')}: ${exit.exitPrice}`);
     const realized = money(exit.realizedPnlMinor);
@@ -125,12 +128,14 @@ function ExecutionTimeline({
       // A leg that closes the whole remainder is still just a leg; the
       // percentage says which it was without a second vocabulary for it.
       title:
-        exit.closedBps === null
-          ? tTrades('lifecycle.execution.exitNumber', { sequence: exit.sequence })
-          : t('timeline.exit', {
-              sequence: exit.sequence,
-              percent: (exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2),
-            }),
+        orderedExits && orderedExitLabel(index, trade.exits.length).kind === 'final'
+          ? tTrades('lifecycle.execution.finalExit')
+          : exit.closedBps === null
+            ? tTrades('lifecycle.execution.exitNumber', { sequence: exit.sequence })
+            : t('timeline.exit', {
+                sequence: exit.sequence,
+                percent: (exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2),
+              }),
       lines,
     });
   }

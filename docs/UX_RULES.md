@@ -1175,10 +1175,11 @@ Implementation evidence only, recorded so redesign and migration work can find t
   "Record partial exit" (Part) and "Close trade" (All Remaining) from the Trade's Execution panel,
   scope chosen by the action, written through `recordContractExitAction`. **Since 2026-09-26 the
   Final Close is canonical Step 5 itself:** below the Trade's context and — only where needed —
-  Complete the plan, it shows Record Closed's Step 5 heading ("Step 5 of 6 · Trader result") and
-  the same shared components in the same order: the outcome card, the Trade result card (how it
-  closed; each exit or the final result; the read-only Final result with Trader R) and the final
-  exit time launcher outside it. Lifecycle facts arrive as props: exits already recorded say
+  Complete the plan, it shows the canonical Step 5 heading ("Step 5 of 6 · Trader result") and
+  the shared Step 5 components: the outcome card, the Trade result card (how it closed; each exit
+  or the final result; the read-only Final result with Trader R) and the final exit time launcher
+  outside it. (Record Closed's own Step 5 reads as launcher rows with focused editors, and records
+  a close in parts as an ordered list of exit results — contract decision 60.) Lifecycle facts arrive as props: exits already recorded say
   "Closed in parts" instead of asking, are listed read-only, and the closing exit is All
   remaining. After the close, Step 6 carries Record Closed's step heading ("Step 6 of 6 · After
   trade") under the kept "Close trade" page title. Since 2026-09-22 it is the only close path for a contract

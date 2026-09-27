@@ -6,6 +6,7 @@ import { useId, useState } from 'react';
 
 import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
 import type { TradeQuickPreviewModel, TradeQuickPreviewTab } from '@/lib/dashboard/trade-preview';
+import { isOrderedExitHistory, orderedExitLabel } from '@/lib/trades/exit-sequence';
 import { cn } from '@/lib/utils';
 import {
   DashboardStateLink,
@@ -356,6 +357,8 @@ function ExecutionsPanel({
   dateLocale: string;
 }) {
   const t = useTranslations('dashboard.tradePreview');
+  // An ordered exit history names its last exit the Final exit (decision 60).
+  const orderedExits = isOrderedExitHistory(trade.exits);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {trade.closedBps === null || trade.remainingBps === null ? null : (
@@ -367,11 +370,13 @@ function ExecutionsPanel({
         </p>
       )}
       <ul data-trade-preview-exits={trade.exits.length} className="flex flex-col gap-2">
-        {trade.exits.map((exit) => (
+        {trade.exits.map((exit, index) => (
           <li key={exit.exitId} className="border-border rounded-lg border p-3">
             <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
               <span className="text-sm font-semibold">
-                {t('legLabel', { sequence: exit.sequence })}
+                {orderedExits && orderedExitLabel(index, trade.exits.length).kind === 'final'
+                  ? t('finalLegLabel')
+                  : t('legLabel', { sequence: exit.sequence })}
               </span>
               {exit.closedBps === null ? null : (
                 <span className="numeric text-muted-foreground text-xs">

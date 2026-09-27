@@ -89,18 +89,19 @@ describe('readiness', () => {
     expect(errors.risk).toBe('must_be_positive');
   });
 
-  it('refuses a final exit before entry and exits that close more than the position', () => {
+  it('refuses a final exit before entry, and checks no share of the position', () => {
     let draft = { ...identified(), enteredAt: '2026-09-10T10:00', exitedAt: '2026-09-10T09:00' };
     draft = addExit(
       addExit(setPartsResult(setCloseMode(draft, 'in_parts'), 'each_exit'), 'a'),
       'b',
     );
-    draft = updateExit(draft, 'a', { closedPercent: '60' });
-    draft = updateExit(draft, 'b', { closedPercent: '60' });
+    // Shares an older draft may carry are neither asked nor checked any more.
+    draft = updateExit(draft, 'a', { closedPercent: '60', pnl: '10' });
+    draft = updateExit(draft, 'b', { closedPercent: '60', pnl: '10' });
     const { errors } = validateAfterTradeDraft(draft, CONTEXT);
     expect(errors.exitedAt).toBe('exit_before_entry');
-    expect(errors[exitField('b', 'closedPercent')]).toBe('percent_over_total');
     expect(errors[exitField('a', 'closedPercent')]).toBeUndefined();
+    expect(errors[exitField('b', 'closedPercent')]).toBeUndefined();
   });
 });
 
@@ -170,71 +171,94 @@ describe('the close is the result', () => {
     expect(payloadOf(draft)).not.toHaveProperty('finalPnlAdoptedFromExits');
   });
 
-  it('partial exits of 30% and 30% account for 60% and claim no final result', () => {
-    const draft = closedInParts({ ...identified(), ...RISKED }, [
-      { scope: 'part', closedPercent: '30', pnl: '20' },
-      { scope: 'part', closedPercent: '30', pnl: '15' },
-    ]);
+  /*
+    "RECORD EACH EXIT" IS AN ORDERED SEQUENCE OF RESULTS (2026-09-27). The last
+    exit is the Final exit — the rest of the position — so the exits close the
+    trade by themselves; Net P&L is their sum once every one has a P&L. No
+    share or scope is asked. Saved, the last exit is All remaining (what the
+    Final exit means) and the earlier ones carry no scope; no share is sent.
+  */
+  it('no exits yet: no result, and nothing to save as exits', () => {
+    const draft = closedInParts({ ...identified(), ...RISKED }, []);
     const validation = validateAfterTradeDraft(draft, CONTEXT);
-    expect(validation.closing).toMatchObject({
-      mode: 'in_parts',
-      exitCount: 2,
-      accountedBps: 6_000,
-      closed: false,
-      recordedSoFarMinor: '3500',
-    });
+    expect(validation.closing).toMatchObject({ exitCount: 0, closed: false });
     expect(validation.finalPnlMinor).toBeNull();
-    expect(validation.actualR).toMatchObject({ status: 'unavailable' });
-    const payload = payloadOf(draft);
-    expect(payload).toMatchObject({ finalPnlMinor: null });
-    expect(payload).not.toHaveProperty('finalPnlAdoptedFromExits');
-    expect(payload).not.toHaveProperty('exitHistoryCompleteness');
+    expect(payloadOf(draft)).toMatchObject({ finalPnlMinor: null, exits: [] });
+    expect(payloadOf(draft)).not.toHaveProperty('exitHistoryCompleteness');
   });
 
-  it('an All remaining exit completes the sequence, and the exit P&Ls sum into the result', () => {
+  it('one exit is the Final exit, and its P&L is the result', () => {
+    const draft = closedInParts({ ...identified(), ...RISKED }, [{ pnl: '50' }]);
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.closing).toMatchObject({ exitCount: 1, closed: true, source: 'exit_legs' });
+    expect(validation.finalPnlMinor).toBe('5000');
+    expect(validation.actualR).toEqual({ status: 'known', value: '1.0000' });
+    expect(payloadOf(draft)?.exits).toEqual([
+      {
+        closedBps: null,
+        exitScope: 'all_remaining',
+        exitPrice: null,
+        realizedPnlMinor: '5000',
+        exitedAt: null,
+      },
+    ]);
+  });
+
+  it('several exits: Net P&L is their sum, and the last is sent as the Final exit', () => {
     const draft = closedInParts({ ...identified(), ...RISKED }, [
-      { scope: 'part', closedPercent: '30', pnl: '20' },
-      { scope: 'part', closedPercent: '30', pnl: '15' },
-      { scope: 'all_remaining', pnl: '45' },
+      { pnl: '30' },
+      { pnl: '20' },
+      { pnl: '50' },
     ]);
     const validation = validateAfterTradeDraft(draft, CONTEXT);
-    expect(validation.closing).toMatchObject({ closed: true, accountedBps: 10_000 });
-    expect(validation.finalPnlMinor).toBe('8000');
-    expect(validation.actualR).toEqual({ status: 'known', value: '1.6000' });
-    expect(payloadOf(draft)).toMatchObject({
-      finalPnlMinor: '8000',
+    expect(validation.closing).toMatchObject({ exitCount: 3, closed: true, missingPnl: false });
+    expect(validation.finalPnlMinor).toBe('10000');
+    // Trader R is still Net P&L ÷ Risk at Entry: 100 ÷ 50.
+    expect(validation.actualR).toEqual({ status: 'known', value: '2.0000' });
+    const payload = payloadOf(draft);
+    expect(payload).toMatchObject({
+      finalPnlMinor: '10000',
       finalPnlAdoptedFromExits: true,
       exitHistoryCompleteness: 'complete',
     });
-    expect(CreateCompletedTradeSchema.safeParse(payloadOf(draft)).success).toBe(true);
-  });
-
-  it('percentages totalling 100% also complete it', () => {
-    const draft = closedInParts(identified(), [
-      { closedPercent: '60', pnl: '50' },
-      { closedPercent: '40', pnl: '30' },
+    expect(payload?.exits?.map((exit) => [exit.exitScope, exit.closedBps])).toEqual([
+      [null, null],
+      [null, null],
+      ['all_remaining', null],
     ]);
-    expect(validateAfterTradeDraft(draft, CONTEXT).finalPnlMinor).toBe('8000');
+    expect(CreateCompletedTradeSchema.safeParse(payload).success).toBe(true);
   });
 
-  it('never fabricates coverage: a missing percentage leaves allocation unknown and no result', () => {
-    const draft = closedInParts(identified(), [{ closedPercent: '30', pnl: '20' }, { pnl: '15' }]);
-    const validation = validateAfterTradeDraft(draft, CONTEXT);
-    expect(validation.closing).toMatchObject({ accountedBps: null, closed: false });
-    expect(validation.finalPnlMinor).toBeNull();
-    expect(validation.closing.recordedSoFarMinor).toBe('3500');
-  });
-
-  it('closed, but an exit without P&L: no final result until every exit states one', () => {
-    const draft = closedInParts(identified(), [
-      { scope: 'part', closedPercent: '50', pnl: '20' },
-      { scope: 'all_remaining' },
-    ]);
+  it('an exit without P&L: no result until every exit has one — a running figure only', () => {
+    const draft = closedInParts(identified(), [{ pnl: '20' }, { reason: 'Stopped out' }]);
     const validation = validateAfterTradeDraft(draft, CONTEXT);
     expect(validation.closing).toMatchObject({ closed: true, missingPnl: true });
     expect(validation.finalPnlMinor).toBeNull();
+    expect(validation.closing.recordedSoFarMinor).toBe('2000');
     expect(payloadOf(draft)).toMatchObject({ exitHistoryCompleteness: 'complete' });
     expect(payloadOf(draft)).not.toHaveProperty('finalPnlAdoptedFromExits');
+  });
+
+  it('an older draft’s scope and share stay in the draft, and are neither counted nor sent', () => {
+    const draft = closedInParts({ ...identified(), ...RISKED }, [
+      { scope: 'part', closedPercent: '30', pnl: '20' },
+      { scope: 'all_remaining', pnl: '15' },
+      { scope: 'unknown', closedPercent: '25', pnl: '45' },
+    ]);
+    // Kept exactly as they were.
+    expect(draft.exits.map((exit) => [exit.scope, exit.closedPercent])).toEqual([
+      ['part', '30'],
+      ['all_remaining', ''],
+      ['unknown', '25'],
+    ]);
+    const validation = validateAfterTradeDraft(draft, CONTEXT);
+    expect(validation.finalPnlMinor).toBe('8000');
+    // The order decides the Final exit, not an old scope answer.
+    expect(payloadOf(draft)?.exits?.map((exit) => [exit.exitScope, exit.closedBps])).toEqual([
+      [null, null],
+      [null, null],
+      ['all_remaining', null],
+    ]);
   });
 
   it('keeps each way of closing when switching, and saves only the chosen one', () => {
@@ -242,10 +266,18 @@ describe('the close is the result', () => {
     draft = updateFullClose(setCloseMode(draft, 'all_at_once'), { pnl: '80' });
     expect(draft.exits).toHaveLength(1);
     expect(payloadOf(draft)?.exits).toHaveLength(1);
-    expect(payloadOf(draft)?.exits?.[0]).toMatchObject({ exitScope: 'all_remaining' });
+    expect(payloadOf(draft)?.exits?.[0]).toMatchObject({
+      exitScope: 'all_remaining',
+      realizedPnlMinor: '8000',
+    });
     draft = setPartsResult(setCloseMode(draft, 'in_parts'), 'each_exit');
     expect(draft.fullClose.pnl).toBe('80');
-    expect(payloadOf(draft)?.exits?.[0]).toMatchObject({ closedBps: 3_000 });
+    expect(draft.exits[0]?.closedPercent).toBe('30');
+    expect(payloadOf(draft)?.exits?.[0]).toMatchObject({
+      realizedPnlMinor: '2000',
+      exitScope: 'all_remaining',
+      closedBps: null,
+    });
   });
 
   it('holds no separate Final Net P&L to type', () => {
@@ -358,13 +390,13 @@ describe('the Save payload', () => {
     expect(payload).not.toHaveProperty('actualInitialRiskMinor');
   });
 
-  it('keeps each exit’s evidence as given, with scope Unknown distinct from Unanswered', () => {
+  it('keeps each exit’s evidence as given, in order, the last one the Final exit', () => {
     let draft = addExit(
       addExit(setPartsResult(setCloseMode(identified(), 'in_parts'), 'each_exit'), 'a'),
       'b',
     );
     draft = updateExit(draft, 'a', { reason: '  Half at the level ' });
-    draft = updateExit(draft, 'b', { scope: 'unknown', price: '2410.5', closedPercent: '25' });
+    draft = updateExit(draft, 'b', { price: '2410.5', exitedAt: '2026-09-18T10:30' });
     expect(payloadOf(draft)?.exits).toEqual([
       {
         closedBps: null,
@@ -375,11 +407,11 @@ describe('the Save payload', () => {
         exitedAt: null,
       },
       {
-        closedBps: 2_500,
-        exitScope: 'unknown',
+        closedBps: null,
+        exitScope: 'all_remaining',
         exitPrice: '2410.5',
         realizedPnlMinor: null,
-        exitedAt: null,
+        exitedAt: '2026-09-18T10:30:00.000Z',
       },
     ]);
   });

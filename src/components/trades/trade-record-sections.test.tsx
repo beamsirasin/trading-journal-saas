@@ -183,6 +183,112 @@ function renderDetail(trade: TradeDetailModel, section = 'actual', canWrite = fa
   );
 }
 
+/*
+  AN ORDERED EXIT HISTORY READS BY ITS ORDER (decision 60). Record Closed saves
+  a close in parts as ordered exit results — the last one All remaining, only
+  for compatibility — so the detail names them Exit 1, Exit 2, Final exit and
+  says nothing about scope, share or completeness the trader never gave. A
+  history that records allocation keeps showing it.
+*/
+describe('Trade record sections — exit history presentation', () => {
+  const closedContract = {
+    ...base,
+    status: 'closed' as const,
+    recordingContract: 'add_trade_v1' as const,
+    actualResultMode: 'money' as const,
+    plannedRiskMinor: '5000',
+    netPnlMinor: '10000',
+    actualR: '2.0000',
+    finalPnlSource: 'exit_history' as const,
+    exitHistoryCompleteness: 'complete' as const,
+    closedBps: null,
+    remainingBps: null,
+    enteredAt: '2026-08-08T00:00:00.000Z',
+    exitedAt: '2026-08-08T03:00:00.000Z',
+  };
+  const leg = (
+    sequence: number,
+    exitScope: 'part' | 'all_remaining' | 'unknown' | null,
+    closedBps: number | null,
+    realizedPnlMinor: string,
+  ) => ({
+    exitId: `018f0000-0000-7000-8000-0000000000f${sequence}`,
+    sequence,
+    closedBps,
+    exitScope,
+    exitPrice: null,
+    realizedPnlMinor,
+    exitReason: null,
+    exitedAt: null,
+  });
+
+  it('reads an ordered history as Exit 1, Exit 2, Final exit — with no scope, share or completeness', () => {
+    const exits = [
+      leg(1, null, null, '2000'),
+      leg(2, null, null, '3000'),
+      leg(3, 'all_remaining', null, '5000'),
+    ];
+    const stored = structuredClone(exits);
+    const trade = { ...closedContract, exits: exits.map((item) => Object.freeze(item)) };
+    renderDetail(trade as unknown as TradeDetailModel, 'actual');
+    const articles = Array.from(document.querySelectorAll('[data-exit-sequence]'));
+    expect(articles.map((item) => item.getAttribute('data-exit-sequence'))).toEqual([
+      '1',
+      '2',
+      'final',
+    ]);
+    expect(articles.map((item) => item.querySelector('h5')?.textContent)).toEqual([
+      'Exit 1',
+      'Exit 2',
+      'Final exit',
+    ]);
+    expect(articles[2]).toHaveTextContent('Realized net P&L: 5,000 JPY');
+    // The compatibility scope and completeness never reach the trader.
+    expect(document.querySelector('[data-exit-scope]')).toBeNull();
+    expect(screen.queryByText(/All remaining/)).toBeNull();
+    expect(screen.queryByText(/What did this exit close\?/)).toBeNull();
+    expect(screen.queryByText(/Is this every exit\?/)).toBeNull();
+    expect(screen.queryByText(/%/)).toBeNull();
+    // Rendering reads; it never changes what is stored.
+    expect(exits).toEqual(stored);
+  });
+
+  it('keeps showing allocation a history actually records', () => {
+    renderDetail(
+      {
+        ...closedContract,
+        exits: [leg(1, 'part', 3_000, '2000'), leg(2, 'all_remaining', null, '8000')],
+      } as unknown as TradeDetailModel,
+      'actual',
+    );
+    expect(document.querySelector('[data-exit-sequence]')).toBeNull();
+    const headings = Array.from(document.querySelectorAll('article h5')).map(
+      (item) => item.textContent,
+    );
+    expect(headings).toEqual(['Exit 1', 'Exit 2']);
+    expect(document.querySelector('[data-exit-scope="part"]')).toHaveTextContent(
+      'What did this exit close? Part',
+    );
+    expect(document.querySelector('[data-exit-scope="all_remaining"]')).toHaveTextContent(
+      'All remaining',
+    );
+    expect(screen.getByText(/30%/)).toBeInTheDocument();
+    expect(screen.getByText(/Is this every exit\?/)).toBeInTheDocument();
+  });
+
+  it("keeps a Don't know scope, even beside an All remaining last exit", () => {
+    renderDetail(
+      {
+        ...closedContract,
+        exits: [leg(1, 'unknown', null, '2000'), leg(2, 'all_remaining', null, '8000')],
+      } as unknown as TradeDetailModel,
+      'actual',
+    );
+    expect(document.querySelector('[data-exit-sequence]')).toBeNull();
+    expect(document.querySelector('[data-exit-scope="unknown"]')).toBeInTheDocument();
+  });
+});
+
 describe('Trade record sections', () => {
   // Phase 15E — one section renders at a time; `actual` is the default
   // landing section (`DEFAULT_TRADE_DETAIL_SECTION`).

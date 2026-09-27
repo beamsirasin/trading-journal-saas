@@ -844,7 +844,8 @@
       "chartAlt": "Chart attached to the {symbol} Trade",
       "confirmationNotes": "Confirmation notes",
       "notes": "Notes",
-      "reviewNotes": "Review notes"
+      "reviewNotes": "Review notes",
+      "finalLegLabel": "Final exit"
     },
     "riskPerformance": {
       "title": "Risk Performance",
@@ -1473,7 +1474,8 @@
         "correctDescription": "Edit stored execution primitives. R and outcome are recalculated by the server and cannot be edited here.",
         "moneyHint": "Enter an amount in {currency}. If the currency is not in the registry, enter raw minor units.",
         "netHint": "Enter the authoritative signed net amount in {currency}; costs will not be subtracted again.",
-        "timezoneHint": "Wall-clock time in your saved timezone: {timezone}."
+        "timezoneHint": "Wall-clock time in your saved timezone: {timezone}.",
+        "finalExit": "Final exit"
       },
       "historicalExecution": {
         "available": "Complete exit history ready",
@@ -2584,6 +2586,51 @@
             "totalOnly": "I only know the final result",
             "statedTotal": "Final net P&L",
             "statedTotalHint": "Use this when you know the final result but not each exit separately. After costs; use a minus sign for a loss."
+          },
+          "resultStep": {
+            "outcomeLabel": "Outcome",
+            "outcomeEditor": "How you judge this trade: Win, BE or Loss.",
+            "closingLabel": "Closing details",
+            "closingEditor": "How the trade was closed, and what the close made.",
+            "closing": {
+              "allAtOnce": "Closed all at once",
+              "inParts": "Closed in parts",
+              "eachExit": "Closed in parts · {count, plural, one {# exit} other {# exits}}",
+              "totalOnly": "Closed in parts · total only",
+              "stated": "{amount} stated by you",
+              "eachExitNone": "Closed in parts · no exits yet"
+            },
+            "allAtOnceDescription": "One exit closed the whole position.",
+            "inPartsDescription": "The position was closed over more than one exit.",
+            "eachExitDescription": "Record the result of each exit separately.",
+            "totalOnlyDescription": "Just record the combined result of all exits.",
+            "exits": {
+              "title": "Partial exits",
+              "none": "No exits recorded yet",
+              "editAria": "Edit exit {number}",
+              "back": "All exits",
+              "editor": "What this exit made.",
+              "add": "Add exit",
+              "finalExit": "Final exit",
+              "editFinalAria": "Edit final exit",
+              "pnlMissing": "P&L not recorded",
+              "everyPnl": "Add a P&L to every exit to get the total.",
+              "waitingForExits": "Add your exits to record the result."
+            },
+            "summary": {
+              "title": "Trade result",
+              "netPnl": "Net P&L",
+              "traderR": "Trader R"
+            },
+            "partsQuestion": "How much detail do you want to record?",
+            "totalOnly": "Record total only",
+            "eachExit": "Record each exit",
+            "statedTotalHint": "After costs. Use a minus sign for a loss.",
+            "details": {
+              "add": "Add more details",
+              "show": "Show {count, plural, one {# detail} other {# details}}",
+              "hide": "Hide details"
+            }
           }
         },
         "setupStep": {

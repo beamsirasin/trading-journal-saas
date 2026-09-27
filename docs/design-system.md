@@ -143,15 +143,25 @@ segment stays `bg-destructive`.
 
 ### Trader result (canonical Step 5)
 
-One set of components serves Record Closed and Close Existing Open Trade's Final Close —
-`src/components/trades/trade-exit-result-step.tsx`: `TraderOutcomeCard` (Win / BE / Loss
-buttons, Required), `TradeResultCard` (the close question, the full close, the parts choice, the
-stated total and the read-only Final result with Trader R), `ClosingStatusLine` and
-`FinalExitTimeRow` (its own launcher, outside the result card). Each task passes its exit
-editor into `TradeResultCard`'s `eachExit` slot — Record Closed its editable exit list, the
-Final Close `ClosingExitsEditor` (recorded exits read-only, then the All remaining closing exit).
-The step header is `StepHeading` (`trade-step-flow.tsx`), shared with `TradeStepFlow`. Never
-copy these into a task; pass a lifecycle difference in as a prop.
+**Record Closed** reads Step 5 like Steps 1–4 (`src/components/trades/trade-trader-result-step.tsx`):
+three launcher rows — Outcome, Closing details, Final exit time — and a read-only Trade result
+`SummaryCard` (shared with Step 2's Planned summary, `trade-planned-summary.tsx`). Closing
+details opens one focused editor: the close question, then only that way's answers; optional
+fields sit behind "Add more details", which never clears what it folds. _Record each exit_ is an
+ordered list — Exit 1, Exit 2 … Final exit — each opening its own view with its P&L first
+(decision 60).
+
+**Close Existing Open Trade's Final Close** uses the shared pieces in
+`src/components/trades/trade-exit-result-step.tsx`: `TraderOutcomeCard`, `TradeResultCard`
+(the close question, the full close, the parts choice, the stated total and the read-only Final
+result with Trader R), `ClosingExitsEditor` (recorded exits read-only, then the All remaining
+closing exit), `ClosingStatusLine` and `FinalExitTimeRow`. Both tasks share `StepHeading`
+(`trade-step-flow.tsx`), `TraderOutcomeField` and `FinalExitTimeRow`. Pass a lifecycle
+difference in as a prop; never copy a shared piece into a task.
+
+Read-only exit history names an ordered history's exits Exit 1, Exit 2 … Final exit and hides the
+compatibility scope (`src/lib/trades/exit-sequence.ts`); a history that records a Part, a Don't
+know or a share keeps showing them.
 
 ### Requirement badge
 

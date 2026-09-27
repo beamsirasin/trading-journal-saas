@@ -1,6 +1,7 @@
 import { useTranslations } from 'next-intl';
 
 import { hasStatedClosedResult, isContractRow } from '@/lib/trades/add-trade-contract';
+import { isOrderedExitHistory, orderedExitLabel } from '@/lib/trades/exit-sequence';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
 import { TraderOutcomeEvidence } from '@/components/trades/trade-evidence';
@@ -74,6 +75,13 @@ export function ActualSection({
   }
 
   const isClosed = trade.status === 'closed';
+  /*
+    AN ORDERED EXIT HISTORY READS BY ITS ORDER (decision 60): Exit 1, Exit 2,
+    Final exit — never the All remaining scope or the completeness it was
+    saved with for compatibility, which the trader never answered. A history
+    that records a Part, Don't know or a share keeps showing them.
+  */
+  const orderedExits = contract && isOrderedExitHistory(trade.exits);
   // Partially Closed is derived, never stored: Open with a closed share, or — for a
   // contract Trade, whose Part exit may leave its % unanswered — any Part leg (contract §11).
   const isPartial =
@@ -252,7 +260,7 @@ export function ActualSection({
             {trade.exitedAt === null ? null : (
               <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
             )}
-            {contract && trade.exits.length > 0 ? (
+            {contract && trade.exits.length > 0 && !orderedExits ? (
               <DetailRow
                 label={a('exits.completeness')}
                 value={
@@ -264,16 +272,27 @@ export function ActualSection({
             ) : null}
           </dl>
         )}
-        {trade.exits.map((exit) => (
+        {trade.exits.map((exit, index) => (
           <article
             key={exit.exitId}
+            data-exit-sequence={
+              orderedExits
+                ? orderedExitLabel(index, trade.exits.length).kind === 'final'
+                  ? 'final'
+                  : index + 1
+                : undefined
+            }
             className="border-border grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
           >
             <div className="grid gap-1 text-sm">
               <h5 className="font-semibold">
-                {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
+                {orderedExits && orderedExitLabel(index, trade.exits.length).kind === 'final'
+                  ? t('lifecycle.execution.finalExit')
+                  : t('lifecycle.execution.exitNumber', {
+                      sequence: orderedExits ? index + 1 : exit.sequence,
+                    })}
               </h5>
-              {contract && exit.exitScope !== null ? (
+              {contract && !orderedExits && exit.exitScope !== null ? (
                 <p data-exit-scope={exit.exitScope}>
                   {a('exits.scope')}{' '}
                   {exit.exitScope === 'part'

@@ -31,6 +31,8 @@ export interface TradeQuickPreviewExit {
   readonly exitId: string;
   readonly sequence: number;
   readonly closedBps: number | null;
+  /** Read only to tell an ordered exit history's Final exit (decision 60). */
+  readonly exitScope: string | null;
   readonly exitPrice: string | null;
   readonly realizedPnlMinor: string | null;
   readonly exitReason: string | null;
@@ -168,6 +170,7 @@ export function composeTradeQuickPreview(trade: TradeDetail): TradeQuickPreviewM
       exitId: exit.exitId,
       sequence: exit.sequence,
       closedBps: exit.closedBps,
+      exitScope: exit.exitScope,
       exitPrice: exit.exitPrice,
       realizedPnlMinor: exit.realizedPnlMinor,
       exitReason: exit.exitReason,

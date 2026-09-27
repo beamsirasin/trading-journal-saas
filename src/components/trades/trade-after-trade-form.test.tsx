@@ -447,8 +447,18 @@ function type(label: string | RegExp, value: string, scope: HTMLElement = docume
   fireEvent.change(within(scope).getByLabelText(label), { target: { value } });
 }
 
+/** Any editor still open is closed with its own Done — every answer is already in the draft. */
+function closeDialogs() {
+  for (let round = 0; round < 4; round += 1) {
+    const dialog = screen.queryByRole('dialog');
+    if (dialog === null) return;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
+  }
+}
+
 /** Save lives on the last step only. */
 function save() {
+  closeDialogs();
   goTo('after');
   fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
 }
@@ -457,29 +467,112 @@ function payload() {
   return createCompletedTradeActionMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
 }
 
-/** Step 5: "Closed in parts", recorded exit by exit — ready for exit legs. */
-function openExitHistory() {
-  goTo('result');
-  fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
-  const each = screen.getByRole('radio', { name: 'Record each exit' });
-  if (!(each as HTMLInputElement).checked) fireEvent.click(each);
+/**
+ * Step 5's Closing details editor, opened from its row — or brought back to
+ * its overview from an exit's own view. Returns the open editor.
+ */
+function openClosing(): HTMLElement {
+  const open = screen.queryByRole('dialog');
+  if (open !== null && open.querySelector('[data-exit-editor]') !== null) {
+    fireEvent.click(within(open).getByRole('button', { name: 'All exits' }));
+    return screen.getByRole('dialog');
+  }
+  if (open !== null && open.querySelector('[data-closing-editor]') !== null) return open;
+  closeDialogs();
+  if (currentStep() !== 'result') goTo('result');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Closing details' }));
+  return screen.getByRole('dialog');
+}
+
+/** A choice in the open editor, by its label (its description follows it). */
+function chooseIn(scope: HTMLElement, label: string) {
+  const radio = within(scope).getByRole('radio', { name: new RegExp(`^${label}`) });
+  if (!(radio as HTMLInputElement).checked) fireEvent.click(radio);
+}
+
+/** Step 5: "Closed in parts", recorded exit by exit — its editor left open on the exit list. */
+function openExitHistory(): HTMLElement {
+  const editor = openClosing();
+  chooseIn(editor, 'Closed in parts');
+  chooseIn(editor, 'Record each exit');
+  return editor;
 }
 
 /** Step 5: "Closed all at once", with this P&L for the close — the Trade's result. */
 function closeAllAtOnce(pnl: string) {
-  const once = screen.getByRole('radio', { name: 'Closed all at once' });
-  if (!(once as HTMLInputElement).checked) fireEvent.click(once);
-  type('P&L for the close', pnl);
+  const editor = openClosing();
+  chooseIn(editor, 'Closed all at once');
+  type('P&L for the close', pnl, editor);
+  closeDialogs();
 }
 
-function recordExit(fields: { pnl?: string; percent?: string; reason?: string } = {}) {
-  fireEvent.click(screen.getByRole('button', { name: 'Record an exit' }));
-  const exit = document.querySelectorAll<HTMLElement>('[data-after-exit]');
-  const last = exit[exit.length - 1]!;
-  if (fields.pnl !== undefined) type('P&L for this exit', fields.pnl, last);
-  if (fields.percent !== undefined) type(/% of original position/, fields.percent, last);
-  if (fields.reason !== undefined) type('Exit reason', fields.reason, last);
-  return last;
+/** Opens an editor's "Add more details" if it is folded; nothing typed is touched. */
+function openDetails(scope: HTMLElement) {
+  const toggle = scope.querySelector<HTMLButtonElement>('[data-more-details] > button')!;
+  if (toggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+}
+
+/** A field a trader can actually see: never one folded away behind "Add more details". */
+function visibleField(scope: HTMLElement, label: string | RegExp): HTMLElement {
+  const field = within(scope).getByLabelText(label);
+  expect(field).toBeVisible();
+  return field;
+}
+
+/**
+ * "Add exit": a new exit, opened in its own view — left open, and returned.
+ * Its P&L is asked first; time, price and reason are among its details.
+ */
+function recordExit(fields: { pnl?: string; reason?: string; price?: string } = {}) {
+  const editor = openClosing();
+  fireEvent.click(within(editor).getByRole('button', { name: 'Add exit' }));
+  const exit = screen.getByRole('dialog').querySelector<HTMLElement>('[data-exit-editor]')!;
+  if (fields.pnl !== undefined) {
+    fireEvent.change(visibleField(exit, 'P&L for this exit'), { target: { value: fields.pnl } });
+  }
+  if (fields.reason !== undefined) {
+    openDetails(exit);
+    fireEvent.change(visibleField(exit, 'Exit reason'), { target: { value: fields.reason } });
+  }
+  if (fields.price !== undefined) {
+    openDetails(exit);
+    fireEvent.change(visibleField(exit, 'Exit price'), { target: { value: fields.price } });
+  }
+  return exit;
+}
+
+/** The exit rows the list shows, in order. */
+function exitRows(): HTMLElement[] {
+  return Array.from(screen.getByRole('dialog').querySelectorAll<HTMLElement>('[data-exit-row]'));
+}
+
+/** Step 5's outcome: its row opens the editor, the answer is chosen there, and it closes. */
+function chooseOutcome(name: 'Win' | 'BE' | 'Loss') {
+  closeDialogs();
+  if (currentStep() !== 'result') goTo('result');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Outcome' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('radio', { name }));
+  closeDialogs();
+}
+
+function outcomeRow(): HTMLElement {
+  return document.getElementById('after-outcome-row')!;
+}
+
+function closingRow(): HTMLElement {
+  return document.getElementById('after-closing-row')!;
+}
+
+/** The Trade result summary's figure, as read on the Step 5 overview. */
+function summaryValue(line: 'netPnl' | 'traderR'): string {
+  return (
+    document.querySelector(`[data-result-summary] [data-summary-line="${line}"] dd`)?.textContent ??
+    ''
+  );
+}
+
+function summaryFootnote(): string {
+  return document.querySelector('[data-result-summary] [data-summary-footnote]')?.textContent ?? '';
 }
 
 /** The Context step, with this phase's emotion question opened. */
@@ -572,7 +665,7 @@ describe('After Trade — the moment and its steps', () => {
     typeInPlan('risk', 'Risk at entry', '60');
     goTo('result');
     closeAllAtOnce('120');
-    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    chooseOutcome('Win');
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(currentStep()).toBe('context');
     goTo('plan');
@@ -589,12 +682,15 @@ describe('After Trade — the moment and its steps', () => {
     expect(conceptRow('direction')).toHaveTextContent('Long');
     expect(conceptValue('direction')).toBe('long');
     goTo('result');
-    expect(screen.getByLabelText('P&L for the close')).toHaveValue('120');
-    expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();
-    expect(screen.getByText('+2.00R')).toBeInTheDocument();
+    expect(outcomeRow()).toHaveAttribute('data-outcome', 'win');
+    expect(closingRow()).toHaveTextContent('Closed all at once');
+    expect(closingRow().querySelector('[data-launcher-support]')).toHaveTextContent('+120.00 USD');
+    expect(within(openClosing()).getByLabelText('P&L for the close')).toHaveValue('120');
+    closeDialogs();
+    expect(summaryValue('traderR')).toBe('+2.00R');
     // What the trader did is Trader R; System R belongs to After Trade.
-    expect(document.querySelector('[data-result-panel]')).toHaveTextContent('Trader R');
-    expect(document.querySelector('[data-result-panel]')).not.toHaveTextContent('Actual R');
+    expect(document.querySelector('[data-result-summary]')).toHaveTextContent('Trader R');
+    expect(document.querySelector('[data-result-summary]')).not.toHaveTextContent('Actual R');
     goTo('after');
     expect(document.querySelector('[data-trade-summary]')).toHaveTextContent(
       /XAUUSD · Long · Main USD/,
@@ -639,9 +735,9 @@ describe('After Trade — the moment and its steps', () => {
     expect(finalExitValue()).toBe('');
     expect(finalExitRow()).toHaveTextContent('Not recorded');
     expect(screen.getByRole('button', { name: 'Use now for Final exit time' })).toBeInTheDocument();
-    for (const name of ['Win', 'BE', 'Loss']) {
-      expect(screen.getByRole('radio', { name })).not.toBeChecked();
-    }
+    expect(outcomeRow()).toHaveAttribute('data-outcome', '');
+    expect(outcomeRow()).toHaveTextContent('Not answered');
+    expect(closingRow()).toHaveAttribute('data-close-mode', 'unanswered');
     goTo('plan');
     // The rows say nothing was answered before anything is opened.
     expect(planRow('risk')).toHaveTextContent('Not answered');
@@ -912,8 +1008,9 @@ describe('Step 1 — read first, edit on demand', () => {
     );
     cancelConcept();
     goTo('result');
-    expect(screen.getByLabelText('P&L for the close')).toHaveValue('400');
-    expect(screen.getByText('+4.00R')).toBeInTheDocument();
+    expect(within(openClosing()).getByLabelText('P&L for the close')).toHaveValue('400');
+    closeDialogs();
+    expect(summaryValue('traderR')).toBe('+4.00R');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({
@@ -1974,7 +2071,7 @@ describe('Quick Save — the short way out once identity is answered', () => {
     fillIdentity();
     goTo('result');
     closeAllAtOnce('400');
-    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    chooseOutcome('Win');
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '100');
     // Back on Step 1, the quiet Save still carries the later answers.
@@ -2105,9 +2202,10 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     fillIdentity();
     goTo('result');
     closeAllAtOnce('-25');
-    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    chooseOutcome('Win');
+    // Said once, quietly, on the overview beside the outcome row — never a block.
     expect(
-      screen.getByText(/You chose Win, but your final net P&L is negative/),
+      within(stepSection('result')).getByText(/You chose Win, but your final net P&L is negative/),
     ).toBeInTheDocument();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -2119,7 +2217,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     fillIdentity();
     goTo('result');
     closeAllAtOnce('120');
-    expect(screen.getByRole('radio', { name: 'Win' })).not.toBeChecked();
+    expect(outcomeRow()).toHaveAttribute('data-outcome', '');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).not.toHaveProperty('traderOutcome');
@@ -2129,22 +2227,24 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
     renderForm();
     goTo('result');
     closeAllAtOnce('10');
-    fireEvent.click(screen.getByRole('radio', { name: 'BE' }));
+    chooseOutcome('BE');
     expect(screen.queryByText(/does not block saving/)).not.toBeInTheDocument();
   });
 
   it('shows Trader R only from Final Net P&L and Risk at Entry, and says why otherwise', () => {
     renderForm();
     goTo('result');
-    expect(
-      screen.getByText('Trader R needs your final net P&L and risk at entry.'),
-    ).toBeInTheDocument();
+    // Nothing yet: the summary says what the result is waiting for, never 0R.
+    expect(summaryValue('netPnl')).toBe('—');
+    expect(summaryValue('traderR')).toBe('—');
+    expect(summaryFootnote()).toBe('Choose how you closed the trade to record its result.');
     closeAllAtOnce('100');
-    expect(screen.getByText('Trader R needs your risk at entry.')).toBeInTheDocument();
+    expect(summaryValue('traderR')).toBe('—');
+    expect(summaryFootnote()).toBe('Trader R needs your risk at entry.');
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
-    expect(screen.getByText('+2.00R')).toBeInTheDocument();
+    expect(summaryValue('traderR')).toBe('+2.00R');
   });
 });
 
@@ -2454,73 +2554,65 @@ describe('psychology', () => {
 });
 
 /*
-  STEP 5 RECORDS HOW THE TRADE ACTUALLY CLOSED (decision 57). The outcome leads
-  as the trader's own Win / BE / Loss. Then one Trade result card asks how the
-  trade closed — all at once, or in parts — and the Final Net P&L is what that
-  close adds up to: read-only, never typed beside it, and never claimed before
-  the exits prove the whole position closed. Final exit time stays apart.
+  STEP 5 READS LIKE STEPS 1–4 (decisions 57–58). The overview holds three
+  launcher rows — Outcome, Closing details, Final exit time — and a read-only
+  Trade result summary; every answer lives in the editor its row opens. The
+  close model is unchanged: the Final Net P&L is what the close adds up to,
+  never typed beside it and never claimed before the exits prove the close.
 */
-describe('Step 5 — the close is the result', () => {
-  function result() {
-    const step = stepSection('result');
-    return {
-      step,
-      outcome: step.querySelector<HTMLElement>('[data-result-outcome]')!,
-      panel: step.querySelector<HTMLElement>('[data-result-panel]')!,
-      exitTime: step.querySelector<HTMLElement>('[data-result-exit-time]')!,
-      status: () => step.querySelector<HTMLElement>('[data-closing-status]'),
-      final: () => step.querySelector<HTMLElement>('[data-final-result]')!,
-      r: () => step.querySelector<HTMLElement>('[data-actual-r]')!,
-    };
-  }
-
+describe('Step 5 — an overview of rows, the close as the result', () => {
   function withRisk50() {
     goTo('plan');
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
   }
 
-  function leg(exit: HTMLElement, scope: 'Part' | 'All remaining') {
-    fireEvent.click(within(exit).getByRole('radio', { name: scope }));
-  }
-
-  it('leads with the outcome, asks how the trade closed, and has no Final Net P&L to type', () => {
+  it('is an overview, not a form: three rows, then the Trade result', () => {
     renderForm();
     goTo('result');
-    const { step, outcome, panel, exitTime } = result();
-    expect(step.querySelector('[data-result-outcome], [data-result-panel]')).toBe(outcome);
-    expect(panel.compareDocumentPosition(exitTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(panel).getByRole('heading', { name: 'Trade result' })).toBeInTheDocument();
-    expect(
-      within(panel).getByRole('group', { name: 'How did you close this trade?' }),
-    ).toBeInTheDocument();
-    // One result source: no Final Net P&L field, no adoption, no mismatch.
-    expect(within(step).queryByRole('textbox', { name: /Final net P&L/ })).toBeNull();
-    expect(within(step).queryByRole('button', { name: 'Use recorded exits' })).toBeNull();
-    expect(step).not.toHaveTextContent(/Recorded exits total/);
-    // The final exit time is its own launcher, outside the card.
-    expect(panel.querySelector('[data-exit-time]')).toBeNull();
-    expect(exitTime.querySelector('[data-exit-time]')).not.toBeNull();
+    const step = stepSection('result');
+    const order = [
+      outcomeRow(),
+      closingRow(),
+      step.querySelector('[data-result-exit-time]')!,
+      step.querySelector('[data-result-summary]')!,
+    ];
+    for (let index = 1; index < order.length; index += 1) {
+      expect(
+        order[index - 1]!.compareDocumentPosition(order[index]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // No field or choice lives on the page itself.
+    expect(within(step).queryAllByRole('textbox')).toHaveLength(0);
+    expect(within(step).queryAllByRole('radio')).toHaveLength(0);
+    expect(step).not.toHaveTextContent(/Remove answer/);
+    expect(outcomeRow()).toHaveTextContent('Not answered');
+    expect(closingRow()).toHaveTextContent('Not answered');
     // Nothing recorded yet: no result, and never a 0.
-    expect(result().final()).toHaveAttribute('data-final-result', 'waiting');
-    expect(result().r()).toHaveAttribute('data-actual-r', 'unavailable');
-    expect(result().r()).not.toHaveTextContent('0R');
+    expect(summaryValue('netPnl')).toBe('—');
+    expect(summaryValue('traderR')).toBe('—');
+    expect(step).not.toHaveTextContent('0R');
   });
 
   it('closed all at once: +80 is the Final Net P&L, +1.60R against a 50 risk, and saves as one', async () => {
     renderForm();
     fillIdentity();
     withRisk50();
-    closeAllAtOnce('80');
-    const { outcome, final, r } = result();
-    expect(final()).toHaveAttribute('data-final-result', 'final');
-    expect(within(final()).getByText('+80.00 USD')).toBeInTheDocument();
-    expect(r()).toHaveTextContent('+1.60R');
+    const editor = openClosing();
+    // The close question first; the full close's fields only once it is chosen.
+    expect(within(editor).queryByLabelText('P&L for the close')).toBeNull();
+    chooseIn(editor, 'Closed all at once');
+    expect(within(editor).getByLabelText('Exit price')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('Exit reason')).toBeInTheDocument();
+    type('P&L for the close', '80', editor);
+    closeDialogs();
+    expect(closingRow()).toHaveTextContent('Closed all at once');
+    expect(closingRow().querySelector('[data-launcher-support]')).toHaveTextContent('+80.00 USD');
+    expect(summaryValue('netPnl')).toBe('+80.00 USD');
+    expect(summaryValue('traderR')).toBe('+1.60R');
+    expect(summaryFootnote()).toBe('From the close');
     // The outcome is never set from the P&L.
-    expect(outcome.querySelector('[data-trader-outcome]')).toHaveAttribute(
-      'data-trader-outcome',
-      'unanswered',
-    );
+    expect(outcomeRow()).toHaveAttribute('data-outcome', '');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
     expect(payload()).toMatchObject({
@@ -2532,95 +2624,171 @@ describe('Step 5 — the close is the result', () => {
     expect(payload()).not.toHaveProperty('traderOutcome');
   });
 
-  it('closed in parts: 30% + 30% is 60% accounted for, 40% remaining, and no final result yet', () => {
+  it('the outcome is its own answer, chosen in its own editor, whatever the P&L says', async () => {
     renderForm();
-    withRisk50();
-    openExitHistory();
-    leg(recordExit({ pnl: '20', percent: '30' }), 'Part');
-    leg(recordExit({ pnl: '15', percent: '30' }), 'Part');
-    const { status, final, r } = result();
-    expect(status()).toHaveAttribute('data-closing-status', 'partial');
-    expect(status()).toHaveTextContent('Partial close · 60% accounted for');
-    expect(status()).toHaveTextContent('2 exits · 40% remaining');
-    // Not a final result: a running figure, named as such.
-    expect(final()).toHaveAttribute('data-final-result', 'waiting');
-    expect(final().querySelector('[data-final-pnl]')).toBeNull();
-    expect(final()).toHaveTextContent('Recorded so far: +35.00 USD');
-    expect(final()).toHaveTextContent('Waiting for the remaining exit.');
-    expect(r()).toHaveAttribute('data-actual-r', 'unavailable');
+    fillIdentity();
+    closeAllAtOnce('-20');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Outcome' }));
+    const editor = screen.getByRole('dialog');
+    for (const name of ['Win', 'BE', 'Loss']) {
+      expect(within(editor).getByRole('radio', { name })).not.toBeChecked();
+    }
+    fireEvent.click(within(editor).getByRole('radio', { name: 'Win' }));
+    closeDialogs();
+    expect(outcomeRow()).toHaveTextContent('Win');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ finalPnlMinor: '-2000', traderOutcome: 'win' });
   });
 
-  it('an All remaining exit completes the sequence, and the exit P&Ls sum into the result', async () => {
+  /*
+    RECORD EACH EXIT IS AN ORDERED LIST OF RESULTS (2026-09-27). The last exit
+    is the Final exit — the rest of the position — so nobody reconstructs a
+    share or a scope; Net P&L is the exits' sum once every one has its P&L.
+  */
+  it('one exit is the Final exit, and its P&L is the result', async () => {
+    renderForm();
+    fillIdentity();
+    withRisk50();
+    const editor = openExitHistory();
+    expect(within(editor).getByText('No exits recorded yet')).toBeInTheDocument();
+    const exit = recordExit({ pnl: '50' });
+    // Titled Final exit; no share, no scope asked.
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Final exit');
+    expect(within(exit).queryByRole('radio')).toBeNull();
+    expect(within(exit).queryByLabelText(/% of original position/)).toBeNull();
+    openClosing();
+    const [only] = exitRows();
+    expect(only).toHaveTextContent('Final exit');
+    expect(only).toHaveTextContent('+50.00 USD');
+    expect(only).toHaveAttribute('data-final-exit', '');
+    closeDialogs();
+    expect(closingRow()).toHaveTextContent('Closed in parts · 1 exit');
+    expect(summaryValue('netPnl')).toBe('+50.00 USD');
+    expect(summaryValue('traderR')).toBe('+1.00R');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      finalPnlMinor: '5000',
+      finalPnlAdoptedFromExits: true,
+      exitHistoryCompleteness: 'complete',
+      exits: [{ exitScope: 'all_remaining', closedBps: null, realizedPnlMinor: '5000' }],
+    });
+  });
+
+  it('several exits: the last is the Final exit, and Net P&L is their sum', async () => {
     renderForm();
     fillIdentity();
     withRisk50();
     openExitHistory();
-    leg(recordExit({ pnl: '20', percent: '30' }), 'Part');
-    leg(recordExit({ pnl: '15', percent: '30' }), 'Part');
-    leg(recordExit({ pnl: '45' }), 'All remaining');
-    const { status, final, r } = result();
-    expect(status()).toHaveAttribute('data-closing-status', 'closed');
-    expect(status()).toHaveTextContent('Fully closed · 100% accounted for');
-    expect(status()).toHaveTextContent('3 exits');
-    expect(final()).toHaveAttribute('data-final-result', 'final');
-    expect(within(final()).getByText('+80.00 USD')).toBeInTheDocument();
-    expect(r()).toHaveTextContent('+1.60R');
+    recordExit({ pnl: '30' });
+    recordExit({ pnl: '20' });
+    recordExit({ pnl: '50' });
+    openClosing();
+    const rows = exitRows();
+    expect(rows.map((row) => row.querySelector('[data-exit-label]')?.textContent)).toEqual([
+      'Exit 1',
+      'Exit 2',
+      'Final exit',
+    ]);
+    expect(rows[0]).toHaveTextContent('+30.00 USD');
+    expect(screen.getByRole('dialog').querySelector('[data-exit-total]')).toHaveTextContent(
+      'Net P&L+100.00 USD',
+    );
+    // Nothing about shares, scopes or allocation is shown.
+    expect(screen.getByRole('dialog')).not.toHaveTextContent(
+      /accounted|allocation|%|All remaining/,
+    );
+    closeDialogs();
+    expect(closingRow()).toHaveTextContent('Closed in parts · 3 exits');
+    expect(closingRow().querySelector('[data-launcher-support]')).toHaveTextContent('+100.00 USD');
+    expect(summaryValue('netPnl')).toBe('+100.00 USD');
+    // Trader R is still Net P&L ÷ Risk at Entry.
+    expect(summaryValue('traderR')).toBe('+2.00R');
+    expect(summaryFootnote()).toBe('Sum of your exits');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
-      finalPnlMinor: '8000',
-      finalPnlAdoptedFromExits: true,
-      exitHistoryCompleteness: 'complete',
-    });
-    expect(payload().exits).toHaveLength(3);
+    expect(payload()).toMatchObject({ finalPnlMinor: '10000', finalPnlAdoptedFromExits: true });
+    expect(
+      (payload().exits as { exitScope: string | null; closedBps: number | null }[]).map((exit) => [
+        exit.exitScope,
+        exit.closedBps,
+      ]),
+    ).toEqual([
+      [null, null],
+      [null, null],
+      ['all_remaining', null],
+    ]);
   });
 
-  it('never fabricates coverage: an exit with no % leaves the allocation unknown', () => {
+  it('adding an exit makes it the Final exit; removing the last promotes the one before', () => {
     renderForm();
     openExitHistory();
-    recordExit({ pnl: '20', percent: '30' });
-    recordExit({ pnl: '15' });
-    const { status, final } = result();
-    expect(status()).toHaveAttribute('data-closing-status', 'unknown');
-    expect(status()).toHaveAttribute('data-accounted-bps', 'unknown');
-    expect(status()).toHaveTextContent('Partial close · allocation unknown');
-    expect(status()).not.toHaveTextContent(/[0-9]+% remaining|100%/);
-    expect(final()).toHaveTextContent('Waiting until the exits account for the whole position.');
+    recordExit({ pnl: '30' });
+    openClosing();
+    expect(exitRows()[0]).toHaveTextContent('Final exit');
+    recordExit({ pnl: '20' });
+    openClosing();
+    expect(exitRows()[0]).toHaveTextContent('Exit 1');
+    expect(exitRows()[1]).toHaveTextContent('Final exit');
+    // Remove the Final exit: the one before it becomes final, with nothing to choose.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit final exit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove exit 2' }));
+    const rows = exitRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Final exit');
+    expect(rows[0]).toHaveTextContent('+30.00 USD');
   });
 
-  it('shows Trader R as unavailable, never 0R, while the Risk is missing', () => {
+  it('an exit without P&L keeps the result waiting — a running figure, never a total', () => {
     renderForm();
-    goTo('result');
-    closeAllAtOnce('80');
-    expect(result().r()).toHaveAttribute('data-actual-r', 'unavailable');
-    expect(result().r()).toHaveTextContent('Trader R needs your risk at entry.');
+    withRisk50();
+    openExitHistory();
+    recordExit({ pnl: '20' });
+    recordExit({ reason: 'Stopped out' });
+    openClosing();
+    expect(exitRows()[1]).toHaveTextContent('P&L not recorded');
+    expect(screen.getByRole('dialog').querySelector('[data-exit-total]')).toHaveTextContent('—');
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Add a P&L to every exit to get the total.',
+    );
+    closeDialogs();
+    expect(summaryValue('netPnl')).toBe('—');
+    expect(summaryFootnote()).toBe(
+      'Recorded so far: +20.00 USD Waiting for the P&L of every exit.',
+    );
+    expect(summaryValue('traderR')).toBe('—');
+  });
+
+  it('with no exits yet, says what to do — never allocation language', () => {
+    renderForm();
+    openExitHistory();
+    closeDialogs();
+    expect(closingRow()).toHaveTextContent('Closed in parts · no exits yet');
+    expect(summaryFootnote()).toBe('Add your exits to record the result.');
   });
 
   it('closed in parts, only the final result known: a stated +80 with its own provenance', async () => {
     renderForm();
     fillIdentity();
     withRisk50();
-    fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
+    const editor = openClosing();
+    chooseIn(editor, 'Closed in parts');
     expect(
-      screen.getByRole('group', { name: 'How do you want to record the result?' }),
+      within(editor).getByRole('group', { name: 'How much detail do you want to record?' }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: 'I only know the final result' }));
-    const { panel, final, r, status } = result();
-    // One Final Net P&L input, explained; no exits, no allocation status.
-    expect(
-      within(panel).getByText(/Use this when you know the final result but not each exit/),
-    ).toBeInTheDocument();
-    expect(status()).toBeNull();
-    expect(panel.querySelector('[data-after-exit]')).toBeNull();
-    fireEvent.change(within(panel).getByLabelText('Final net P&L'), { target: { value: '80' } });
-    expect(final()).toHaveAttribute('data-final-result', 'final');
-    expect(final().querySelector('[data-final-pnl-provenance]')).toHaveAttribute(
-      'data-final-pnl-provenance',
-      'stated_total',
-    );
-    expect(final()).toHaveTextContent('Stated by you');
-    expect(within(final()).getByText('+80.00 USD')).toBeInTheDocument();
-    expect(r()).toHaveTextContent('+1.60R');
+    chooseIn(editor, 'Record total only');
+    // One Final Net P&L input, and nothing exit-level beside it.
+    expect(visibleField(editor, 'Final net P&L')).toBeInTheDocument();
+    expect(editor.querySelector('[data-more-details]')).toBeNull();
+    expect(editor.querySelector('[data-exit-list]')).toBeNull();
+    type('Final net P&L', '80', editor);
+    closeDialogs();
+    expect(closingRow()).toHaveTextContent('Closed in parts · total only');
+    expect(closingRow()).toHaveTextContent('+80.00 USD stated by you');
+    expect(summaryValue('netPnl')).toBe('+80.00 USD');
+    expect(summaryValue('traderR')).toBe('+1.60R');
+    expect(summaryFootnote()).toBe('Stated by you');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
     expect(payload()).toMatchObject({
@@ -2631,27 +2799,254 @@ describe('Step 5 — the close is the result', () => {
     expect(payload()).not.toHaveProperty('finalPnlAdoptedFromExits');
   });
 
-  it('keeps each way of closing when switching, and shows only the chosen one', () => {
+  it('keeps each way of closing when switching, and shows and saves only the chosen one', async () => {
+    renderForm();
+    fillIdentity();
+    openExitHistory();
+    recordExit({ pnl: '20' });
+    closeAllAtOnce('80');
+    const editor = openClosing();
+    expect(editor.querySelector('[data-exit-list]')).toBeNull();
+    chooseIn(editor, 'Closed in parts');
+    expect(editor.querySelectorAll('[data-exit-row]')).toHaveLength(1);
+    chooseIn(editor, 'Record total only');
+    type('Final net P&L', '70', editor);
+    chooseIn(editor, 'Record each exit');
+    expect(editor.querySelectorAll('[data-exit-row]')).toHaveLength(1);
+    chooseIn(editor, 'Closed all at once');
+    expect(within(editor).getByLabelText('P&L for the close')).toHaveValue('80');
+    chooseIn(editor, 'Closed in parts');
+    expect(within(editor).getByRole('radio', { name: /^Record each exit/ })).toBeChecked();
+    chooseIn(editor, 'Record total only');
+    expect(within(editor).getByLabelText('Final net P&L')).toHaveValue('70');
+    chooseIn(editor, 'Closed all at once');
+    closeDialogs();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({
+      finalPnlMinor: '8000',
+      exits: [{ exitScope: 'all_remaining', realizedPnlMinor: '8000' }],
+    });
+    expect(payload()).not.toHaveProperty('finalPnlStatedTotal');
+  });
+
+  it('edits and removes exits, renumbering the list, and never leaves an empty row', () => {
     renderForm();
     openExitHistory();
-    recordExit({ pnl: '20', percent: '30' });
+    recordExit({ pnl: '10' });
+    recordExit({ pnl: '15' });
+    recordExit({ pnl: '25' });
+    // An exit opened and left with nothing in it is not kept as a row.
+    const editor = openClosing();
+    fireEvent.click(within(editor).getByRole('button', { name: 'Add exit' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'All exits' }));
+    expect(exitRows()).toHaveLength(3);
+    expect(exitRows()[2]).toHaveTextContent('Final exit');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit exit 2' }));
+    const exit2 = screen.getByRole('dialog').querySelector<HTMLElement>('[data-exit-editor]')!;
+    expect(visibleField(exit2, 'P&L for this exit')).toHaveValue('15');
+    type('P&L for this exit', '18', exit2);
+    openClosing();
+    expect(screen.getByRole('button', { name: 'Edit exit 2' })).toHaveTextContent('+18.00 USD');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit exit 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove exit 1' }));
+    const rows = exitRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('Exit 1');
+    expect(rows[0]).toHaveTextContent('+18.00 USD');
+    expect(rows[1]).toHaveTextContent('Final exit');
+    expect(rows[1]).toHaveTextContent('+25.00 USD');
+  });
+
+  it('moves focus into an exit, back to its row, and back to the Closing details row', async () => {
+    renderForm();
+    openExitHistory();
+    recordExit({ pnl: '10' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'All exits' })).toHaveFocus());
+    fireEvent.click(screen.getByRole('button', { name: 'All exits' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Edit final exit' })).toHaveFocus(),
+    );
+    closeDialogs();
+    await waitFor(() => expect(closingRow()).toHaveFocus());
+  });
+
+  it('keeps the required count true through every close state', () => {
+    renderForm();
+    fillIdentity();
+    const left = () => /^(\d+) required items? left/.exec(statusText())?.[1] ?? 'none';
+    // Risk, Target, Outcome and Trader Result.
+    expect(left()).toBe('4');
+    chooseOutcome('Win');
+    expect(left()).toBe('3');
+    let editor = openClosing();
+    chooseIn(editor, 'Closed all at once');
+    expect(left()).toBe('3');
+    type('P&L for the close', '80', editor);
+    expect(left()).toBe('2');
+    chooseIn(editor, 'Closed in parts');
+    expect(left()).toBe('3');
+    chooseIn(editor, 'Record each exit');
+    // Zero exits.
+    expect(left()).toBe('3');
+    // One exit with a P&L is the Final exit: the result is there.
+    recordExit({ pnl: '20' });
+    expect(left()).toBe('2');
+    // A second exit without a P&L holds the result back.
+    const second = recordExit({ reason: 'Scaled out' });
+    expect(left()).toBe('3');
+    fireEvent.change(visibleField(second, 'P&L for this exit'), { target: { value: '45' } });
+    expect(left()).toBe('2');
+    // Removing the Final exit leaves the first as final, still complete.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove exit 2' }));
+    expect(left()).toBe('2');
+    editor = openClosing();
+    chooseIn(editor, 'Record total only');
+    expect(left()).toBe('3');
+    type('Final net P&L', '65', editor);
+    expect(left()).toBe('2');
+    chooseIn(editor, 'Closed all at once');
+    expect(left()).toBe('2');
+    closeDialogs();
+    // And after a reload, from the restored draft.
+    cleanup();
+    renderForm();
+    expect(left()).toBe('2');
+  });
+
+  it('restores the ordered exits from the draft, the last still the Final exit', () => {
+    renderForm();
+    fillIdentity();
+    openExitHistory();
+    recordExit({ pnl: '20', reason: 'First target' });
+    recordExit({ pnl: '45' });
+    closeDialogs();
+    cleanup();
+    renderForm();
+    goTo('result');
+    expect(closingRow()).toHaveTextContent('Closed in parts · 2 exits');
+    expect(summaryValue('netPnl')).toBe('+65.00 USD');
+    const editor = openClosing();
+    expect(within(editor).getByRole('radio', { name: /^Record each exit/ })).toBeChecked();
+    expect(exitRows().map((row) => row.querySelector('[data-exit-label]')?.textContent)).toEqual([
+      'Exit 1',
+      'Final exit',
+    ]);
+    // A detail folded away is restored too, and shown.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit exit 1' }));
+    const exit = screen.getByRole('dialog').querySelector<HTMLElement>('[data-exit-editor]')!;
+    expect(visibleField(exit, 'Exit reason')).toHaveValue('First target');
+  });
+});
+
+/*
+  CLOSING DETAILS ASKS THE MINIMUM FIRST. The result field leads; optional
+  answers sit behind "Add more details", which never clears what it folds away
+  and never hides a value that needs attention.
+*/
+describe('Closing details — the minimum first, the rest one tap away', () => {
+  function details(scope: HTMLElement): HTMLElement {
+    return scope.querySelector<HTMLElement>('[data-more-details]')!;
+  }
+
+  it('all at once asks only the P&L; price and reason are optional details that fold without loss', async () => {
+    renderForm();
+    fillIdentity();
+    const editor = openClosing();
+    chooseIn(editor, 'Closed all at once');
+    visibleField(editor, 'P&L for the close');
+    expect(within(editor).getByLabelText('Exit price')).not.toBeVisible();
+    expect(within(editor).getByLabelText('Exit reason')).not.toBeVisible();
+    const toggle = within(details(editor)).getByRole('button', { name: 'Add more details' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    type('P&L for the close', '80', editor);
+    fireEvent.click(toggle);
+    fireEvent.change(visibleField(editor, 'Exit price'), { target: { value: '2410.5' } });
+    fireEvent.change(visibleField(editor, 'Exit reason'), { target: { value: 'Target hit' } });
+    fireEvent.click(within(details(editor)).getByRole('button', { name: 'Hide details' }));
+    expect(within(editor).getByLabelText('Exit price')).not.toBeVisible();
+    expect(within(details(editor)).getByRole('button', { name: 'Show 2 details' })).toBeVisible();
+    expect(within(editor).getByLabelText('Exit price')).toHaveValue('2410.5');
+    closeDialogs();
+    expect(visibleField(openClosing(), 'Exit reason')).toHaveValue('Target hit');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload().exits).toEqual([
+      {
+        closedBps: null,
+        exitScope: 'all_remaining',
+        exitPrice: '2410.5',
+        realizedPnlMinor: '8000',
+        exitReason: 'Target hit',
+        exitedAt: null,
+      },
+    ]);
+  });
+
+  it('all at once with no details sends none — optional stays optional', async () => {
+    renderForm();
+    fillIdentity();
     closeAllAtOnce('80');
-    expect(document.querySelector('[data-after-exit]')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: 'Closed in parts' }));
-    expect(document.querySelectorAll('[data-after-exit]')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('radio', { name: 'Closed all at once' }));
-    expect(screen.getByLabelText('P&L for the close')).toHaveValue('80');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload().exits).toEqual([
+      {
+        closedBps: null,
+        exitScope: 'all_remaining',
+        exitPrice: null,
+        realizedPnlMinor: '8000',
+        exitedAt: null,
+      },
+    ]);
+  });
+
+  it('an exit asks only its P&L; time, price and reason fold away without loss', () => {
+    renderForm();
+    openExitHistory();
+    const exit = recordExit();
+    visibleField(exit, 'P&L for this exit');
+    for (const label of ['Exit time', 'Exit price', 'Exit reason']) {
+      expect(within(exit).getByLabelText(label)).not.toBeVisible();
+    }
+    openDetails(exit);
+    fireEvent.change(visibleField(exit, 'Exit reason'), { target: { value: 'Scaled out' } });
+    fireEvent.click(within(details(exit)).getByRole('button', { name: 'Hide details' }));
+    expect(within(details(exit)).getByRole('button', { name: 'Show 1 detail' })).toBeVisible();
+    expect(within(exit).getByLabelText('Exit reason')).toHaveValue('Scaled out');
+  });
+
+  it('never folds away a value that needs attention', () => {
+    renderForm();
+    openExitHistory();
+    const exit = recordExit({ pnl: '10', price: 'abc' });
+    const toggle = within(details(exit)).getByRole('button', { name: 'Hide details' });
+    expect(toggle).toBeDisabled();
+    expect(visibleField(exit, 'Exit price')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('record total only asks one field, and restores after a reload', () => {
+    renderForm();
+    const editor = openClosing();
+    chooseIn(editor, 'Closed in parts');
+    chooseIn(editor, 'Record total only');
+    type('Final net P&L', '65', editor);
+    closeDialogs();
+    expect(summaryValue('netPnl')).toBe('+65.00 USD');
+    cleanup();
+    renderForm();
+    goTo('result');
+    expect(closingRow()).toHaveTextContent('Closed in parts · total only');
+    expect(summaryValue('netPnl')).toBe('+65.00 USD');
   });
 });
 
 describe('exit history', () => {
-  it('accepts a reason-only exit and an explicit unknown scope', async () => {
+  it('accepts a reason-only exit, and sends the order with the last as the Final exit', async () => {
     renderForm();
     fillIdentity();
     openExitHistory();
     recordExit({ reason: 'Took half off at the level' });
-    const second = recordExit({ pnl: '15' });
-    fireEvent.click(within(second).getByRole('radio', { name: "Don't know" }));
+    recordExit({ pnl: '15' });
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload().exits).toEqual([
@@ -2665,27 +3060,31 @@ describe('exit history', () => {
       },
       {
         closedBps: null,
-        exitScope: 'unknown',
+        exitScope: 'all_remaining',
         exitPrice: null,
         realizedPnlMinor: '1500',
         exitedAt: null,
       },
     ]);
-    expect(payload()).not.toHaveProperty('exitHistoryCompleteness');
+    expect(payload()).toHaveProperty('exitHistoryCompleteness', 'complete');
   });
 
-  it('never re-weights exit P&L by percentage, and blocks exits that close more than 100%', async () => {
+  it('a blocked Save on an exit lands on the Closing details row, and the exit says what', async () => {
     renderForm();
     fillIdentity();
     openExitHistory();
-    recordExit({ pnl: '30', percent: '60' });
-    recordExit({ pnl: '10', percent: '60' });
+    recordExit({ pnl: '30' });
+    recordExit({ pnl: '10', price: 'abc' });
     save();
-    expect(
-      await screen.findByText(/Together your exits close more than the whole position/),
-    ).toBeInTheDocument();
-    expect(currentStep()).toBe('result');
+    await waitFor(() => expect(currentStep()).toBe('result'));
+    await waitFor(() => expect(closingRow()).toHaveFocus());
+    expect(closingRow()).toHaveAttribute('data-invalid', 'true');
+    expect(screen.getByText('1 thing to fix')).toBeVisible();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+    const editor = openClosing();
+    expect(within(editor).getByRole('button', { name: 'Edit final exit' })).toHaveTextContent(
+      '1 thing to fix',
+    );
   });
 });
 
@@ -2861,13 +3260,11 @@ describe('Record Closed — Trader R follows the risk decision', () => {
     chooseRisk(editor, 'No defined risk');
     closeEditor();
     goTo('result');
-    expect(document.querySelector('[data-actual-r]')).toHaveAttribute(
-      'data-actual-r',
-      'unavailable',
+    expect(summaryValue('netPnl')).toBe('+120.00 USD');
+    expect(summaryValue('traderR')).toBe('—');
+    expect(summaryFootnote()).toBe(
+      'No risk was defined as 1R for this trade, so R is not available.',
     );
-    expect(
-      screen.getByText('No risk was defined as 1R for this trade, so R is not available.'),
-    ).toBeInTheDocument();
     // The result itself is untouched: P&L is still recorded and still saved.
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -2883,14 +3280,11 @@ describe('Record Closed — Trader R follows the risk decision', () => {
     goTo('result');
     closeAllAtOnce('100');
     // Before the plan is answered, R says what it still needs.
-    expect(document.querySelector('[data-actual-r]')).toHaveAttribute(
-      'data-actual-r',
-      'unavailable',
-    );
+    expect(summaryValue('traderR')).toBe('—');
+    expect(summaryFootnote()).toBe('Trader R needs your risk at entry.');
     typeInPlan('risk', 'Risk at entry', '50');
     goTo('result');
-    expect(document.querySelector('[data-actual-r]')).toHaveAttribute('data-actual-r', 'known');
-    expect(screen.getByText('+2.00R')).toBeInTheDocument();
+    expect(summaryValue('traderR')).toBe('+2.00R');
   });
 });
 
@@ -2925,10 +3319,8 @@ describe('Required / Recommended / Optional', () => {
       'recommended',
     );
     const result = stepSection('result');
-    expect(level(result.querySelector('[data-result-outcome]'))).toBe('required');
-    expect(
-      result.querySelector('[data-result-panel] [data-requirement="required"]'),
-    ).not.toBeNull();
+    expect(level(result.querySelector('#after-outcome-row'))).toBe('required');
+    expect(level(result.querySelector('#after-closing-row'))).toBe('required');
     expect(level(result.querySelector('[data-result-exit-time]'))).toBe('optional');
   });
 
@@ -2961,7 +3353,7 @@ describe('Required / Recommended / Optional', () => {
     type('Target profit', '120', target);
     closeEditor();
     goTo('result');
-    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    chooseOutcome('Win');
     closeAllAtOnce('100');
     expect(statusText()).toBe('Required items complete.');
     expect(statusText()).not.toMatch(/Ready to close/);

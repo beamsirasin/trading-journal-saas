@@ -291,14 +291,28 @@ async function fillEverything(page: Page) {
   await exitSheet.locator('#after-exitedAt-wheel-hour [data-wheel-value="14"]').click();
   await exitSheet.locator('#after-exitedAt-wheel-minute [data-wheel-value="05"]').click();
   await exitSheet.getByRole('button', { name: 'Done' }).click();
-  await page.locator('#after-finalPnl').fill('400');
-  await clickChoice(page, 'Win');
-  await page.locator('#after-exits-toggle').click();
-  await page.getByRole('button', { name: 'Record an exit' }).click();
-  const exit = page.locator('[data-after-exit]').first();
-  await exit.locator('input[id$="-pnl"]').fill('150');
-  await exit.locator('input[id$="-closedPercent"]').fill('50');
-  await exit.locator('input[id$="-reason"]').fill('Partial at 1R');
+  // Step 5's answers live in the editors its rows open: the outcome, then the
+  // close recorded exit by exit — an ordered list, the last the Final exit.
+  await page.locator('#after-outcome-row').click();
+  await clickChoice(page, /^Win$/);
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await page.locator('#after-closing-row').click();
+  const closing = page.getByRole('dialog');
+  await clickChoice(page, /^Closed in parts/);
+  await clickChoice(page, /^Record each exit/);
+  for (const [pnl, reason] of [
+    ['150', 'Partial at 1R'],
+    ['250', ''],
+  ] as const) {
+    await closing.getByRole('button', { name: 'Add exit' }).click();
+    await closing.getByLabel('P&L for this exit').fill(pnl);
+    if (reason !== '') {
+      await closing.getByRole('button', { name: 'Add more details' }).click();
+      await closing.getByLabel('Exit reason').fill(reason);
+    }
+    await closing.getByRole('button', { name: 'All exits' }).click();
+  }
+  await closing.getByRole('button', { name: 'Done' }).click();
 
   // Plan & Risk reads as launcher rows; each answer is given in its editor.
   await goTo(page, 'plan');

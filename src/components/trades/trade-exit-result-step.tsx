@@ -869,8 +869,30 @@ export function FinalExitTimeRow(props: Parameters<typeof ExitTimeField>[0]) {
 }
 
 /** A signed amount: a gain reads with its plus sign, so it is never mistaken for a loss. */
-function signedMoney(minor: string, format: (minor: string) => string): string {
+export function signedMoney(minor: string, format: (minor: string) => string): string {
   return BigInt(minor) > 0n ? `+${format(minor)}` : format(minor);
+}
+
+/**
+ * WHAT A CLOSE WITH NO FINAL RESULT IS WAITING FOR — the key under
+ * `contractAfter.close.result`, read the same way wherever the result is shown.
+ */
+export function closingWaitingKey(
+  closing: ClosingState,
+):
+  | 'waitingForClose'
+  | 'waitingForPnl'
+  | 'waitingForPartsChoice'
+  | 'waitingForStatedTotal'
+  | 'waitingForEveryPnl'
+  | 'waitingForAllocation'
+  | 'waitingForRemaining' {
+  if (closing.mode === 'unanswered') return 'waitingForClose';
+  if (closing.mode === 'all_at_once') return 'waitingForPnl';
+  if (closing.partsResult === 'unanswered') return 'waitingForPartsChoice';
+  if (closing.partsResult === 'total_only') return 'waitingForStatedTotal';
+  if (closing.missingPnl) return 'waitingForEveryPnl';
+  return closing.accountedBps === null ? 'waitingForAllocation' : 'waitingForRemaining';
 }
 
 export interface TradeResultIds {
@@ -1171,20 +1193,7 @@ function FinalResultReadout({
   formatMoney: (minor: string) => string;
 }) {
   const s = useTranslations('trades.create.recording.contractAfter.close.result');
-  const waiting =
-    closing.mode === 'unanswered'
-      ? s('waitingForClose')
-      : closing.mode === 'all_at_once'
-        ? s('waitingForPnl')
-        : closing.partsResult === 'unanswered'
-          ? s('waitingForPartsChoice')
-          : closing.partsResult === 'total_only'
-            ? s('waitingForStatedTotal')
-            : closing.missingPnl
-              ? s('waitingForEveryPnl')
-              : closing.accountedBps === null
-                ? s('waitingForAllocation')
-                : s('waitingForRemaining');
+  const waiting = s(closingWaitingKey(closing));
   return (
     <div
       data-final-result={finalPnlMinor === null ? 'waiting' : 'final'}

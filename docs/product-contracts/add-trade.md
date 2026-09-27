@@ -8,7 +8,7 @@
 > recording-lifecycle decisions 50–51 (2026-09-22) and the Actual Risk at Entry amendment 52,
 > stage-placement amendment 53 and Planned Risk amendment 54 (2026-09-23), and the capture-order,
 > Actual Risk, closing-model and result-authority amendments 55–58 (2026-09-24/25) and the
-> completion model 59 (2026-09-26) are recorded in the
+> completion model 59 (2026-09-26) and the ordered-exit amendment 60 (2026-09-28) are recorded in the
 > [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
@@ -1948,3 +1948,41 @@ Required / Recommended / Optional, 2026-09-26 (item 59):
     No analytics formula changes. Recommended items are not analytically mandatory; explicit
     negatives such as No Defined Risk stay valid truth and are never turned into numbers.
     Amends decision 54 and §13. (§2, §8, §13, Recording lifecycle)
+
+Record Closed partial exits, 2026-09-28 (item 60):
+
+60. **Record Closed records a close in parts as an ordered list of exit results.** Record Closed is
+    optimized for manual journaling: a trader reconstructing a closed trade knows what each exit
+    made, not the share of the position each one closed. Amends decisions 57 and 58 for Record
+    Closed.
+
+    **What the trader records.** _Closed in parts → Record each exit_ is an ordered list of exits.
+    Each exit's core answer is its P&L; exit time, exit price and exit reason are optional details.
+    The trader is not asked for a share of the original position or for an exit scope (Part / All
+    remaining / Don't know).
+
+    **The Final exit.** The last exit in the list is the Final exit — the rest of the position. One
+    exit is the Final exit; adding an exit makes the new last one final; removing the last makes the
+    one before it final. Nobody chooses it, and the list's order is its only claim.
+
+    **The result.** The trade counts as closed once there is at least one exit. Net P&L is the sum
+    of the exits' P&L, and exists only once every exit states its P&L; until then there is only a
+    labelled running figure. Trader R remains Net P&L ÷ Risk at Entry. _Closed all at once_ and
+    _Record total only_ (decision 58) are unchanged.
+
+    **Compatibility, not meaning.** A saved ordered history keeps the stored exit model: the Final
+    exit may be stored as All remaining — the stored meaning of "closed whatever was left" — the
+    earlier exits with no scope, and no share on any exit. That storage is not part of the trader's
+    mental model: read-only views name an ordered history's exits Exit 1, Exit 2 … Final exit and
+    show no scope, share or exit-history completeness the trader never gave. A history that records
+    a Part, a Don't know or a share keeps showing it.
+
+    **Legacy allocation.** Scope and share remain supported data: saved trades keep them and are
+    never rewritten, and flows that ask them — Close Existing Open Trade's Part exit and Final Close
+    — keep asking them. A Record Closed draft that holds scope or share answers from before this
+    decision keeps them in the draft, but the ordered list neither shows, checks nor sends them.
+
+    **Times.** The trade's final exit time stays a separate answer from each exit's own time. "Use
+    last recorded exit time" remains an explicit action, never an automatic value.
+
+    No schema, service or calculation change. (§10, §11, §13, Recording lifecycle)

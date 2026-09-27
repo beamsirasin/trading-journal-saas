@@ -511,6 +511,8 @@ describe('Recording Draft — saving one mode never silently drops the other', (
     const after = mount('after_trade');
     fillIdentity('xauusd');
     // Step 5: closed all at once, with the P&L for the close (decision 57).
+    // Answered in the Closing details editor its Step 5 row opens.
+    fireEvent.click(document.getElementById('after-closing-row')!);
     fireEvent.click(document.getElementById('after-close-mode-all_at_once')!);
     fireEvent.change(document.getElementById('after-exit-full-close-pnl')!, {
       target: { value: '250' },

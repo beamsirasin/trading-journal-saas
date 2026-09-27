@@ -531,6 +531,38 @@ describe('Add Trade contract After Trade (real database)', () => {
       expect(await readExits(result.tradeId)).toHaveLength(3);
     });
 
+    /*
+      THE ORDERED EXIT LIST (2026-09-27). Record each exit sends each exit's
+      P&L in order, no share of the position, and the last exit as All
+      remaining — the Final exit. The service's existing checks accept it as a
+      proven close, and the stored rows say exactly that.
+    */
+    it('saves an ordered list of +30, +20, +50 — the last the Final exit — as +100', async () => {
+      const fw = await freshFramework();
+      const result = await save(fw, {
+        plannedRiskMinor: 5_000n,
+        finalPnlMinor: 10_000n,
+        finalPnlAdoptedFromExits: true,
+        exitHistoryCompleteness: 'complete',
+        exits: [
+          { exitScope: null, closedBps: null, realizedPnlMinor: 3_000n },
+          { exitScope: null, closedBps: null, realizedPnlMinor: 2_000n },
+          { exitScope: 'all_remaining', closedBps: null, realizedPnlMinor: 5_000n },
+        ],
+      });
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        netPnlMinor: 10_000n,
+        finalPnlSource: 'exit_history',
+        actualR: '2.0000',
+      });
+      const stored = await readExits(result.tradeId);
+      expect(stored.map((exit) => [exit.exitScope, exit.closedBps])).toEqual([
+        [null, null],
+        [null, null],
+        ['all_remaining', null],
+      ]);
+    });
+
     it('saves a stated total of +80 as manual, +1.60R, inventing no exits', async () => {
       const fw = await freshFramework();
       const result = await save(fw, {
