@@ -141,7 +141,10 @@ Rules:
 3. **Shadow means "above".** Shadow is reserved for L4 overlays and for Light-theme L2 planes whose
    plane contrast alone cannot hold an edge. Dark L2 planes do not need shadow to be visible.
 4. **Selection is not elevation.** A selected option or row does not get a card shadow; it gets the
-   neutral active step plus its marker.
+   neutral active step plus its marker. The one approved exception to the neutral step is the Add
+   Trade **accent selection** (`docs/design-system.md`, _Selection — accent_): a scoped set of
+   capture answers marks the chosen card with an accent border, a faint accent surface and a
+   filled marker — still flat, still no shadow.
 5. **Equivalent hierarchy in both themes.** Dark lifts by getting lighter; Light lifts by getting
    whiter on a tinted ground with a soft shadow. A reviewer should be able to point at the same
    levels in a Light and a Dark screenshot of the same page.
@@ -548,7 +551,9 @@ Rules:
 
 1. **Dialogs become sheets below tablet width** (the adaptive overlay). **Long editors become
    full-height sheets or full-screen editors** on mobile, with the title, a clear Done and the
-   Discard Changes action in a persistent footer.
+   Discard Changes action in a persistent footer. A **simple selection** (a few short answers, or
+   one choice and the field it reveals) uses the content-height `compact` sheet instead of the
+   focused editor's minimum height; the focused editor remains for everything longer.
 2. **Actions become sticky** for long Capture and Review forms on mobile, and for long forms on
    desktop when the primary action would otherwise leave the viewport.
 3. **Secondary context collapses** (behind a disclosure with a summary) before primary content is

@@ -337,7 +337,9 @@ describe('Plan & Risk — Target keeps its three states', () => {
     (mode) => {
       renderStep({ mode });
       const editor = open('target');
-      expect(editor.getByText('Not answered')).toBeInTheDocument();
+      // Nothing chosen shows in the cards; "Not answered" is the row's to say.
+      expect(editor.queryByText('Not answered')).toBeNull();
+      expect(row('target')).toHaveTextContent('Not answered');
       expect(screen.queryByLabelText('Target profit')).toBeNull();
 
       fireEvent.click(editor.getByRole('radio', { name: /^Fixed target/ }));
@@ -553,5 +555,102 @@ describe('Plan & Risk — the planned summary', () => {
     for (const absent of [/actual/i, /result/i, /p&l/i, /^win$/i]) {
       expect(within(summary()).queryByText(absent)).toBeNull();
     }
+  });
+});
+
+/*
+  THE ACCENT SELECTION (design-system "Selection — accent"): Risk and Target
+  are descriptive cards in content-height editors, still confirmed with Done —
+  a choice reveals a field, so the editor never closes on the choice itself.
+*/
+describe('Plan & Risk — Risk and Target as accent selections', () => {
+  function card(editor: ReturnType<typeof within>, name: string): HTMLElement {
+    const radio = editor.getByRole('radio', { name: new RegExp(`^${name}`) });
+    return document.querySelector<HTMLElement>(`label[for="${radio.id}"]`)!;
+  }
+  const classes = (element: HTMLElement) => element.className.split(/\s+/);
+
+  it.each<PlanRiskMode>(['at_entry', 'after_trade'])(
+    'Risk describes each answer, marks the chosen one, and stays open until Done (%s)',
+    (mode) => {
+      renderStep({ mode });
+      const editor = open('risk');
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-sheet-size', 'compact');
+      // "No defined risk" is never ambiguous: each answer says what it means.
+      expect(card(editor, 'Defined risk')).toHaveTextContent(
+        "A set amount you're willing to lose — your 1R.",
+      );
+      expect(card(editor, 'No defined risk')).toHaveTextContent(
+        'No loss amount set for this trade.',
+      );
+      for (const name of ['Defined risk', 'No defined risk']) {
+        expect(card(editor, name)).not.toHaveAttribute('data-selected');
+        expect(classes(card(editor, name))).not.toContain('border-primary');
+        // The content leads: no radio circle, only a reserved trailing mark.
+        expect(card(editor, name).querySelector('[data-selected-mark]')).toHaveAttribute(
+          'data-selected-mark',
+          'rest',
+        );
+      }
+      expect(editor.queryByText('Not answered')).toBeNull();
+      expect(row('risk')).toHaveTextContent('Not answered');
+
+      choose(editor, 'Defined risk');
+      // The choice reveals the amount; the editor stays until Done.
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(card(editor, 'Defined risk')).toHaveAttribute('data-selected', 'true');
+      expect(card(editor, 'Defined risk').querySelector('[data-selected-mark]')).toHaveAttribute(
+        'data-selected-mark',
+        'chosen',
+      );
+      expect(classes(card(editor, 'Defined risk'))).toEqual(
+        expect.arrayContaining(['border-primary', 'bg-primary/6']),
+      );
+      expect(classes(card(editor, 'Defined risk'))).not.toContain('text-positive');
+      expect(card(editor, 'No defined risk')).not.toHaveAttribute('data-selected');
+      fireEvent.change(editor.getByLabelText(/^Risk at entry/), { target: { value: '100' } });
+
+      fireEvent.click(editor.getByRole('button', { name: 'Done' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(row('risk')).toHaveTextContent('100 USD');
+    },
+  );
+
+  it.each<PlanRiskMode>(['at_entry', 'after_trade'])(
+    'Target marks the chosen card, keeps its values across branches, and closes only on Done (%s)',
+    (mode) => {
+      renderStep({ mode });
+      const editor = open('target');
+      expect(screen.getByRole('dialog')).toHaveAttribute('data-sheet-size', 'compact');
+      // The sheet asks its own question; the Fixed description is said once.
+      expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
+        'How did you plan to take profit?',
+      );
+      expect(editor.getAllByText('A profit amount, a TP price, or both.')).toHaveLength(1);
+      expect(card(editor, 'Fixed target')).toHaveTextContent(
+        'A profit amount, a TP price, or both.',
+      );
+
+      choose(editor, 'Fixed target');
+      expect(card(editor, 'Fixed target')).toHaveAttribute('data-selected', 'true');
+      fireEvent.change(editor.getByLabelText('Target profit'), { target: { value: '300' } });
+
+      choose(editor, 'No fixed target');
+      expect(card(editor, 'No fixed target')).toHaveAttribute('data-selected', 'true');
+      expect(card(editor, 'Fixed target')).not.toHaveAttribute('data-selected');
+      choose(editor, 'Fixed target');
+      expect(editor.getByLabelText('Target profit')).toHaveValue('300');
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      fireEvent.click(editor.getByRole('button', { name: 'Done' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(row('target')).toHaveTextContent('Fixed · 300 USD');
+    },
+  );
+
+  it('leaves the Price levels editor at its focused size', () => {
+    renderStep({ mode: 'at_entry' });
+    open('price');
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-sheet-size', 'focused');
   });
 });

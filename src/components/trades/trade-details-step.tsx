@@ -437,7 +437,7 @@ export function TradeDetailsStep({
         title={c('account.label')}
         description={a('trade.accountEditor')}
         closeLabel={a('trade.close')}
-        size="focused"
+        size="compact"
         returnFocusRef={accountRow}
       >
         <div className="flex min-w-0 flex-col gap-3">
@@ -515,13 +515,19 @@ export function TradeDetailsStep({
         title={c('direction.label')}
         description={a('trade.directionEditor')}
         closeLabel={a('trade.close')}
-        size="focused"
+        size="compact"
         returnFocusRef={directionRow}
       >
         <div className="flex min-w-0 flex-col gap-3">
+          {/*
+            THE ACCENT SELECTION (design-system "Selection — accent"): two
+            short answers side by side, the chosen one marked by the accent —
+            never by green and red, because a direction is not a verdict.
+          */}
           <TradeChoiceList
             label={c('direction.label')}
             columns={2}
+            emphasis="accent"
             value={direction === '' ? null : direction}
             error={errors.direction}
             errorId={`${idPrefix}-direction-error`}
@@ -530,8 +536,8 @@ export function TradeDetailsStep({
               setEditor(null);
             }}
             options={[
-              { value: 'long', label: c('direction.long'), tone: 'positive' },
-              { value: 'short', label: c('direction.short'), tone: 'negative' },
+              { value: 'long', label: c('direction.long') },
+              { value: 'short', label: c('direction.short') },
             ]}
           />
           {errors.direction === undefined ? null : (

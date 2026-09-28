@@ -32,6 +32,13 @@ import type { ChoiceTone } from './trade-at-entry-controls';
  * either; its name stays the plain answer. Long and Short keep the restrained
  * positive and negative wash `ChoiceGroup` uses (DESIGN.md §9.4), untoned
  * answers the neutral one.
+ *
+ * `emphasis="accent"` is the Add Trade selection treatment (design-system
+ * "Selection — accent"): short answers side by side, a quiet neutral outline
+ * at rest, and the chosen one marked by the accent — its border, a faint
+ * accent surface, a filled check marker and a heavier label. Tone is not
+ * used there: Long is not "good" and Short is not "bad", so the answer is
+ * marked as chosen, never as a valence.
  */
 export function TradeChoiceList<T extends string>({
   label,
@@ -41,25 +48,67 @@ export function TradeChoiceList<T extends string>({
   columns = 1,
   error,
   errorId,
+  emphasis = 'neutral',
 }: {
   /** The group's accessible name; the sheet's title already shows it. */
   label: string;
   value: T | null;
   options: readonly { value: T; label: string; tone?: ChoiceTone }[];
   onChoose: (value: T) => void;
-  columns?: 1 | 2;
+  columns?: 1 | 2 | 3;
   error?: string | undefined;
   errorId?: string;
+  /** `accent`: the Add Trade selection treatment; `neutral` (default): unchanged. */
+  emphasis?: 'neutral' | 'accent';
 }) {
   return (
     <div
       role="group"
       aria-label={label}
       aria-describedby={error === undefined ? undefined : errorId}
-      className={cn('grid min-w-0 gap-2', columns === 2 ? 'grid-cols-2' : 'grid-cols-1')}
+      data-choice-emphasis={emphasis}
+      className={cn(
+        'grid min-w-0 gap-2',
+        columns === 3 ? 'grid-cols-3' : columns === 2 ? 'grid-cols-2' : 'grid-cols-1',
+      )}
     >
       {options.map((option) => {
         const chosen = value === option.value;
+        if (emphasis === 'accent') {
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={chosen}
+              data-choice={option.value}
+              data-selected={chosen ? 'true' : undefined}
+              onClick={() => onChoose(option.value)}
+              className={cn(
+                'flex min-h-11 min-w-0 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-center transition-colors duration-(--motion-feedback-duration) motion-reduce:transition-none',
+                'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+                chosen
+                  ? 'border-primary bg-primary/6 dark:bg-primary/10'
+                  : cn(
+                      // On the sheet's own surface — never a darker hole in it.
+                      'hover:border-primary/40 hover:bg-primary/3 bg-transparent',
+                      error === undefined
+                        ? 'border-border dark:border-white/10'
+                        : 'border-destructive',
+                    ),
+              )}
+            >
+              <AccentMark chosen={chosen} />
+              <span
+                className={cn(
+                  'text-foreground min-w-0 truncate text-[0.9375rem]',
+                  chosen ? 'font-semibold' : 'font-medium',
+                )}
+              >
+                {option.label}
+              </span>
+            </button>
+          );
+        }
         return (
           <button
             key={option.value}
@@ -116,5 +165,31 @@ export function TradeChoiceList<T extends string>({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * THE ACCENT SELECTION MARKER: an empty ring at rest, a filled accent disc
+ * with a check once chosen. It says "chosen" in shape as well as colour, so
+ * the state survives greyscale. Decorative — `aria-pressed` carries it.
+ */
+export function AccentMark({ chosen }: { chosen: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-accent-mark={chosen ? 'chosen' : 'rest'}
+      className={cn(
+        'flex size-[1.125rem] shrink-0 items-center justify-center rounded-full border transition-colors duration-(--motion-feedback-duration) motion-reduce:transition-none',
+        chosen ? 'border-primary bg-primary' : 'border-control-border',
+      )}
+    >
+      <Check
+        className={cn(
+          'text-primary-foreground size-3 transition-[opacity,scale] duration-(--motion-feedback-duration) ease-(--motion-ease-standard) motion-reduce:scale-100',
+          chosen ? 'scale-100 opacity-100' : 'scale-75 opacity-0',
+        )}
+        strokeWidth={3}
+      />
+    </span>
   );
 }

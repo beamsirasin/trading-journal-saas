@@ -97,6 +97,19 @@ function useKeyboardViewport(): KeyboardViewport | null {
  * bottom-anchored, its content still starts at its top, and an editor with
  * more in it (the Entry calendar) grows past the floor to the same ceiling as
  * any sheet and then scrolls inside itself.
+ *
+ * `compact` is `focused` without that floor: the same desktop dialog, and on
+ * a phone a sheet exactly as tall as what it holds — for a simple selection
+ * (two or three answers, a short list, a choice and its one field) whose
+ * editor would otherwise open mostly empty. Every other guarantee stays: the
+ * ceiling, the safe area, the keyboard lift, focus returning to the row that
+ * opened it. A picker, a search or a long form keeps `focused` or `wide`.
+ *
+ * THE FOCUSED CHROME (`focused` and `compact`): a product flow, not a form
+ * dialog. The title and its one line read as one group with no rule beneath
+ * them, and the footer is a quiet band on the sheet's own surface, divided by
+ * a faint rule rather than a second panel. No grab handle: the X closes it,
+ * and a handle would only add height. `wide` keeps its original chrome.
  */
 export function TradeAdaptiveOverlay({
   open,
@@ -108,6 +121,7 @@ export function TradeAdaptiveOverlay({
   returnFocusRef,
   closeLabel,
   size = 'wide',
+  hideDescription = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -122,11 +136,24 @@ export function TradeAdaptiveOverlay({
   children: ReactNode;
   returnFocusRef?: RefObject<HTMLElement | null>;
   closeLabel: string;
-  /** Desktop proportion only. Defaults to the original `wide` dialog. */
-  size?: 'wide' | 'focused';
+  /**
+   * For an editor whose answers need no introduction (Outcome): the
+   * description still describes the dialog to assistive technology, but is
+   * not shown. Only honoured by the focused chrome.
+   */
+  hideDescription?: boolean;
+  /**
+   * `wide` (the default) and `focused` are desktop proportions, `focused`
+   * with a phone floor; `compact` is `focused` on a desktop and
+   * content-height on a phone, for simple selections.
+   */
+  size?: 'wide' | 'focused' | 'compact';
 }) {
   const desktop = useIsDesktopViewport();
-  const focused = size === 'focused';
+  // The desktop proportions: `compact` shares `focused`'s.
+  const focused = size !== 'wide';
+  // The phone floor belongs to `focused` alone.
+  const floor = size === 'focused';
   const keyboard = useKeyboardViewport();
   const keyboardOpen = keyboard !== null;
   const wasOpen = useRef(false);
@@ -151,24 +178,29 @@ export function TradeAdaptiveOverlay({
           <DialogHeader
             className={cn(
               'shrink-0 pr-14 text-left',
-              focused ? 'px-7 pt-7 pb-2' : 'px-6 pt-6 pb-3',
+              focused ? 'gap-1.5 px-7 pt-7 pb-5' : 'px-6 pt-6 pb-3',
             )}
           >
-            <DialogTitle className={focused ? 'text-xl' : undefined}>{title}</DialogTitle>
+            <DialogTitle className={focused ? 'text-xl tracking-tight' : undefined}>
+              {title}
+            </DialogTitle>
+            {focused ? (
+              <DialogDescription className={hideDescription ? 'sr-only' : 'text-sm'}>
+                {description}
+              </DialogDescription>
+            ) : null}
           </DialogHeader>
           <div
-            className={cn('min-h-0 flex-1 overflow-y-auto', focused ? 'px-7 pb-5' : 'px-6 pb-4')}
+            className={cn('min-h-0 flex-1 overflow-y-auto', focused ? 'px-7 pb-6' : 'px-6 pb-4')}
           >
-            <DialogDescription className={focused ? 'mb-5 text-sm' : 'mb-4'}>
-              {description}
-            </DialogDescription>
+            {focused ? null : <DialogDescription className="mb-4">{description}</DialogDescription>}
             {children}
           </div>
           {footer === undefined ? null : (
             <div
               className={cn(
-                'border-border bg-card shrink-0 border-t',
-                focused ? 'px-7 py-5' : 'px-6 py-4',
+                'shrink-0 border-t',
+                focused ? 'border-border/50 px-7 pt-3 pb-5' : 'border-border bg-card px-6 py-4',
               )}
             >
               {footer}
@@ -184,7 +216,8 @@ export function TradeAdaptiveOverlay({
       <SheetContent
         side="bottom"
         closeLabel={closeLabel}
-        className={cn('max-h-[92dvh] gap-0 rounded-t-2xl', focused && 'min-h-[45dvh]')}
+        className={cn('max-h-[92dvh] gap-0 rounded-t-2xl', floor && 'min-h-[45dvh]')}
+        data-sheet-size={size}
         /*
           Sitting on the keyboard rather than behind it: the same ceiling and
           floor, measured against what the keyboard leaves visible.
@@ -195,36 +228,59 @@ export function TradeAdaptiveOverlay({
             : {
                 bottom: keyboard.bottom,
                 maxHeight: keyboard.height * 0.92,
-                ...(focused
+                ...(floor
                   ? { minHeight: Math.min(keyboard.layout * 0.45, keyboard.height * 0.92) }
                   : {}),
               }
         }
       >
-        <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pr-14 pb-3">
-          <SheetTitle>{title}</SheetTitle>
+        <SheetHeader
+          className={cn(
+            'shrink-0',
+            focused ? 'gap-1 px-5 pt-5 pr-14 pb-1' : 'border-border border-b px-4 pt-4 pr-14 pb-3',
+          )}
+        >
+          <SheetTitle className={focused ? 'text-lg leading-snug tracking-tight' : undefined}>
+            {title}
+          </SheetTitle>
+          {focused ? (
+            <SheetDescription className={hideDescription ? 'sr-only' : 'leading-snug'}>
+              {description}
+            </SheetDescription>
+          ) : null}
         </SheetHeader>
         <div
           data-sheet-body=""
           className={cn(
-            'min-h-0 flex-1 overflow-y-auto px-4 pt-4',
+            'min-h-0 flex-1 overflow-y-auto',
+            focused ? 'px-5 pt-4' : 'px-4 pt-4',
             // With no footer strip, the body is what meets the home indicator.
             footer === undefined && !keyboardOpen
-              ? 'pb-[max(1rem,env(safe-area-inset-bottom))]'
-              : 'pb-4',
+              ? focused
+                ? 'pb-[max(1.5rem,env(safe-area-inset-bottom))]'
+                : 'pb-[max(1rem,env(safe-area-inset-bottom))]'
+              : focused
+                ? 'pb-5'
+                : 'pb-4',
           )}
         >
-          <SheetDescription className="mb-4">{description}</SheetDescription>
+          {focused ? null : <SheetDescription className="mb-4">{description}</SheetDescription>}
           {children}
           {keyboardOpen && footer !== undefined ? (
-            <div className="border-border mt-4 border-t pt-3">{footer}</div>
+            <div
+              className={cn('mt-4 border-t pt-3', focused ? 'border-border/50' : 'border-border')}
+            >
+              {footer}
+            </div>
           ) : null}
         </div>
         {keyboardOpen || footer === undefined ? null : (
           <div
             className={cn(
-              'border-border bg-card shrink-0 border-t px-4 pt-3',
-              'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+              'shrink-0 border-t',
+              focused
+                ? 'border-border/50 px-5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+                : 'border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
             )}
           >
             {footer}

@@ -736,12 +736,13 @@ async function recordEachExit(page: Page, pnls: readonly string[]): Promise<Loca
   return editor;
 }
 
-/** Record Closed Step 5: the outcome, answered in its editor. */
+/** Record Closed Step 5: the outcome — one tap answers it and closes the sheet. */
 async function chooseResultOutcome(page: Page, name: 'Win' | 'BE' | 'Loss') {
   await page.locator('#after-outcome-row').click();
   const editor = page.getByRole('dialog');
-  await chooseByLabel(editor, new RegExp(`^${name}$`));
-  await editor.getByRole('button', { name: 'Done' }).click();
+  await editor.getByRole('button', { name, exact: true }).click();
+  await expect(editor).toBeHidden();
+  await expect(page.locator('#after-outcome-row')).toBeFocused();
 }
 
 async function chooseRadio(scope: Page | Locator, name: string) {

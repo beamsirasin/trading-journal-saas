@@ -25,7 +25,6 @@ import {
   Helper,
   InlineAction,
   Notice,
-  StateText,
   Tag,
   TextField,
 } from './trade-at-entry-controls';
@@ -328,6 +327,7 @@ export function TradePlanRiskStep({
 
       {/* HOW RISK WAS DECIDED — the question first, the amount only if it applies. */}
       <PlanEditor
+        size="compact"
         open={editor === 'risk'}
         title={rows('risk.label')}
         description={rows('risk.question')}
@@ -340,6 +340,7 @@ export function TradePlanRiskStep({
           hideLegend
           value={riskState === 'unanswered' ? null : riskState}
           status={c('notAnswered')}
+          emphasis="accent"
           onChange={(value) => onRiskStateChange(value)}
           aside={
             riskState === 'unanswered' ? null : (
@@ -352,8 +353,16 @@ export function TradePlanRiskStep({
             )
           }
           options={[
-            { value: 'defined', label: rows('risk.defined') },
-            { value: 'no_defined', label: rows('risk.noDefined') },
+            {
+              value: 'defined',
+              label: rows('risk.defined'),
+              description: rows('risk.definedDescription'),
+            },
+            {
+              value: 'no_defined',
+              label: rows('risk.noDefined'),
+              description: rows('risk.noDefinedDescription'),
+            },
           ]}
         />
         {riskState === 'defined' ? (
@@ -376,15 +385,15 @@ export function TradePlanRiskStep({
 
       {/* THE TARGET, WITH ITS TP PRICE: one objective, read together. */}
       <PlanEditor
+        size="compact"
         open={editor === 'target'}
         title={c('target.legend')}
-        description={c('target.fixedDescription')}
+        description={rows('target.question')}
         returnFocusRef={targetRow}
         onClose={() => setEditor(null)}
         aside={
-          target.state === 'unanswered' ? (
-            <StateText>{c('notAnswered')}</StateText>
-          ) : (
+          // The cards already show nothing is chosen; the row says Not answered.
+          target.state === 'unanswered' ? null : (
             <InlineAction
               ariaLabel={c('target.removeAria')}
               onClick={() => onTargetStateChange('unanswered')}
@@ -399,6 +408,7 @@ export function TradePlanRiskStep({
           legend={c('target.legend')}
           hideLegend
           value={target.state === 'unanswered' ? null : target.state}
+          emphasis="accent"
           onChange={onTargetStateChange}
           options={[
             { value: 'fixed', label: c('target.fixed'), description: c('target.fixedDescription') },
@@ -496,6 +506,7 @@ function values(label: string, value: string): string | null {
  * Done, X, Escape and the backdrop all keep what was typed.
  */
 function PlanEditor({
+  size = 'focused',
   open,
   title,
   description,
@@ -504,6 +515,8 @@ function PlanEditor({
   onClose,
   children,
 }: {
+  /** `compact` for an editor that is one choice and the field it reveals. */
+  size?: 'focused' | 'compact';
   open: boolean;
   title: string;
   description: string;
@@ -522,7 +535,7 @@ function PlanEditor({
       title={title}
       description={description}
       closeLabel={a('trade.close')}
-      size="focused"
+      size={size}
       returnFocusRef={returnFocusRef}
       footer={
         <div className="flex min-w-0 justify-end">
@@ -532,7 +545,7 @@ function PlanEditor({
         </div>
       }
     >
-      <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-4">
         {aside === null ? null : <div className="flex min-w-0 justify-end">{aside}</div>}
         {children}
       </div>

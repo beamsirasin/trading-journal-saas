@@ -29,13 +29,16 @@ import {
 } from './after-trade-draft';
 import { RequirementBadge } from './requirement-badge';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import { ChoiceGroup, InlineAction, Notice, Tag, TextField } from './trade-at-entry-controls';
 import {
-  closingWaitingKey,
-  FinalExitTimeRow,
-  signedMoney,
-  TraderOutcomeField,
-} from './trade-exit-result-step';
+  ChoiceGroup,
+  Helper,
+  InlineAction,
+  Notice,
+  Tag,
+  TextField,
+} from './trade-at-entry-controls';
+import { TradeChoiceList } from './trade-choice-list';
+import { closingWaitingKey, FinalExitTimeRow, signedMoney } from './trade-exit-result-step';
 import { parseTradeMoneyInput } from './trade-form-values';
 import { formatR } from './trade-format';
 import { TradeLauncherRow } from './trade-launcher-row';
@@ -238,25 +241,48 @@ export function TradeTraderResultStep({
         }}
         title={r('outcomeLabel')}
         description={r('outcomeEditor')}
+        hideDescription
         closeLabel={a('trade.close')}
-        size="focused"
+        size="compact"
         returnFocusRef={outcomeRow}
-        footer={
-          <div className="flex min-w-0 justify-end">
-            <Button type="button" onClick={() => setEditor(null)}>
-              {a('trade.done')}
-            </Button>
-          </div>
-        }
       >
-        <TraderOutcomeField
-          idPrefix={TRADER_RESULT_IDS.outcome}
-          value={draft.outcome}
-          contradicts={outcomeContradicts}
-          hint={a('result.outcomeHintShort')}
-          appearance="buttons"
-          onChange={(outcome) => apply((current) => setOutcome(current, outcome))}
-        />
+        {/*
+          ONE QUESTION, ONE ANSWER: choosing it is the whole interaction, as
+          Direction's is — written to the draft, and the sheet closes on the
+          same tap; focus returns to the Outcome row. Buttons, not radios, so
+          the arrow keys never commit an answer while the trader looks.
+        */}
+        <div data-outcome-editor="" className="flex min-w-0 flex-col gap-3">
+          <TradeChoiceList
+            label={r('outcomeLabel')}
+            columns={3}
+            emphasis="accent"
+            value={draft.outcome}
+            onChoose={(outcome) => {
+              apply((current) => setOutcome(current, outcome));
+              setEditor(null);
+            }}
+            options={[
+              { value: 'win', label: a('result.win') },
+              { value: 'break_even', label: a('result.breakEven') },
+              { value: 'loss', label: a('result.loss') },
+            ]}
+          />
+          <Helper>{a('result.outcomeHintShort')}</Helper>
+          {draft.outcome === null ? null : (
+            <div>
+              <InlineAction
+                ariaLabel={a('result.removeOutcomeAria')}
+                onClick={() => {
+                  apply((current) => setOutcome(current, null));
+                  setEditor(null);
+                }}
+              >
+                {c('removeAnswer')}
+              </InlineAction>
+            </div>
+          )}
+        </div>
       </TradeAdaptiveOverlay>
 
       <ClosingDetailsEditor
@@ -479,6 +505,7 @@ function ClosingDetailsEditor({
             legend={a('close.question')}
             value={draft.closeMode === 'unanswered' ? null : draft.closeMode}
             status={c('notAnswered')}
+            emphasis="accent"
             onChange={(mode) => apply((current) => setCloseMode(current, mode))}
             options={[
               {
@@ -540,6 +567,7 @@ function ClosingDetailsEditor({
               value={draft.partsResult === 'unanswered' ? null : draft.partsResult}
               status={c('notAnswered')}
               compact
+              emphasis="accent"
               onChange={(mode) => apply((current) => setPartsResult(current, mode))}
               options={[
                 {

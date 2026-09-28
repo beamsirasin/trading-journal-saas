@@ -233,7 +233,7 @@ export function TradeSetupChecklistStep(
         title={c('strategy.label')}
         description={s('strategyEditor')}
         closeLabel={a('trade.close')}
-        size="focused"
+        size="compact"
         returnFocusRef={strategyRow}
       >
         <div data-strategy-editor="" className="flex min-w-0 flex-col gap-3">
@@ -289,7 +289,7 @@ export function TradeSetupChecklistStep(
         title={c('strategy.setup')}
         description={s('setupEditor', { strategy: strategy?.name ?? '' })}
         closeLabel={a('trade.close')}
-        size="focused"
+        size="compact"
         returnFocusRef={setupRow}
       >
         <div data-setup-editor="" className="flex min-w-0 flex-col gap-3">

@@ -443,6 +443,7 @@ export function ChoiceGroup<T extends string>({
   appearance = 'cards',
   hideLegend = false,
   badge,
+  emphasis = 'neutral',
 }: {
   idPrefix: string;
   legend: string;
@@ -491,11 +492,20 @@ export function ChoiceGroup<T extends string>({
    * Remove answer once there is an answer.
    */
   badge?: ReactNode;
+  /**
+   * `accent` is the Add Trade selection treatment for descriptive cards
+   * (design-system "Selection — accent"): a quiet neutral outline at rest,
+   * and the chosen card marked by an accent border, a faint accent surface,
+   * the filled radio and a heavier label, its description still secondary.
+   * Cards only; every other caller keeps `neutral`.
+   */
+  emphasis?: 'neutral' | 'accent';
 }) {
   const name = useId();
   const scale = appearance === 'scale';
   const buttons = appearance === 'buttons';
   const stacked = !scale && !buttons && fit !== undefined && columns === 5;
+  const accent = emphasis === 'accent' && !scale && !buttons && !stacked;
   const errorId = `${idPrefix}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
@@ -503,7 +513,9 @@ export function ChoiceGroup<T extends string>({
         aside={
           badge === undefined ? (
             value === null ? (
-              status === undefined ? null : (
+              // The accent cards already show that nothing is chosen; the
+              // launcher row is where "Not answered" is read.
+              status === undefined || accent ? null : (
                 <StateText>{status}</StateText>
               )
             ) : (
@@ -573,46 +585,64 @@ export function ChoiceGroup<T extends string>({
                 />
                 <label
                   htmlFor={id}
+                  data-selected={checked ? 'true' : undefined}
                   className={cn(
                     'flex h-full min-w-0 cursor-pointer gap-2.5 rounded-md border px-3 transition-colors motion-reduce:transition-none',
-                    buttons
-                      ? 'min-h-12 items-center justify-center gap-1.5 px-2 py-2 text-center'
-                      : scale
-                        ? 'min-h-12 flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-center'
-                        : stacked
-                          ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
-                          : compact
-                            ? 'min-h-11 items-center py-2'
-                            : 'min-h-12 items-start py-2.5',
+                    accent
+                      ? cn(
+                          'min-h-11 gap-3 rounded-xl px-3.5',
+                          compact ? 'items-center py-2' : 'items-start py-2.5',
+                        )
+                      : buttons
+                        ? 'min-h-12 items-center justify-center gap-1.5 px-2 py-2 text-center'
+                        : scale
+                          ? 'min-h-12 flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-center'
+                          : stacked
+                            ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
+                            : compact
+                              ? 'min-h-11 items-center py-2'
+                              : 'min-h-12 items-start py-2.5',
                     'peer-focus-visible:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
                     /*
-                      SELECTED, WITH A DIRECTION WHERE THERE IS ONE. The tint is
-                      the Dashboard Calendar's restrained pair — a wash, a
-                      border and emphasised text, never a saturated fill — so a
-                      chosen Long reads as "selected Long", not as a success
-                      banner. The label is always the word, so the state
-                      survives greyscale and colour blindness (DESIGN.md §9.4).
+                      SELECTED. The accent treatment marks the chosen card by
+                      the accent border and a faint accent surface. Otherwise,
+                      with a direction where there is one: the Dashboard
+                      Calendar's restrained pair — a wash, a border and
+                      emphasised text, never a saturated fill — so a chosen
+                      Long reads as "selected Long", not as a success banner.
+                      The label is always the word, so the state survives
+                      greyscale and colour blindness (DESIGN.md §9.4).
                     */
-                    buttons && checked
-                      ? option.tone === 'positive'
-                        ? 'border-positive bg-positive/12 ring-positive ring-1 ring-inset'
-                        : option.tone === 'negative'
-                          ? 'border-negative bg-negative/12 ring-negative ring-1 ring-inset'
-                          : option.tone === 'break_even'
-                            ? 'border-break-even bg-break-even/12 ring-break-even ring-1 ring-inset'
-                            : 'border-foreground bg-accent ring-foreground ring-1 ring-inset'
-                      : checked
-                        ? option.tone === 'positive'
-                          ? 'border-positive/45 bg-positive/8'
-                          : option.tone === 'negative'
-                            ? 'border-negative/45 bg-negative/8'
-                            : option.tone === 'break_even'
-                              ? 'border-break-even/45 bg-break-even/8'
-                              : 'border-foreground/60 bg-accent'
+                    accent
+                      ? checked
+                        ? 'border-primary bg-primary/6 dark:bg-primary/10'
                         : cn(
-                            'bg-background hover:bg-accent',
-                            error === undefined ? 'border-control-border' : 'border-destructive',
-                          ),
+                            // On the sheet's own surface — never a darker hole in it.
+                            'hover:border-primary/40 hover:bg-primary/3 bg-transparent',
+                            error === undefined
+                              ? 'border-border dark:border-white/10'
+                              : 'border-destructive',
+                          )
+                      : buttons && checked
+                        ? option.tone === 'positive'
+                          ? 'border-positive bg-positive/12 ring-positive ring-1 ring-inset'
+                          : option.tone === 'negative'
+                            ? 'border-negative bg-negative/12 ring-negative ring-1 ring-inset'
+                            : option.tone === 'break_even'
+                              ? 'border-break-even bg-break-even/12 ring-break-even ring-1 ring-inset'
+                              : 'border-foreground bg-accent ring-foreground ring-1 ring-inset'
+                        : checked
+                          ? option.tone === 'positive'
+                            ? 'border-positive/45 bg-positive/8'
+                            : option.tone === 'negative'
+                              ? 'border-negative/45 bg-negative/8'
+                              : option.tone === 'break_even'
+                                ? 'border-break-even/45 bg-break-even/8'
+                                : 'border-foreground/60 bg-accent'
+                          : cn(
+                              'bg-background hover:bg-accent',
+                              error === undefined ? 'border-control-border' : 'border-destructive',
+                            ),
                   )}
                 >
                   {buttons ? (
@@ -631,14 +661,14 @@ export function ChoiceGroup<T extends string>({
                         )}
                       />
                     ) : null
-                  ) : (
+                  ) : accent ? null : (
                     <RadioMark
                       checked={checked}
                       tone={option.tone}
                       className={scale ? 'size-3.5' : compact || stacked ? '' : 'mt-0.5'}
                     />
                   )}
-                  <span className="min-w-0">
+                  <span className={cn('min-w-0', accent && 'flex-1')}>
                     <span
                       className={cn(
                         'block break-words',
@@ -647,24 +677,52 @@ export function ChoiceGroup<T extends string>({
                           : buttons
                             ? 'text-[0.9375rem]'
                             : 'text-sm',
+                        accent && 'text-[0.9375rem] leading-snug',
                         checked ? 'font-semibold' : 'font-medium',
-                        checked && option.tone === 'positive'
-                          ? 'text-positive'
-                          : checked && option.tone === 'negative'
-                            ? 'text-negative'
-                            : checked && option.tone === 'break_even'
-                              ? 'text-break-even'
-                              : 'text-foreground',
+                        accent
+                          ? 'text-foreground'
+                          : checked && option.tone === 'positive'
+                            ? 'text-positive'
+                            : checked && option.tone === 'negative'
+                              ? 'text-negative'
+                              : checked && option.tone === 'break_even'
+                                ? 'text-break-even'
+                                : 'text-foreground',
                       )}
                     >
                       {option.label}
                     </span>
                     {option.description === undefined ? null : (
-                      <span className="text-muted-foreground mt-0.5 block text-sm">
+                      <span
+                        className={cn(
+                          'text-muted-foreground mt-0.5 block',
+                          accent ? 'text-[0.8125rem] leading-snug' : 'text-sm',
+                        )}
+                      >
                         {option.description}
                       </span>
                     )}
                   </span>
+                  {accent ? (
+                    /*
+                      THE CONTENT LEADS, the mark follows: a descriptive card
+                      carries no radio circle — the native radio is still the
+                      control — and the chosen card is confirmed by a small
+                      trailing check beside its accent border and tint. The
+                      slot is always reserved, so choosing never reflows text.
+                    */
+                    <span
+                      aria-hidden="true"
+                      data-selected-mark={checked ? 'chosen' : 'rest'}
+                      className={cn(
+                        'flex size-5 shrink-0 items-center justify-center rounded-full transition-[opacity,scale] duration-(--motion-feedback-duration) motion-reduce:transition-none',
+                        compact ? '' : 'mt-px',
+                        checked ? 'bg-primary scale-100 opacity-100' : 'scale-75 opacity-0',
+                      )}
+                    >
+                      <Check className="text-primary-foreground size-3" strokeWidth={3} />
+                    </span>
+                  ) : null}
                 </label>
               </div>
             );

@@ -2112,9 +2112,9 @@
           "target": {
             "legend": "Target",
             "fixed": "Fixed target",
-            "fixedDescription": "A profit amount, a TP price, or both",
+            "fixedDescription": "A profit amount, a TP price, or both.",
             "noFixed": "No fixed target",
-            "noFixedDescription": "You will close on a rule or judgement",
+            "noFixedDescription": "You will close on a rule or judgement.",
             "profit": "Target profit",
             "price": "TP price",
             "priceContext": "Price context",
@@ -2665,6 +2665,7 @@
             "differentBlank": "Actual risk was different"
           },
           "target": {
+            "question": "How did you plan to take profit?",
             "fixed": "Fixed · {amount}"
           },
           "risk": {
@@ -2674,7 +2675,9 @@
             "noDefined": "No defined risk",
             "noDefinedHint": "R and RR comparison will not be available for this trade.",
             "oneR": "1R",
-            "removeAria": "Remove risk answer"
+            "removeAria": "Remove risk answer",
+            "definedDescription": "A set amount you're willing to lose — your 1R.",
+            "noDefinedDescription": "No loss amount set for this trade."
           }
         },
         "plannedSummary": {

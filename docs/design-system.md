@@ -145,7 +145,9 @@ segment stays `bg-destructive`.
 
 **Record Closed** reads Step 5 like Steps 1–4 (`src/components/trades/trade-trader-result-step.tsx`):
 three launcher rows — Outcome, Closing details, Final exit time — and a read-only Trade result
-`SummaryCard` (shared with Step 2's Planned summary, `trade-planned-summary.tsx`). Closing
+`SummaryCard` (shared with Step 2's Planned summary, `trade-planned-summary.tsx`). Outcome opens a
+`compact` sheet of three accent answers (Win / BE / Loss): one tap records it and closes the sheet,
+focus returning to the Outcome row — no Done, and "Remove answer" clears it. Closing
 details opens one focused editor: the close question, then only that way's answers; optional
 fields sit behind "Add more details", which never clears what it folds. _Record each exit_ is an
 ordered list — Exit 1, Exit 2 … Final exit — each opening its own view with its P&L first
@@ -156,12 +158,63 @@ ordered list — Exit 1, Exit 2 … Final exit — each opening its own view wit
 (the close question, the full close, the parts choice, the stated total and the read-only Final
 result with Trader R), `ClosingExitsEditor` (recorded exits read-only, then the All remaining
 closing exit), `ClosingStatusLine` and `FinalExitTimeRow`. Both tasks share `StepHeading`
-(`trade-step-flow.tsx`), `TraderOutcomeField` and `FinalExitTimeRow`. Pass a lifecycle
-difference in as a prop; never copy a shared piece into a task.
+(`trade-step-flow.tsx`) and `FinalExitTimeRow`; Close Existing still records its Outcome with
+`TraderOutcomeField`, not yet moved to the accent selection. Pass a lifecycle difference in as a
+prop; never copy a shared piece into a task.
 
 Read-only exit history names an ordered history's exits Exit 1, Exit 2 … Final exit and hides the
 compatibility scope (`src/lib/trades/exit-sequence.ts`); a history that records a Part, a Don't
 know or a share keeps showing them.
+
+### Adaptive overlay sizes
+
+`TradeAdaptiveOverlay` (`src/components/trades/trade-adaptive-overlay.tsx`) is a Dialog on a
+desktop and a bottom Sheet on a phone. Its `size` sets the phone sheet's height; every size keeps
+the `max-h-[92dvh]` ceiling, the safe-area padding, the keyboard lift, the focus trap and focus
+return, and exposes `data-sheet-size`.
+
+| Size      | Phone sheet                                 | Desktop         | Use                                                                                   |
+| --------- | ------------------------------------------- | --------------- | ------------------------------------------------------------------------------------- |
+| `focused` | `min-h-[45dvh]` floor, grows to the ceiling | `max-w-[35rem]` | Focused editors: Symbol, Emotion, Closing details, date/time, Price levels, Exit Plan |
+| `compact` | Content height — no floor, same ceiling     | as `focused`    | Simple selections: Account, Direction, Strategy, Setup, Outcome, Risk, Target         |
+| `wide`    | Content height                              | `max-w-[38rem]` | The default: an editor holding several fields                                         |
+
+`compact` changes only the height; an editor that confirms with Done keeps its Done.
+
+**Focused chrome** (`focused` and `compact`, not `wide`): no grab handle — the X closes the sheet —
+then the title (`text-lg`, tight tracking) with its description directly beneath it as one group,
+no rule under the header, `px-5` gutters, and a Done footer on the sheet's own surface behind a
+faint `border-border/50` rule rather than a second panel, with tighter padding that still clears
+the safe area. On a desktop the description joins the title in the header the same way. An editor
+whose answers need no introduction may pass `hideDescription`: the description then only
+describes the dialog to assistive technology (Outcome). `wide` (Review, System Assessment) keeps
+its original chrome.
+
+### Selection — accent
+
+An **approved Add Trade treatment**, scoped to Direction, Outcome, Risk, Target and Record
+Closed's Closing details questions (how the trade closed; the parts result). Opt in with
+`emphasis="accent"` on `TradeChoiceList` (short answers) or `ChoiceGroup` (descriptive cards);
+every other caller keeps the default `neutral` look.
+
+| State      | Look                                                                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Unselected | `border-border` outline (`white/10` in Dark) on the sheet's own surface, never a darker fill; medium label                               |
+| Hover      | `border-primary/40`, `bg-primary/3`                                                                                                      |
+| Selected   | `border-primary`, `bg-primary/6` (`/10` in Dark); semibold label; a check mark (see Marker); description stays secondary                 |
+| Marker     | Short answers: a leading ring that fills with a check (`AccentMark`). Descriptive cards: no radio circle — a trailing check, chosen only |
+| Size       | `min-h-11`, `rounded-xl`, `px-3.5`; label `0.9375rem`, description `0.8125rem` muted                                                     |
+| Focus      | the focus ring, offset from the card — independent of selection                                                                          |
+| Error      | `border-destructive` on unselected cards; the message stays with the group                                                               |
+
+Inside an accent editor there is no "Not answered" line: unmarked cards already say nothing is
+chosen, and the launcher row carries "Not answered".
+
+Selection is marked by the accent, never by `positive` / `negative`: Long is not "good" and Short
+is not "bad" (DESIGN.md §9). Semantics follow the interaction: an answer that commits on tap
+(Direction, Outcome) is a `button` with `aria-pressed`, so arrow keys never commit; an answer
+confirmed with Done (Risk, Target, Closing details) is a native radio, visually hidden behind its
+card. Both expose `data-selected`.
 
 ### Requirement badge
 

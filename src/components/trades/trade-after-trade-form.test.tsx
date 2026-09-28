@@ -452,7 +452,11 @@ function closeDialogs() {
   for (let round = 0; round < 4; round += 1) {
     const dialog = screen.queryByRole('dialog');
     if (dialog === null) return;
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
+    // Done where the editor has one; the close button where one tap is the answer.
+    fireEvent.click(
+      within(dialog).queryByRole('button', { name: 'Done' }) ??
+        within(dialog).getAllByRole('button', { name: 'Close' })[0]!,
+    );
   }
 }
 
@@ -551,8 +555,7 @@ function chooseOutcome(name: 'Win' | 'BE' | 'Loss') {
   closeDialogs();
   if (currentStep() !== 'result') goTo('result');
   fireEvent.click(screen.getByRole('button', { name: 'Edit Outcome' }));
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('radio', { name }));
-  closeDialogs();
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name }));
 }
 
 function outcomeRow(): HTMLElement {
@@ -1783,31 +1786,41 @@ describe('Step 1 — Long and Short carry a direction, never only a colour', () 
   /** The class list a colour-blind or greyscale reader never sees. */
   const classesOf = (element: Element) => element.getAttribute('class') ?? '';
 
-  it('tints a chosen Long green and a chosen Short red, leaving the other neutral', () => {
+  it('marks a chosen direction with the accent — never green and red — in a content-height sheet', () => {
     renderForm();
     const button = (name: 'Long' | 'Short') =>
       within(screen.getByRole('dialog')).getByRole('button', { name });
 
-    // NOTHING IS TINTED BEFORE AN ANSWER: the hue marks the selection, never
-    // the mere existence of two directions.
+    // Nothing is marked before an answer, and the sheet is only as tall as its answers.
     openConcept('Direction');
-    expect(classesOf(button('Long'))).not.toContain('positive');
-    expect(classesOf(button('Short'))).not.toContain('negative');
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-sheet-size', 'compact');
+    for (const name of ['Long', 'Short'] as const) {
+      expect(button(name)).toHaveAttribute('aria-pressed', 'false');
+      expect(classesOf(button(name)).split(' ')).not.toContain('border-primary');
+    }
     cancelConcept();
 
     chooseDirection('Long');
     openConcept('Direction');
-    expect(classesOf(button('Long'))).toContain('bg-positive/8');
-    expect(classesOf(button('Long'))).toContain('border-positive/45');
-    expect(classesOf(button('Short'))).not.toContain('negative');
+    expect(button('Long')).toHaveAttribute('aria-pressed', 'true');
+    expect(button('Long')).toHaveAttribute('data-selected', 'true');
+    expect(classesOf(button('Long'))).toContain('border-primary');
+    expect(classesOf(button('Long'))).toContain('bg-primary/6');
+    expect(button('Long').querySelector('[data-accent-mark]')).toHaveAttribute(
+      'data-accent-mark',
+      'chosen',
+    );
+    // A direction is not a verdict: no positive or negative hue on the choice.
+    expect(classesOf(button('Long'))).not.toMatch(/positive|negative/);
+    expect(classesOf(button('Short')).split(' ')).not.toContain('border-primary');
     cancelConcept();
 
     chooseDirection('Short');
     openConcept('Direction');
-    expect(classesOf(button('Short'))).toContain('bg-negative/8');
-    expect(classesOf(button('Short'))).toContain('border-negative/45');
-    // The previous answer gives its tint back with its selection.
-    expect(classesOf(button('Long'))).not.toContain('positive');
+    expect(button('Short')).toHaveAttribute('aria-pressed', 'true');
+    expect(classesOf(button('Short'))).not.toMatch(/positive|negative/);
+    // The previous answer gives up its mark with its selection.
+    expect(button('Long')).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('never lets colour be the only thing that says which way the trade went', () => {
@@ -2628,14 +2641,38 @@ describe('Step 5 — an overview of rows, the close as the result', () => {
     renderForm();
     fillIdentity();
     closeAllAtOnce('-20');
+    // Reaching Step 5 focuses its heading two frames later; let that land first,
+    // so it is the Outcome editor's own focus return that is judged below.
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Trader result' })).toHaveFocus(),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Edit Outcome' }));
     const editor = screen.getByRole('dialog');
+    // A content-height sheet of three answers, and no Done to confirm with.
+    expect(editor).toHaveAttribute('data-sheet-size', 'compact');
+    // Three obvious answers need no introduction on screen; the rule stays under them.
+    expect(within(editor).getByText('How you judge this trade: Win, BE or Loss.')).toHaveClass(
+      'sr-only',
+    );
+    expect(within(editor).getByText('Your own call. It is never set from the P&L.')).toBeVisible();
+    expect(within(editor).queryByRole('button', { name: 'Done' })).toBeNull();
     for (const name of ['Win', 'BE', 'Loss']) {
-      expect(within(editor).getByRole('radio', { name })).not.toBeChecked();
+      expect(within(editor).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
     }
-    fireEvent.click(within(editor).getByRole('radio', { name: 'Win' }));
-    closeDialogs();
+    // One tap is the answer: the sheet closes on it and focus returns to the row.
+    fireEvent.click(within(editor).getByRole('button', { name: 'Win' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(outcomeRow()).toHaveFocus());
     expect(outcomeRow()).toHaveTextContent('Win');
+    // Reopened, the answer is marked; a sign-contradicting choice is only noticed.
+    fireEvent.click(outcomeRow());
+    const again = within(screen.getByRole('dialog')).getByRole('button', { name: 'Win' });
+    expect(again).toHaveAttribute('aria-pressed', 'true');
+    expect(again).toHaveAttribute('data-selected', 'true');
+    closeDialogs();
+    expect(
+      within(stepSection('result')).getByText(/You chose Win, but your final net P&L is negative/),
+    ).toBeInTheDocument();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({ finalPnlMinor: '-2000', traderOutcome: 'win' });
@@ -2912,6 +2949,24 @@ describe('Step 5 — an overview of rows, the close as the result', () => {
     cleanup();
     renderForm();
     expect(left()).toBe('2');
+  });
+
+  it('restores the outcome from the draft, and Remove answer clears it and closes', () => {
+    renderForm();
+    chooseOutcome('BE');
+    cleanup();
+    renderForm();
+    goTo('result');
+    expect(outcomeRow()).toHaveAttribute('data-outcome', 'break_even');
+    fireEvent.click(outcomeRow());
+    const editor = screen.getByRole('dialog');
+    expect(within(editor).getByRole('button', { name: 'BE' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(within(editor).getByRole('button', { name: 'Remove outcome answer' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(outcomeRow()).toHaveAttribute('data-outcome', '');
   });
 
   it('restores the ordered exits from the draft, the last still the Final exit', () => {

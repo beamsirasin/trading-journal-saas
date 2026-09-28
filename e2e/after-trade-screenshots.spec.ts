@@ -293,9 +293,10 @@ async function fillEverything(page: Page) {
   await exitSheet.getByRole('button', { name: 'Done' }).click();
   // Step 5's answers live in the editors its rows open: the outcome, then the
   // close recorded exit by exit — an ordered list, the last the Final exit.
+  // One tap is the Outcome: the sheet closes on it.
   await page.locator('#after-outcome-row').click();
-  await clickChoice(page, /^Win$/);
-  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Win', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
   await page.locator('#after-closing-row').click();
   const closing = page.getByRole('dialog');
   await clickChoice(page, /^Closed in parts/);
