@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { isOnboardingComplete } from '@/lib/trading-accounts/onboarding-guard';
 import {
   getActiveTradingAccount,
   getActiveWorkspaceContext,
@@ -76,6 +77,7 @@ export default async function AppLayout({
       activeAccount={activeAccount}
       switchableAccounts={switchableAccounts}
       entitlement={entitlement}
+      onboarded={isOnboardingComplete(workspace.onboardingCompletedAt)}
     >
       {children}
     </AppShell>

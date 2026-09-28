@@ -92,23 +92,21 @@ test.describe('application shell', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   });
 
-  test('reaches navigation through the drawer on mobile', async ({ page }) => {
+  test('reaches navigation through the bottom bar on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');
 
-    // The sidebar is display:none below `lg`, which removes it from the
-    // accessibility tree entirely — so on mobile there is deliberately NO
-    // navigation landmark until the drawer opens. The drawer trigger lives in
-    // the banner, which is the standard discoverable path for this pattern.
-    await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0);
-
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    // Below `lg` the sidebar is display:none, which removes it from the
+    // accessibility tree — so the ONE navigation landmark on a phone is the
+    // bottom bar, on screen without opening anything.
     const navigation = page.getByRole('navigation', { name: 'Main' });
-    await expect(navigation).toBeVisible();
+    await expect(navigation).toHaveCount(1);
+    await expect(navigation).toHaveAttribute('data-mobile-tab-bar', '');
     await expect(navigation.getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
       'aria-current',
       'page',
     );
+    await expect(page.getByRole('button', { name: /open navigation menu/i })).toHaveCount(0);
   });
 
   test('has no horizontal overflow', async ({ page }) => {
@@ -178,61 +176,52 @@ test.describe('responsive navigation', () => {
     await page.goto('/en/app');
 
     await expect(page.getByRole('complementary')).toBeVisible();
-    await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeHidden();
+    await expect(page.locator('[data-mobile-tab-bar]')).toBeHidden();
+    await expect(page.getByRole('button', { name: /open navigation menu/i })).toHaveCount(0);
   });
 
-  test('shows a drawer trigger instead of a sidebar on mobile', async ({ page }) => {
+  test('shows the bottom bar instead of a sidebar on mobile, and no hamburger', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');
 
     await expect(page.getByRole('complementary')).toBeHidden();
-    await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeVisible();
+    await expect(page.locator('[data-mobile-tab-bar]')).toBeVisible();
+    await expect(page.getByRole('button', { name: /open navigation menu/i })).toHaveCount(0);
   });
 
   test('keeps mobile shell controls at least 44px in each touch dimension', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');
 
-    const menuButton = await page
-      .getByRole('button', { name: /open navigation menu/i })
-      .boundingBox();
-    // The account menu, not the theme toggle. The mobile header deliberately
-    // carries only navigation, brand, the account switcher and the profile
-    // menu now; language and theme moved into the drawer's preferences band
-    // (they are set-once preferences that were costing 88px of a ~350px row).
-    // Asserting on a control that is no longer meant to be here would be
-    // testing the old design.
-    const accountButton = await page.getByRole('button', { name: 'Account menu' }).boundingBox();
-
-    // Rounded to the nearest CSS pixel before comparing: every control here
-    // is authored at exactly `size-11` (44px) in Tailwind. `boundingBox()`
+    // Rounded to the nearest CSS pixel before comparing: `boundingBox()`
     // reads getBoundingClientRect(), whose sub-pixel layout rounding can
     // return e.g. 43.99999237060547 for a genuinely-44px box — a rendering
     // artifact invisible to any real user, not a shrunk touch target.
     // Rounding still fails a real regression (43px rounds to 43).
     const round = (value: number | undefined) => Math.round(value ?? 0);
 
-    expect(round(menuButton?.width)).toBeGreaterThanOrEqual(44);
-    expect(round(menuButton?.height)).toBeGreaterThanOrEqual(44);
+    const accountButton = await page.getByRole('button', { name: 'Account menu' }).boundingBox();
     expect(round(accountButton?.width)).toBeGreaterThanOrEqual(44);
     expect(round(accountButton?.height)).toBeGreaterThanOrEqual(44);
 
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-    const dialog = page.getByRole('dialog');
-    const overviewLink = await dialog.getByRole('link', { name: /Dashboard/ }).boundingBox();
-    expect(round(overviewLink?.height)).toBeGreaterThanOrEqual(44);
+    // Every control in the bottom bar: three destinations, the action, More.
+    const bar = page.getByRole('navigation', { name: 'Main' });
+    for (const control of [
+      bar.getByRole('link', { name: 'Dashboard' }),
+      bar.getByRole('link', { name: 'Trades' }),
+      bar.getByRole('link', { name: 'Log a trade' }),
+      bar.getByRole('link', { name: 'Analytics' }),
+      bar.getByRole('button', { name: 'More' }),
+    ]) {
+      const box = await control.boundingBox();
+      expect(round(box?.width)).toBeGreaterThanOrEqual(44);
+      expect(round(box?.height)).toBeGreaterThanOrEqual(44);
+    }
 
-    // The drawer's X is gone; the header's hamburger closes it now, and it is
-    // the same 44px square in both states. Located structurally because an
-    // open modal dialog strips the roles from everything behind it.
-    const openTrigger = await page.locator('header button[aria-haspopup="dialog"]').boundingBox();
-    expect(round(openTrigger?.width)).toBeGreaterThanOrEqual(44);
-    expect(round(openTrigger?.height)).toBeGreaterThanOrEqual(44);
-
-    await page.keyboard.press('Escape');
-
-    // Language and theme are no longer in this drawer at all — they moved to
-    // the account menu. They still have to be real touch targets there.
+    // Language and theme live in the account menu. They still have to be
+    // real touch targets there.
     await page.getByRole('button', { name: 'Account menu' }).click();
     const menu = page.getByRole('menu');
 
@@ -268,12 +257,17 @@ test.describe('responsive navigation', () => {
     const banner = page.getByRole('banner');
     await expect(banner.getByRole('button', { name: /change theme/i })).toHaveCount(0);
     await expect(banner.getByRole('button', { name: /language|ภาษา/i })).toHaveCount(0);
-    // What the mobile header DOES keep.
-    await expect(banner.getByRole('button', { name: /open navigation menu/i })).toBeVisible();
+    // What the mobile header DOES keep: the brand, the account switcher (where
+    // the route has no account control of its own) and the account menu. No
+    // hamburger — the bottom bar is the navigation.
+    await expect(banner.getByRole('button', { name: /open navigation menu/i })).toHaveCount(0);
     await expect(banner.getByRole('button', { name: 'Account menu' })).toBeVisible();
 
-    // Not in the drawer any more — that surface is routes only.
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    // Not in More either — that sheet is product destinations only.
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('button', { name: 'More' })
+      .click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('button', { name: /theme/i })).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: /language|ภาษา/i })).toHaveCount(0);
@@ -526,58 +520,51 @@ test.describe('responsive navigation', () => {
     await expect(language.getByRole('menuitemradio', { name: 'ไทย' })).toBeVisible();
   });
 
-  test('mobile drawer opens, traps focus and closes on Escape', async ({ page }) => {
+  test('More opens a sheet, traps focus and closes on Escape', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');
 
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-    const dialog = page.getByRole('dialog');
+    const more = page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('button', { name: 'More' });
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+    const dialog = page.getByRole('dialog', { name: 'More' });
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('link')).toHaveCount(2);
 
-    // Focus restoration and Escape handling are the reason a real dialog
-    // primitive is used rather than a toggled div.
+    // Focus is inside the sheet, and stays there.
+    for (let i = 0; i < 5; i += 1) {
+      await page.keyboard.press('Tab');
+      expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    }
+
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeFocused();
+    await expect(
+      page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'More' }),
+    ).toBeFocused();
   });
 
-  test('mobile drawer closes after navigating', async ({ page }) => {
+  test('More closes after navigating, and stays lit on the destination', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');
 
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
     await page
-      .getByRole('dialog')
-      .getByRole('link', { name: /Analytics/ })
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('button', { name: 'More' })
+      .click();
+    await page
+      .getByRole('dialog', { name: 'More' })
+      .getByRole('link', { name: /Strategies/ })
       .click();
 
-    await expect(page).toHaveURL(/\/app\/analytics$/);
-    // Without an explicit close the drawer sits over the page it just opened.
+    await expect(page).toHaveURL(/\/app\/strategies$/);
     await expect(page.getByRole('dialog')).toBeHidden();
-  });
-
-  /**
-   * The drawer opens BELOW the global header, so the header keeps its own
-   * wordmark on screen for as long as the drawer is open — which is why the
-   * drawer no longer carries a second one. This replaces the older
-   * "closes after following its wordmark" case, whose subject no longer
-   * exists; the remaining ways out (Escape, backdrop, close button, selecting
-   * a route) each have their own case above.
-   */
-  test('mobile drawer does not repeat the wordmark the header still shows', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/en/app/settings');
-
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-
-    await expect(dialog.getByRole('link', { name: 'TradeChemist' })).toHaveCount(0);
-    // Structural locator, not `getByRole('banner')`: the drawer is a modal
-    // dialog, so Radix marks everything outside it `aria-hidden` and the
-    // header has no landmark role for as long as it is open. It is still on
-    // screen and still showing the wordmark, which is the whole point.
-    await expect(page.locator('header').getByText('TradeChemist')).toBeVisible();
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    await expect(nav.getByRole('button', { name: 'More' })).toHaveAttribute('data-more-active', '');
+    // Lit, but the current page is inside the sheet: nothing in the bar claims it.
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(0);
   });
 
   test('shared buttons keep the 44px touch-target minimum', async ({ page }) => {
@@ -827,127 +814,155 @@ test.describe('sidebar motion', () => {
   });
 });
 
-test.describe('mobile drawer motion', () => {
+/**
+ * THE MOBILE BOTTOM BAR — the navigation below `lg`.
+ *
+ * Dashboard | Trades | Log | Analytics | More. Destinations carry
+ * `aria-current`; Log is an action and never does; More is a button that
+ * lights (without `aria-current`) while one of its destinations is open.
+ * Focused workflows hide the bar; the workspace reserves its height beneath
+ * the content whenever it is shown.
+ */
+test.describe('mobile bottom bar', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
 
-  test('opens below the header, which stays exactly where it was', async ({ page }) => {
-    await page.goto('/en/app');
+  const bar = (page: Page) => page.getByRole('navigation', { name: 'Main' });
 
-    // Structural locators throughout: an open modal dialog strips the
-    // landmark roles from everything behind it, so `getByRole('banner')`
-    // would resolve before the drawer opens and time out after.
-    const banner = page.locator('header');
-    const before = await banner.boundingBox();
-
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-    const dialog = page.getByRole('dialog');
-    // A drawer is "visible" from its first TRAVELLING frame, which is the
-    // point of all this — so settle on the resting position before measuring
-    // geometry, rather than reading a box mid-flight.
-    await expect.poll(async () => Math.round((await dialog.boundingBox())!.x)).toBe(0);
-
-    const after = await banner.boundingBox();
-    expect(after).toEqual(before);
-
-    // The drawer starts at the header's bottom edge and runs to the viewport
-    // floor — the header is never covered. The 1px tolerance is the header's
-    // own bottom hairline: the drawer is offset by the header HEIGHT token, so
-    // it meets that border rather than clearing it, exactly as the desktop
-    // sidebar does. Anything wider than a hairline would be a real overlap.
-    const drawer = (await dialog.boundingBox())!;
-    const headerBottom = before!.y + before!.height;
-    expect(drawer.y).toBeGreaterThanOrEqual(headerBottom - 1);
-    expect(drawer.y).toBeLessThanOrEqual(headerBottom + 1);
-    expect(Math.round(drawer.x)).toBe(0);
-    expect(Math.round(drawer.y + drawer.height)).toBe(844);
-
-    // 15rem ceiling at this width, leaving 150px of dimmed page beside it.
-    // Asserted as an absolute number rather than a proportion of the
-    // viewport: the width is deliberately no longer a percentage, and a
-    // proportional assertion would keep passing through the exact regression
-    // it is here to catch.
-    expect(Math.round(drawer.width)).toBe(240);
-  });
-
-  test('travels in from off-screen with its backdrop, without pushing the page', async ({
-    page,
-  }) => {
-    await page.goto('/en/app');
-    const workspace = page.locator('#main-content');
-    const mainLeftBefore = (await workspace.boundingBox())!.x;
-
-    const trace = await page.evaluate(async () => {
-      const trigger = document.querySelector<HTMLButtonElement>(
-        'button[aria-label="Open navigation menu"]',
-      )!;
-      trigger.click();
-
-      const samples: { left: number; backdrop: number }[] = [];
-      return await new Promise<typeof samples>((resolve) => {
-        let seen = 0;
-        function tick() {
-          const panel = document.querySelector('[data-slot="sheet-content"]');
-          const overlay = document.querySelector('[data-slot="sheet-overlay"]');
-          if (panel && overlay) {
-            samples.push({
-              left: panel.getBoundingClientRect().left,
-              backdrop: Number(getComputedStyle(overlay).opacity),
-            });
-          }
-          seen += 1;
-          if (seen < 40) requestAnimationFrame(tick);
-          else resolve(samples);
-        }
-        requestAnimationFrame(tick);
-      });
+  for (const [route, name] of [
+    ['/en/app', 'Dashboard'],
+    ['/en/app/trades?view=calendar', 'Trades'],
+    ['/en/app/analytics?view=edge', 'Analytics'],
+  ] as const) {
+    test(`marks ${name} current on ${route}, and only it`, async ({ page }) => {
+      await page.goto(route);
+      const current = bar(page).locator('[aria-current="page"]');
+      await expect(current).toHaveCount(1);
+      await expect(current).toHaveAccessibleName(name);
+      await expect(bar(page).getByRole('link', { name: 'Log a trade' })).not.toHaveAttribute(
+        'aria-current',
+      );
     });
+  }
 
-    // Painted part-way in, not conjured at its final position.
-    expect(trace.filter((s) => s.left < -8 && s.left > -320).length).toBeGreaterThanOrEqual(3);
-    expect(Math.round(trace.at(-1)!.left)).toBe(0);
+  for (const route of ['/en/app/accounts', '/en/app/accounts/new', '/en/app/strategies']) {
+    test(`lights More on ${route} without claiming the current page`, async ({ page }) => {
+      await page.goto(route);
+      await expect(bar(page).getByRole('button', { name: 'More' })).toHaveAttribute(
+        'data-more-active',
+        '',
+      );
+      await expect(bar(page).locator('[aria-current="page"]')).toHaveCount(0);
+    });
+  }
 
-    // The backdrop rises WITH the panel rather than landing fully opaque
-    // before it has begun moving.
-    expect(trace[0]!.backdrop).toBeLessThan(0.9);
-    expect(trace.at(-1)!.backdrop).toBeGreaterThan(trace[0]!.backdrop);
-
-    // A layer over the workspace, not a squeeze of it.
-    expect((await workspace.boundingBox())!.x).toBe(mainLeftBefore);
+  test('shows the bar, with nothing current, on account pages', async ({ page }) => {
+    for (const route of ['/en/app/settings', '/en/app/plan', '/en/app/billing']) {
+      await page.goto(route);
+      await expect(page.locator('[data-mobile-tab-bar]'), route).toBeVisible();
+      await expect(bar(page).locator('[aria-current="page"]'), route).toHaveCount(0);
+    }
   });
 
-  test('closes from the backdrop', async ({ page }) => {
+  test('Log opens the existing recording choice, where the bar steps aside', async ({ page }) => {
+    await page.goto('/en/app/trades');
+    await bar(page).getByRole('link', { name: 'Log a trade' }).click();
+    await expect(page).toHaveURL(/\/app\/trades\/new$/);
+    // The first step of the existing flow — no second chooser in between.
+    await expect(
+      page.getByRole('radiogroup', { name: 'When are you recording this trade?' }),
+    ).toBeVisible();
+    await expect(page.getByRole('radio', { name: /^At Entry/ })).toBeVisible();
+    await expect(page.getByRole('radio', { name: /^After Trade/ })).toBeVisible();
+    await expect(page.locator('[data-mobile-tab-bar]')).toHaveCount(0);
+  });
+
+  test('steps aside on every focused workflow', async ({ page }) => {
+    for (const route of [
+      '/en/app/trades/new',
+      '/en/app/trades/new?timing=after_trade',
+      '/en/app/trades/close',
+      '/en/app/trades/after-trade',
+      '/en/app/checkout',
+    ]) {
+      await page.goto(route);
+      await expect(page.getByRole('main'), route).toBeVisible();
+      await expect(page.locator('[data-mobile-tab-bar]'), route).toHaveCount(0);
+      const padding = await page
+        .getByRole('main')
+        .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom));
+      expect(padding, route).toBe(0);
+    }
+  });
+
+  test('sits on the bottom edge and reserves its height beneath the content', async ({ page }) => {
+    await page.goto('/en/app/trades');
+    const box = (await page.locator('[data-mobile-tab-bar]').boundingBox())!;
+    expect(Math.round(box.y + box.height)).toBe(844);
+    // 3.5rem, its top hairline included, plus a safe-area inset that is 0 in
+    // this browser — exactly the clearance the workspace reserves below.
+    expect(Math.round(box.height)).toBe(56);
+
+    const padding = await page
+      .getByRole('main')
+      .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom));
+    expect(Math.round(padding)).toBeGreaterThanOrEqual(56);
+
+    // Scrolled to the end, the last of the content ends above the bar.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const contentBottom = await page.getByRole('main').evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.bottom - Number.parseFloat(getComputedStyle(el).paddingBottom);
+    });
+    expect(contentBottom).toBeLessThanOrEqual(box.y + 0.5);
+  });
+
+  test('layers its More sheet above itself', async ({ page }) => {
     await page.goto('/en/app');
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-
-    // Right edge of the viewport, in the dimmed sliver beside the drawer.
-    await page.mouse.click(380, 500);
-    await expect(page.getByRole('dialog')).toBeHidden();
+    await bar(page).getByRole('button', { name: 'More' }).click();
+    const sheet = page.getByRole('dialog', { name: 'More' });
+    await expect(sheet).toBeVisible();
+    // What is painted at the bar's position is the sheet, not the bar — once
+    // the sheet has finished rising from the bottom edge.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const target = document.elementFromPoint(20, window.innerHeight - 10);
+          return target?.closest('[data-slot="sheet-content"]') != null;
+        }),
+      )
+      .toBe(true);
   });
 
-  test('is usable, and stays below the header, at 320px', async ({ page }) => {
+  test('fits its labels without clipping, in English and Thai, down to 320px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 720 });
+    for (const locale of ['en', 'th']) {
+      await page.goto(`/${locale}/app`);
+      const clipped = await page.locator('[data-mobile-tab-bar] li').evaluateAll((items) =>
+        items
+          .map((item) => item.querySelector('span:last-child') as HTMLElement)
+          .filter((label) => label.scrollWidth > label.clientWidth + 1)
+          .map((label) => label.textContent),
+      );
+      expect(clipped, locale).toEqual([]);
+      const overflows = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      );
+      expect(overflows, locale).toBe(false);
+    }
+  });
+
+  test('is the navigation up to lg, and the sidebar is from lg', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 1100 });
     await page.goto('/en/app');
+    await expect(page.locator('[data-mobile-tab-bar]')).toBeVisible();
+    await expect(page.getByRole('complementary')).toBeHidden();
 
-    const bannerBox = (await page.locator('header').boundingBox())!;
-
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-    const dialog = page.getByRole('dialog');
-    await expect.poll(async () => Math.round((await dialog.boundingBox())!.x)).toBe(0);
-
-    const drawer = (await dialog.boundingBox())!;
-    expect(drawer.y).toBeGreaterThanOrEqual(bannerBox.y + bannerBox.height - 1);
-    // The dimmed sliver survives the narrowest supported width, so the drawer
-    // still reads as a layer over the page rather than a new screen.
-    expect(drawer.width).toBeLessThan(320);
-
-    await expect(dialog.getByRole('link', { name: 'Trades' })).toBeVisible();
-    const overflows = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    );
-    expect(overflows).toBe(false);
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await expect(page.locator('[data-mobile-tab-bar]')).toBeHidden();
+    await expect(page.getByRole('complementary')).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(1);
   });
 });
 
@@ -1346,13 +1361,8 @@ test.describe('Collapsed sidebar hover flyout', () => {
 });
 
 /**
- * The shell-polish pass: what the profile menu holds, what the drawer is
- * made of, and how wide it gets.
- *
- * Locators here are deliberately structural in places. An open modal dialog
- * makes Radix mark everything behind it `aria-hidden`, so the header's own
- * controls leave the accessibility tree for as long as the drawer is up —
- * `getByRole('banner')` resolves before it opens and times out after.
+ * The shell-polish pass: what the profile menu holds, and how the mobile
+ * bottom bar reads in both themes.
  */
 test.describe('shell polish — profile menu', () => {
   test.beforeEach(async ({ page }) => {
@@ -1539,159 +1549,20 @@ test.describe('shell polish — desktop hamburger', () => {
   });
 });
 
-test.describe('shell polish — mobile drawer', () => {
-  /** Viewport width -> the drawer width the min() contract produces there. */
-  const DRAWER_WIDTHS = [
-    { viewport: 320, drawer: 240 },
-    { viewport: 390, drawer: 240 },
-    { viewport: 430, drawer: 240 },
-    { viewport: 440, drawer: 240 },
-  ] as const;
-
-  for (const { viewport, drawer } of DRAWER_WIDTHS) {
-    test(`settles at ${drawer}px on a ${viewport}px viewport, leaving the page visible`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: viewport, height: 844 });
-      await page.goto('/en/app');
-      await page.getByRole('button', { name: /open navigation menu/i }).click();
-
-      const dialog = page.getByRole('dialog');
-      // Settle on the resting position first: a drawer is "visible" from its
-      // first travelling frame, and a box read mid-flight is meaningless.
-      await expect.poll(async () => Math.round((await dialog.boundingBox())!.x)).toBe(0);
-      await expect.poll(async () => Math.round((await dialog.boundingBox())!.width)).toBe(drawer);
-
-      // A strip of dimmed page always remains to the right — the thing that
-      // says "layer over your workspace" rather than "new screen". At 240px
-      // that strip is at least 80px even on the narrowest phone, and more than
-      // a third of the viewport on a normal one.
-      expect(viewport - drawer).toBeGreaterThanOrEqual(80);
-      expect(drawer).toBeLessThanOrEqual(viewport * 0.75);
-
-      const overflows = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-      );
-      expect(overflows).toBe(false);
-    });
-  }
-
-  test('opens and closes from the same hamburger, which never becomes an X', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/en/app');
-
-    const trigger = page.locator('header button[aria-haspopup="dialog"]');
-    const glyphBefore = await trigger.locator('svg').innerHTML();
-
-    await trigger.click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-
-    // The glyph is the same mark in both states.
-    expect(await trigger.locator('svg').innerHTML()).toBe(glyphBefore);
-
-    // The same press takes it away again — one press, not close-then-reopen.
-    await trigger.click();
-    await expect(dialog).toBeHidden();
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-
-    // And it still opens on the next press, so it is a real toggle.
-    await trigger.click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-  });
-
-  test('shows no X control inside the drawer', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/en/app');
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-
-    // The primitive's own corner X is off, and the drawer's own close
-    // affordance is `sr-only` until focused — a 1px clipped box, which
-    // Playwright still reports as "visible", so the assertion is on the
-    // rendered SIZE rather than on visibility.
-    const close = dialog.getByRole('button', { name: 'Close' });
-    const box = (await close.boundingBox())!;
-    expect(box.width).toBeLessThanOrEqual(1);
-    expect(box.height).toBeLessThanOrEqual(1);
-    // And it carries no glyph at all — nothing that could read as an X.
-    await expect(close.locator('svg')).toHaveCount(0);
-
-    // Nothing else in the drawer is drawn over the first navigation row.
-    const firstRow = (await dialog.getByRole('link').first().boundingBox())!;
-    expect(firstRow.y).toBeGreaterThan((await dialog.boundingBox())!.y);
-  });
-
-  test('still closes on Escape, on the backdrop, and on navigating', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/en/app');
-    const open = page.locator('header button[aria-haspopup="dialog"]');
-
-    await open.click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toBeHidden();
-
-    await open.click();
-    await expect
-      .poll(async () => Math.round((await page.getByRole('dialog').boundingBox())!.x))
-      .toBe(0);
-    // The backdrop, well clear of the panel's 240px right edge.
-    await page.mouse.click(340, 500);
-    await expect(page.getByRole('dialog')).toBeHidden();
-
-    await open.click();
-    await page.getByRole('dialog').getByRole('link', { name: 'Trades' }).click();
-    await expect(page.getByRole('dialog')).toBeHidden();
-    await expect(page).toHaveURL(/\/en\/app\/trades$/);
-  });
-
-  test('gives keyboard users a focusable way out even without a visible X', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/en/app');
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-
-    const close = page.getByRole('dialog').getByRole('button', { name: 'Close' });
-    await close.focus();
-    // `focus-visible:not-sr-only` — it becomes a real, visible, labelled
-    // button the moment a keyboard reaches it.
-    await expect(close).toBeVisible();
-    await close.press('Enter');
-    await expect(page.getByRole('dialog')).toBeHidden();
-  });
-
-  test('carries routes only — no Settings, no preferences', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/en/app');
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
-
-    const dialog = page.getByRole('dialog');
-    await expect(dialog.getByRole('link')).toHaveCount(5);
-    await expect(dialog.getByRole('link', { name: 'Settings' })).toHaveCount(0);
-    await expect(dialog.locator('a[href="/en/app/settings"]')).toHaveCount(0);
-    await expect(dialog.getByRole('group', { name: /language|theme/i })).toHaveCount(0);
-    await expect(dialog.getByRole('menuitem')).toHaveCount(0);
-  });
-
+test.describe('shell polish — mobile bottom bar', () => {
   for (const scheme of ['light', 'dark'] as const) {
-    test(`shares the header chrome surface in ${scheme}, with AA nav contrast`, async ({
-      page,
-    }) => {
-      await page.emulateMedia({ colorScheme: scheme });
+    test(`reads its tabs at AA contrast on its own surface in ${scheme}`, async ({ page }) => {
+      await page.addInitScript(
+        ([key, value]) => window.localStorage.setItem(key as string, value as string),
+        ['trading-os-theme', scheme],
+      );
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto('/en/app');
-      await page.getByRole('button', { name: /open navigation menu/i }).click();
-
-      const dialog = page.getByRole('dialog');
-      await expect.poll(async () => Math.round((await dialog.boundingBox())!.x)).toBe(0);
+      await expect(page.locator('[data-mobile-tab-bar]')).toBeVisible();
 
       const measured = await page.evaluate(() => {
         type Rgb = [number, number, number];
         const parts = (value: string) => value.match(/[\d.]+/g)!.map(Number);
-        const rgb = (value: string) => parts(value).slice(0, 3) as Rgb;
         const luminance = ([r, g, b]: Rgb) => {
           const channels = [r, g, b].map((channel) => {
             const v = channel / 255;
@@ -1711,58 +1582,44 @@ test.describe('shell polish — mobile drawer', () => {
           return [0, 1, 2].map((i) => channels[i]! * alpha + bg[i]! * (1 - alpha)) as Rgb;
         };
 
-        const panel = document.querySelector<HTMLElement>('[data-slot="sheet-content"]')!;
-        const header = document.querySelector<HTMLElement>('header')!;
-        const panelBg = rgb(getComputedStyle(panel).backgroundColor);
-        const headerBg = rgb(getComputedStyle(header).backgroundColor);
-
-        const rows = [...panel.querySelectorAll<HTMLAnchorElement>('nav a')];
-        const active = rows.find((row) => row.getAttribute('aria-current') === 'page')!;
-        const inactive = rows.find((row) => row.getAttribute('aria-current') !== 'page')!;
-
-        const pillElement = active.querySelector<HTMLElement>('[data-active-indicator]')!;
-        const pill = over(getComputedStyle(pillElement).backgroundColor, panelBg);
-        const activeLabel = rgb(getComputedStyle(active).color);
-        const activeIcon = rgb(getComputedStyle(active.querySelector('svg')!).color);
-
-        /** How far a colour sits from neutral grey, 0 = perfectly neutral. */
-        const chroma = ([r, g, b]: Rgb) => Math.max(r, g, b) - Math.min(r, g, b);
+        const bar = document.querySelector<HTMLElement>('[data-mobile-tab-bar]')!;
+        // The PAGE colour, resolved from its token: `body` itself paints
+        // nothing, so its computed background is transparent.
+        const probe = document.createElement('div');
+        probe.style.background = 'var(--background)';
+        document.body.append(probe);
+        const page = parts(getComputedStyle(probe).backgroundColor).slice(0, 3) as Rgb;
+        probe.remove();
+        // The bar is the page colour at 95% over the page colour — the page
+        // colour itself. Read from the token, because a translucent computed
+        // colour serialises in oklab, which this RGB arithmetic cannot read.
+        const surface = page;
+        const active = bar.querySelector<HTMLElement>('[aria-current="page"]')!;
+        const inactive = bar.querySelector<HTMLElement>('a[data-tab]:not([aria-current])')!;
+        const log = bar.querySelector<HTMLElement>('[data-log-trade-action]')!;
+        const capsule = log.querySelector<HTMLElement>('span[aria-hidden]')!;
+        const capsuleBg = over(getComputedStyle(capsule).backgroundColor, surface);
 
         return {
-          panelBg,
-          headerBg,
-          panelLuminance: luminance(panelBg),
-          panelChroma: chroma(panelBg),
-          pillChroma: chroma(pill),
-          activeLabelChroma: chroma(activeLabel),
-          activeIconChroma: chroma(activeIcon),
-          activeLabelOnPill: contrast(activeLabel, pill),
-          activeIconOnPill: contrast(activeIcon, pill),
-          inactiveOnPanel: contrast(rgb(getComputedStyle(inactive).color), panelBg),
+          barBackground: getComputedStyle(bar).backgroundColor,
+          activeLabel: contrast(over(getComputedStyle(active).color, surface), surface),
+          activeIcon: contrast(
+            over(getComputedStyle(active.querySelector('svg')!).color, surface),
+            surface,
+          ),
+          inactiveLabel: contrast(over(getComputedStyle(inactive).color, surface), surface),
+          logLabel: contrast(over(getComputedStyle(log).color, surface), surface),
+          logGlyph: contrast(over(getComputedStyle(capsule).color, capsuleBg), capsuleBg),
         };
       });
 
-      // The drawer IS the header's surface, in both themes — not merely a
-      // similar one. That is what `data-shell-chrome` buys, and it is the
-      // whole reason the two read as one piece of chrome.
-      expect(measured.panelBg).toEqual(measured.headerBg);
-      // And it is a DARK chrome in both themes, light mode included.
-      expect(measured.panelLuminance).toBeLessThan(0.1);
-
-      expect(measured.activeLabelOnPill).toBeGreaterThanOrEqual(4.5);
-      expect(measured.activeIconOnPill).toBeGreaterThanOrEqual(3);
-      expect(measured.inactiveOnPanel).toBeGreaterThanOrEqual(4.5);
-
-      // WHERE THE BLUE IS. The panel and the active pill are near-neutral —
-      // a chroma of a few points, which is a cool cast, not a colour — while
-      // the active ICON is saturated. That inversion is the pass: the accent
-      // is on the smallest mark in the row instead of on the largest area.
-      // Asserted numerically because "less blue" is otherwise a matter of
-      // opinion, and this is exactly the kind of thing that creeps back.
-      expect(measured.panelChroma).toBeLessThanOrEqual(8);
-      expect(measured.pillChroma).toBeLessThanOrEqual(12);
-      expect(measured.activeLabelChroma).toBeLessThanOrEqual(12);
-      expect(measured.activeIconChroma).toBeGreaterThan(60);
+      // The page colour at 95%: see the note on `surface` above.
+      expect(measured.barBackground).toMatch(/\/ 0\.95\)$/);
+      expect(measured.activeLabel).toBeGreaterThanOrEqual(4.5);
+      expect(measured.activeIcon).toBeGreaterThanOrEqual(3);
+      expect(measured.inactiveLabel).toBeGreaterThanOrEqual(4.5);
+      expect(measured.logLabel).toBeGreaterThanOrEqual(4.5);
+      expect(measured.logGlyph).toBeGreaterThanOrEqual(3);
     });
   }
 });

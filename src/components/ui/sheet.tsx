@@ -35,29 +35,11 @@ function SheetOverlay({
   );
 }
 
-/**
- * Which motion vocabulary a sheet speaks.
- *
- * `'shell'` is the application frame's: the drawer and its backdrop run on
- * `--shell-motion-duration` and `--ease-shell`, exactly as the desktop
- * sidebar does, and both begin below the global header. Everything else
- * (forms, filters, detail panels) omits it and keeps the shared dialog
- * motion, so this stays one deliberate exception rather than a knob.
- */
-type SheetMotion = 'shell';
-
 function SheetContent({
   className,
   children,
   side = 'right',
   showCloseButton = true,
-  // Opts this sheet out of the generic dialog motion and into the app shell's
-  // own (`data-motion="shell"`, defined in globals.css). Stamped on the
-  // OVERLAY as well as the panel, because the two have to travel together:
-  // the shell drawer's backdrop fades on exactly the drawer's clock, and both
-  // start below the global header rather than over it. Anything that is not
-  // the app shell leaves this unset and keeps the shared dialog motion.
-  motion,
   // Required rather than defaulted to an English literal: this is a generic
   // primitive with no `next-intl` dependency of its own, so the
   // locale-correct label is the caller's responsibility (both current
@@ -68,16 +50,14 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: 'top' | 'right' | 'bottom' | 'left';
   showCloseButton?: boolean;
-  motion?: SheetMotion | undefined;
   closeLabel: string;
 }) {
   return (
     <SheetPortal>
-      <SheetOverlay data-motion={motion} />
+      <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         data-side={side}
-        data-motion={motion}
         className={cn(
           // PROJECT CUSTOMISATION: animation is defined against data-slot/state
           // in globals.css so it exists without an extra animation plugin and

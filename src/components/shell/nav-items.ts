@@ -66,3 +66,72 @@ export const SETTINGS_NAV_ITEM: NavItem = {
   key: 'settings',
   Icon: Settings,
 };
+
+/**
+ * WHERE A DESTINATION SITS ON A PHONE, below `lg`, where the bottom bar
+ * replaces the sidebar. Kept beside `NAV_ITEMS` rather than as a field on it,
+ * because the desktop sidebar renders that array wholesale and has no use for
+ * a phone's placement: the bar holds the core loop — understand, review,
+ * understand more deeply — and the setup destinations sit one tap deeper,
+ * behind More. Log a trade is an ACTION, not a destination, and is placed by
+ * the bar itself (see `MobileTabBar`).
+ */
+export const MOBILE_BAR_KEYS: readonly NavItemKey[] = ['overview', 'trades', 'analytics'];
+export const MOBILE_MORE_KEYS: readonly NavItemKey[] = ['accounts', 'strategies'];
+
+export function navItem(key: NavItemKey): NavItem {
+  const item = NAV_ITEMS.find((candidate) => candidate.key === key);
+  if (item === undefined) throw new Error(`No navigation item "${key}"`);
+  return item;
+}
+
+/**
+ * Does `pathname` sit at or below `route`, by WHOLE SEGMENTS?
+ *
+ * `/app/accounts` matches `/app/accounts` and `/app/accounts/new`, never
+ * `/app/accountsx`; a substring or plain `startsWith` test would take the
+ * last one too. Paths arrive locale-free from `usePathname` in
+ * `@/i18n/navigation`, and without a query string — so `/app/trades?trade=…`
+ * is `/app/trades` here.
+ */
+export function isWithinRoute(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
+/**
+ * Is a destination the page being shown, for the MOBILE bar?
+ *
+ * The Dashboard is `/app`, the root every other route sits under, so it is
+ * matched exactly — a segment match would light it on every page. Every
+ * other destination owns its subtree: `/app/accounts/new` is still Accounts.
+ *
+ * The desktop sidebar keeps its exact match for now (`SidebarNav`); this rule
+ * is the bar's.
+ */
+export function isNavItemActive(item: NavItem, pathname: string): boolean {
+  return item.key === 'overview' ? pathname === item.href : isWithinRoute(pathname, item.href);
+}
+
+/**
+ * FOCUSED WORKFLOWS — the bar steps aside on these, and on everything below
+ * them. Each already has its own way out (the wizard's Change / Discard, the
+ * back link to the Trade) and, for the recording flows, a sticky footer of
+ * its own at the bottom edge. Leaving one is never destructive — drafts are
+ * kept in this browser (UX Rules §5) — so this is about space and focus, not
+ * about guarding work.
+ *
+ * `/app/trades/new` is inside `/app/trades` by segment, which is why this list
+ * is checked BEFORE any destination is considered: a focused route shows no
+ * bar at all, rather than a bar with Trades lit.
+ */
+export const MOBILE_BAR_HIDDEN_ROUTES: readonly string[] = [
+  '/app/trades/new',
+  '/app/trades/close',
+  '/app/trades/after-trade',
+  '/app/onboarding',
+  '/app/checkout',
+];
+
+export function isMobileBarHidden(pathname: string): boolean {
+  return MOBILE_BAR_HIDDEN_ROUTES.some((route) => isWithinRoute(pathname, route));
+}

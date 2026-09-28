@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Link } from '@/i18n/navigation';
 
-import { CollapsedFlyout, type SidebarNavVariant } from './sidebar-nav';
+import { CollapsedFlyout } from './sidebar-nav';
 
 /** The route this action opens: the recording-mode choice, then the form. */
 export const LOG_TRADE_HREF = '/app/trades/new';
@@ -43,26 +43,20 @@ export const LOG_TRADE_HREF = '/app/trades/new';
  * outline is this link's focus indicator, exactly as it is for the rows below.
  */
 export function LogTradeAction({
-  variant = 'sidebar',
   collapsed = false,
-  onNavigate,
 }: {
-  variant?: SidebarNavVariant;
-  /** Desktop only: the label cell is clipped, so hover and focus reveal it instead. */
+  /** The label cell is clipped, so hover and focus reveal it instead. */
   collapsed?: boolean;
-  /** Called after navigation, so the mobile drawer can close itself. */
-  onNavigate?: (() => void) | undefined;
 }) {
   const t = useTranslations('appNav');
   const label = t('logTrade');
-  const isDrawer = variant === 'drawer';
 
   // Measured from the control on reveal, in viewport coordinates — the same
   // approach and the same reasons as `NavRow`'s: the rail scrolls, so no
   // arithmetic gets this right, only the element's own box.
   const anchorRef = useRef<HTMLAnchorElement>(null);
   const [flyoutAt, setFlyoutAt] = useState<{ top: number; left: number } | null>(null);
-  const revealsFlyout = !isDrawer && collapsed;
+  const revealsFlyout = collapsed;
 
   const reveal = useCallback(() => {
     const rect = anchorRef.current?.getBoundingClientRect();
@@ -82,35 +76,11 @@ export function LogTradeAction({
     };
   }, [revealsFlyout, flyoutAt, hide]);
 
-  if (isDrawer) {
-    return (
-      <Link
-        href={LOG_TRADE_HREF}
-        data-log-trade-action="drawer"
-        {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
-        className={cn(
-          // The drawer row's own geometry — same height, radius and gutters as
-          // a navigation row, so the action sits in the list's rhythm rather
-          // than interrupting it. Full width, because a phone row is a thumb
-          // target.
-          'bg-primary text-primary-foreground flex min-h-[3.25rem] items-center gap-3 rounded-lg px-3 text-base font-semibold',
-          'hover:bg-primary-hover active:bg-primary-active active:scale-[0.99]',
-          'transition-[background-color,transform] duration-150 ease-(--motion-ease-standard)',
-          'motion-reduce:transition-none motion-reduce:active:scale-100',
-        )}
-      >
-        <PenLine className="size-5 shrink-0" aria-hidden="true" />
-        <span className="shrink-0 whitespace-nowrap">{label}</span>
-      </Link>
-    );
-  }
-
   return (
     <Link
       ref={anchorRef}
       href={LOG_TRADE_HREF}
       data-log-trade-action="sidebar"
-      {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
       {...(revealsFlyout
         ? {
             onPointerEnter: reveal,

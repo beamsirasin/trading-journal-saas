@@ -521,8 +521,16 @@ The current information architecture stays. These rules govern how the shell loo
    large tinted block (`docs/design-system.md` §2).
 2. **Desktop:** fixed icon rail plus a labelled secondary panel. Labels are visible whenever the
    panel is open; the collapsed rail shows icons with accessible names and tooltips.
-3. **Mobile:** the header bar plus the focus-trapping drawer (not a bottom bar). The drawer shows
-   full labels; it uses the same active-state treatment as desktop.
+3. **Mobile (below `lg`):** a bottom bar is the navigation — **Dashboard · Trades · Log ·
+   Analytics · More** — with no hamburger or drawer. The header keeps brand, account switcher and
+   account menu only. Destinations are links with an icon and a visible label, the current one
+   marked in the accent and by `aria-current`. **Log is the primary action, not a destination:** a
+   compact accent capsule on the tabs' baseline (never a raised floating button) that opens the
+   existing recording flow and never takes a selected state. **More** opens a sheet of the secondary
+   product destinations (Accounts, Strategies) and is lit while one of them is open; account and app
+   preferences stay in the account menu. **Focused workflows hide the bar** — recording, closing
+   and after-trade flows, onboarding and checkout — and the workspace reserves the bar's height
+   beneath its content wherever it is shown.
 4. **Page header:** left-aligned page title, optional one-sentence description, actions on the right
    (desktop) or below (mobile). Descriptions are optional and short; data surfaces may omit them.
 5. **Contextual toolbar** (filters, date range, account) sits directly under the page header, stays

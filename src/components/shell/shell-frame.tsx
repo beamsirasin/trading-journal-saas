@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 
+import { cn } from '@/lib/utils';
 import type { ActiveTradingAccountSummary, SessionUser } from '@/server/auth/dal';
 import { Button } from '@/components/ui/button';
 import { usePathname } from '@/i18n/navigation';
@@ -18,7 +19,8 @@ import {
   SIDEBAR_ELEMENT_ID,
 } from './constants';
 import { DesktopSidebar } from './desktop-sidebar';
-import { MobileNav } from './mobile-nav';
+import { MobileTabBar } from './mobile-tab-bar';
+import { isMobileBarHidden } from './nav-items';
 
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
@@ -33,6 +35,10 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
  *   ├──────────────┬───────────────────────────────┤
  *   │  navigation  │           workspace           │
  *   └──────────────┴───────────────────────────────┘
+ *
+ * Below `lg` there is no sidebar and no hamburger: the header is brand and
+ * account controls only, and navigation is the bottom bar (`MobileTabBar`),
+ * which steps aside on focused workflows (`isMobileBarHidden`).
  *
  * The header spans edge to edge and is a SIBLING of the sidebar rather than a
  * child of the workspace column. That is what keeps the brand, the toggle and
@@ -85,6 +91,7 @@ export function ShellFrame({
   activeAccount,
   switchableAccounts,
   canCreateAccount,
+  onboarded,
 }: {
   children: ReactNode;
   /** Server-rendered entitlement banner, or `null`. Passed in rather than rendered here so it stays a server component. */
@@ -97,6 +104,12 @@ export function ShellFrame({
   activeAccount: ActiveTradingAccountSummary | null;
   switchableAccounts: readonly ActiveTradingAccountSummary[];
   canCreateAccount: boolean;
+  /**
+   * Whether this workspace has finished onboarding. Until it has, every
+   * product route redirects back to onboarding, so the mobile bar — whose
+   * every tab would bounce — is not shown.
+   */
+  onboarded: boolean;
 }) {
   const t = useTranslations('appNav');
   const pathname = usePathname();
@@ -119,6 +132,12 @@ export function ShellFrame({
     signature of every page in the product.
   */
   const routeOwnsAccountControl = ROUTES_WITH_OWN_ACCOUNT_CONTROL.includes(pathname);
+
+  // The mobile bottom bar: on every product page below `lg`, never on a
+  // focused workflow, never before onboarding. What decides that it RENDERS
+  // also decides the workspace clearance beneath the content, so the two
+  // cannot disagree.
+  const showMobileBar = onboarded && !isMobileBarHidden(pathname);
 
   function toggleSidebar() {
     const next = !navExpanded;
@@ -153,29 +172,14 @@ export function ShellFrame({
         className="border-shell-chrome-border sticky top-0 z-40 w-full border-b"
       >
         {/*
-          THE MOBILE LEFT GUTTER IS 0.5rem, NOT 0.75rem.
-
-          The drawer trigger is a 44px square with a 20px glyph centred in it,
-          so the glyph's centre lands at gutter + 22px. At the old `pl-3` that
-          was 34px from the viewport edge — far enough in that the control
-          read as floating in the bar rather than anchoring its left end,
-          while the right-hand account cluster sat hard against its own edge.
-          At `pl-2` the centre is 30px and the glyph's own left edge is 20px,
-          which is the alignment a phone's system bars use.
-
-          The TARGET did not shrink to get there: it is still 44x44, still the
-          full height of the row's control band, and the four pixels came out
-          of the padding beside it rather than out of the button. `sm` restores
-          the roomier gutter, and `lg` drops it entirely so the desktop toggle
-          can sit on the sidebar's own centre line (below).
+          THE MOBILE LEFT GUTTER IS THE PAGE'S. With the hamburger gone below
+          `lg` (the bottom bar is the navigation there), the brand is the
+          row's first control, so it starts on the same 1rem / 1.5rem gutter
+          as the page content beneath it (`Container`). `lg` drops it
+          entirely so the desktop toggle can sit on the sidebar's own centre
+          line (below).
         */}
-        <div className="flex h-[var(--shell-header-height-mobile)] items-center gap-1.5 pr-3 pl-2 sm:pr-4 sm:pl-3 lg:h-[var(--shell-header-height)] lg:gap-0 lg:pl-0">
-          {/* Mobile opens the off-canvas drawer; desktop reveals the labels
-              beside the icon column. Different interactions, but the same
-              slot, so the control never appears to move across the
-              breakpoint. */}
-          <MobileNav />
-
+        <div className="flex h-[var(--shell-header-height-mobile)] items-center gap-1.5 pr-3 pl-4 sm:pr-4 sm:pl-6 lg:h-[var(--shell-header-height)] lg:gap-0 lg:pl-0">
           {/*
             THE HEADER'S LEFT CELL IS THE SIDEBAR'S ICON COLUMN.
 
@@ -256,11 +260,25 @@ export function ShellFrame({
         chasing the other.
       */}
       <div className="flex min-h-[calc(100dvh-var(--shell-header-height))] min-w-0 flex-col transition-[padding] duration-[var(--shell-motion-duration)] ease-[var(--shell-motion-easing)] lg:pl-[var(--shell-workspace-offset)]">
-        <main id={MAIN_CONTENT_ID} tabIndex={-1} className="min-w-0 flex-1">
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          data-mobile-bar-clearance={showMobileBar ? '' : undefined}
+          className={cn(
+            'min-w-0 flex-1',
+            // Clearance for the fixed bar: its height plus the same safe-area
+            // inset it carries, so the last row of any page scrolls clear of
+            // it. Gone at `lg`, where there is no bar.
+            showMobileBar &&
+              'pb-[calc(var(--shell-bottom-bar-height)+env(safe-area-inset-bottom))] lg:pb-0',
+          )}
+        >
           {banner}
           {children}
         </main>
       </div>
+
+      {showMobileBar ? <MobileTabBar /> : null}
     </div>
   );
 }

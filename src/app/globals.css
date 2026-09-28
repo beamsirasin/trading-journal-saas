@@ -351,6 +351,9 @@
    */
   --shell-header-height: 3.5rem;
   --shell-header-height-mobile: 3.75rem;
+  /* The mobile bottom bar's own height, below `lg` — the safe-area inset is
+     added on top of it, by the bar and by the workspace clearance alike. */
+  --shell-bottom-bar-height: 3.5rem;
   --shell-rail-width: 4rem;
   --shell-secondary-nav-width: 10rem;
 
@@ -921,47 +924,6 @@ html[lang='th'] .text-label {
 
 [data-slot='sheet-content'][data-state='closed'] {
   animation: sheet-content-out var(--motion-surface-exit-duration) var(--motion-ease-exit) both;
-}
-
-/*
- * The APP SHELL's navigation drawer (`SheetContent motion="shell"`), which is
- * the mobile face of the same surface the desktop sidebar is.
- *
- * It therefore speaks the shell's motion, not the generic dialog's: one
- * duration and one easing shared with the sidebar and the workspace offset,
- * in both directions. A phone and a desktop are then two viewports onto one
- * shell rather than two unrelated components that happen to hold the same
- * links. Only the animation's timing is restated — the keyframes above are
- * already the right shapes (slide from the panel's own edge, fade the
- * backdrop). Reduced mode replaces that travel with the brief fade below.
- *
- * The backdrop is timed with the drawer deliberately: a scrim that lands
- * before the panel has begun moving reads as the page being taken away, not
- * as a panel arriving over it.
- *
- * Both also start BELOW the global header. The header is the one thing in
- * this product that never moves and never yields — it stays lit, unscrimmed
- * and visually on top while the drawer travels underneath it, which is the
- * same promise the desktop sidebar keeps. `top` is set on the overlay too, so
- * the header is not dimmed; the dialog is still modal, so the header is inert
- * for as long as the drawer is open even though it is fully visible.
- */
-[data-slot='sheet-overlay'][data-motion='shell'],
-[data-slot='sheet-content'][data-motion='shell'] {
-  top: var(--shell-header-height-mobile);
-}
-
-[data-slot='sheet-content'][data-motion='shell'] {
-  bottom: 0;
-  height: auto;
-}
-
-[data-slot='sheet-overlay'][data-motion='shell'][data-state='open'],
-[data-slot='sheet-overlay'][data-motion='shell'][data-state='closed'],
-[data-slot='sheet-content'][data-motion='shell'][data-state='open'],
-[data-slot='sheet-content'][data-motion='shell'][data-state='closed'] {
-  animation-duration: var(--shell-motion-duration);
-  animation-timing-function: var(--shell-motion-easing);
 }
 
 [data-slot='dropdown-menu-content'][data-state='open'],

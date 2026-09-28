@@ -162,7 +162,7 @@ test.describe('theme contrast', () => {
           navActiveIconOnSidebar: contrast('--shell-nav-active-icon', '--sidebar'),
           navRestOnSidebar: contrast('--shell-nav-rest-foreground', '--sidebar'),
           ringOnBackground: contrast('--ring', '--background'),
-          // The mobile drawer's chrome scope, which rebinds all of them.
+          // The header's chrome scope, which rebinds all of them.
           chromeNavLabelOnPill: contrast(
             '--shell-chrome-nav-active-foreground',
             '--shell-chrome-nav-active-surface',
@@ -438,8 +438,8 @@ test.describe('motion', () => {
     expect(publicMotion.feedbackDuration).toBeLessThanOrEqual(0.12);
 
     await page.goto('/en/app');
-    // The mobile project keeps the desktop sidebar in the DOM but hidden until
-    // its drawer opens, so assert branch selection rather than visibility.
+    // The mobile project keeps the desktop sidebar in the DOM but hidden below
+    // `lg`, so assert branch selection rather than visibility.
     await expect(page.locator('[data-active-indicator="static"]')).toHaveCount(1);
     await expect(page.locator('[data-active-indicator="animated"]')).toHaveCount(0);
 
@@ -458,8 +458,12 @@ test.describe('motion', () => {
     expect(menuMotion.transform).toBe('none');
     await page.keyboard.press('Escape');
 
+    // The mobile bottom bar's More sheet: the shell's one sheet on a phone.
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('button', { name: 'More' })
+      .click();
     const sheetMotion = await page.getByRole('dialog').evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -474,12 +478,15 @@ test.describe('motion', () => {
     expect(sheetMotion.transform).toBe('none');
   });
 
-  test('animates the drawer when reduced motion is not requested', async ({ page }) => {
+  test('animates the More sheet when reduced motion is not requested', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');
-    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('button', { name: 'More' })
+      .click();
 
     const animationName = await page
       .getByRole('dialog')

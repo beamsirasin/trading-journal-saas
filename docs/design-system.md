@@ -414,13 +414,23 @@ Touch targets ≥ 44px, including inputs — `Input` is `h-11` rather than shadc
 
 **A widget inside a partial-width column asks its own width, not the viewport's.** The Dashboard Calendar is seven of twelve columns, so a 1280px page and a 1920px page give it very different room while reporting the same breakpoint. It declares `@container` and reduces itself against that: below 22rem the R value sheds its trailing unit, so the date and the figure itself never shrink into an ellipsis. (The per-day W/BE/L line that used to be the first thing dropped here is gone from the cell entirely — see the Dashboard density rules above.) Prefer a container query wherever a component's usable width is decided by its column rather than by the window.
 
-**Mobile navigation is a drawer, not a bottom bar.** The Phase 00b drawer is focus-trapping, Escape-handling and tested; five sections fit it comfortably. Replacing hardened, tested behaviour needs a better reason than fashion.
+**Mobile navigation is a bottom bar below `lg`; the desktop sidebar is the navigation from `lg`.** `MobileTabBar` (`src/components/shell/mobile-tab-bar.tsx`) replaced the Phase 00b drawer, which put the core loop two taps away behind a panel covering most of a phone. It reads `NAV_ITEMS`, placed by `MOBILE_BAR_KEYS` / `MOBILE_MORE_KEYS` in `nav-items.ts`:
+
+| Slot      | Kind        | Target                      | Current-page rule                                                   |
+| --------- | ----------- | --------------------------- | ------------------------------------------------------------------- |
+| Dashboard | Link        | `/app`                      | Exact match only                                                    |
+| Trades    | Link        | `/app/trades`               | The route and below, any query                                      |
+| Log       | Action link | `/app/trades/new`           | Never — no `aria-current`, no selected state                        |
+| Analytics | Link        | `/app/analytics`            | The route and below, any query                                      |
+| More      | Button      | Sheet: Accounts, Strategies | Lit (no `aria-current`) on `/app/accounts/**`, `/app/strategies/**` |
+
+Matching is by whole path segments (`isWithinRoute`), never substrings. The bar is `fixed` at `z-40` — above sticky page toolbars (`z-30`), below every Radix overlay (`z-50`) — `h-[var(--shell-bottom-bar-height)]` (3.5rem) plus `env(safe-area-inset-bottom)`, on the page surface with a top hairline and no shadow. `ShellFrame` renders it and gives `<main>` the same height plus inset as bottom clearance, only where it is shown: never on `MOBILE_BAR_HIDDEN_ROUTES` (`/app/trades/new`, `/app/trades/close`, `/app/trades/after-trade`, `/app/onboarding`, `/app/checkout`), and not before onboarding. The boundary is Tailwind's `lg`, named once for script as `SHELL_DESKTOP_MEDIA_QUERY`; the Add Trade dialog-versus-sheet boundary (`useIsDesktopViewport`, 48rem) is a different decision.
 
 ## 7. Motion
 
 Animation must aid comprehension. No motion for decoration.
 
-Sanctioned and in use: hero entrance, sidebar and segmented-control active indicators, drawer and dialog entrance, skeleton loading, subtle card hover, settled KPI opacity feedback, chart entrance.
+Sanctioned and in use: hero entrance, sidebar and segmented-control active indicators, sheet and dialog entrance, skeleton loading, subtle card hover, settled KPI opacity feedback, chart entrance.
 
 Avoided: heavy glass, glow, parallax, permanent looping decoration, long stagger sequences, and anything that gates access to content.
 
@@ -579,7 +589,7 @@ Nothing may imply a capability that does not exist: no fake OAuth, no submit tha
 - Tables use real table semantics; scroll regions are labelled, `tabIndex={0}`, and named distinctly from their enclosing section so two landmarks do not share a name.
 - A skip-to-content link is the first focusable element on every page, targeting a shared `MAIN_CONTENT_ID` constant.
 
-**Known and accepted:** below `lg` the sidebar is `display:none`, which removes it from the accessibility tree — so on mobile there is no `navigation` landmark until the drawer is opened. The trigger sits in the banner, which is the standard discoverable path for a drawer pattern. This is asserted by e2e so it stays deliberate.
+**One `Main` navigation landmark at every width.** Below `lg` the sidebar is `display:none` and the bottom bar is the landmark; from `lg` the bar is `display:none` and the sidebar is. Both are in the markup, and `display:none` removes the inactive one from the accessibility tree. Asserted by e2e.
 
 ## 13. Internationalization
 

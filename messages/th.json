@@ -39,8 +39,12 @@
       "analytics": "ระบบเทียบกับเทรดเดอร์",
       "settings": "โปรไฟล์และการตั้งค่า"
     },
-    "drawerTitle": "เมนูนำทาง",
-    "drawerDescription": "ส่วนต่าง ๆ ของแอปพลิเคชัน",
+    "mobile": {
+      "log": "บันทึก",
+      "more": "เพิ่มเติม",
+      "moreTitle": "เพิ่มเติม",
+      "moreDescription": "บัญชีและกลยุทธ์ของคุณ"
+    },
     "preferences": "การตั้งค่าการแสดงผล",
     "collapseSidebar": "ย่อแถบนำทาง",
     "expandSidebar": "ขยายแถบนำทาง",

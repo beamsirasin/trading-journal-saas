@@ -158,22 +158,6 @@ describe('Log a trade — motion', () => {
   });
 });
 
-describe('Log a trade — drawer variant', () => {
-  it('is a full-width thumb target matching the drawer rows', () => {
-    renderAction({ variant: 'drawer' });
-    const action = screen.getByRole('link', { name: 'Log a trade' });
-    expect(action.className).toContain('min-h-[3.25rem]');
-    expect(action.className).toContain('bg-primary');
-  });
-
-  it('closes the drawer through the navigation callback the rows already use', () => {
-    const onNavigate = vi.fn();
-    renderAction({ variant: 'drawer', onNavigate });
-    screen.getByRole('link', { name: 'Log a trade' }).click();
-    expect(onNavigate).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe('the navigation beside it is unchanged', () => {
   it('still marks the current route, and only the current route', () => {
     renderSidebar(true);

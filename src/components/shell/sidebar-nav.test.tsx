@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import en from '../../../messages/en.json';
 import { NAV_ITEMS } from './nav-items';
-import { SidebarNav, type SidebarNavVariant } from './sidebar-nav';
+import { SidebarNav } from './sidebar-nav';
 
 let pathname = '/app';
 
@@ -28,10 +28,10 @@ vi.mock('@/i18n/navigation', () => ({
   usePathname: () => pathname,
 }));
 
-function renderNav(variant: SidebarNavVariant = 'sidebar', onNavigate?: () => void) {
+function renderNav() {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <SidebarNav variant={variant} {...(onNavigate ? { onNavigate } : {})} />
+      <SidebarNav />
     </NextIntlClientProvider>,
   );
 }
@@ -40,7 +40,7 @@ function renderNav(variant: SidebarNavVariant = 'sidebar', onNavigate?: () => vo
 function renderCollapsed() {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <SidebarNav variant="sidebar" collapsed />
+      <SidebarNav collapsed />
     </NextIntlClientProvider>,
   );
 }
@@ -52,13 +52,13 @@ beforeEach(() => {
 });
 
 describe('SidebarNav — structure', () => {
-  it('exposes exactly one navigation landmark, whatever the variant', () => {
-    renderNav('sidebar');
+  it('exposes exactly one navigation landmark', () => {
+    renderNav();
     expect(screen.getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
   });
 
   it('renders every configured route, and nothing else', () => {
-    renderNav('sidebar');
+    renderNav();
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(within(nav).getAllByRole('link')).toHaveLength(NAV_ITEMS.length);
 
@@ -68,21 +68,18 @@ describe('SidebarNav — structure', () => {
     }
   });
 
-  it('carries product destinations only — no Settings, in either variant', () => {
-    // Settings moved to the account menu. The sidebar and the drawer both
-    // render NAV_ITEMS wholesale, so membership is the single thing that
-    // decides whether a route appears in navigation at all.
-    for (const variant of ['sidebar', 'drawer'] as const) {
-      const { unmount } = renderNav(variant);
-      const nav = screen.getByRole('navigation', { name: 'Main' });
+  it('carries product destinations only — no Settings', () => {
+    // Settings moved to the account menu. The sidebar renders NAV_ITEMS
+    // wholesale, so membership is the single thing that decides whether a
+    // route appears in navigation at all.
+    renderNav();
+    const nav = screen.getByRole('navigation', { name: 'Main' });
 
-      expect(
-        within(nav).queryByRole('link', { name: en.appNav.items.settings }),
-      ).not.toBeInTheDocument();
-      // By href too, so a renamed label cannot let the route back in quietly.
-      expect(nav.querySelector('a[href="/app/settings"]')).toBeNull();
-      unmount();
-    }
+    expect(
+      within(nav).queryByRole('link', { name: en.appNav.items.settings }),
+    ).not.toBeInTheDocument();
+    // By href too, so a renamed label cannot let the route back in quietly.
+    expect(nav.querySelector('a[href="/app/settings"]')).toBeNull();
   });
 
   it('renders ONE list, not a primary band and a utility band', () => {
@@ -90,7 +87,7 @@ describe('SidebarNav — structure', () => {
     // spacer and a rule. With one kind of entry left there is nothing to
     // separate, and a lone rule pinned to the bottom of an empty column is
     // just a line.
-    renderNav('sidebar');
+    renderNav();
     const nav = screen.getByRole('navigation', { name: 'Main' });
     const lists = within(nav).getAllByRole('list');
 
@@ -102,7 +99,7 @@ describe('SidebarNav — structure', () => {
 describe('SidebarNav — active route', () => {
   it('marks exactly one item as the current page', () => {
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const current = screen
       .getByRole('navigation', { name: 'Main' })
@@ -115,7 +112,7 @@ describe('SidebarNav — active route', () => {
     // `/app` is a prefix of every other route. With a `startsWith` match, two
     // items would claim `aria-current="page"` at once.
     pathname = '/app/analytics';
-    renderNav('sidebar');
+    renderNav();
 
     expect(screen.getByRole('link', { name: en.appNav.items.overview })).not.toHaveAttribute(
       'aria-current',
@@ -128,7 +125,7 @@ describe('SidebarNav — active route', () => {
 
   it('marks the last route current when it is open', () => {
     pathname = '/app/analytics';
-    renderNav('sidebar');
+    renderNav();
 
     const current = screen
       .getByRole('navigation', { name: 'Main' })
@@ -139,7 +136,7 @@ describe('SidebarNav — active route', () => {
 
   it('claims no current page on a route that is not in the navigation', () => {
     pathname = '/app/trades/new';
-    renderNav('sidebar');
+    renderNav();
 
     expect(
       screen.getByRole('navigation', { name: 'Main' }).querySelectorAll('[aria-current="page"]'),
@@ -156,7 +153,7 @@ describe('SidebarNav — active route', () => {
     // a pill and a coloured icon, and a bar on top of that is one cue too
     // many.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const active = screen.getByRole('link', { name: en.appNav.items.trades });
     const inactive = screen.getByRole('link', { name: en.appNav.items.accounts });
@@ -173,7 +170,7 @@ describe('SidebarNav — active route', () => {
     // anchor per route, so there is one tab stop and one accessible name —
     // never a duplicate pair of icon and label links to the same page.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(nav.querySelectorAll('a')).toHaveLength(NAV_ITEMS.length);
@@ -194,7 +191,7 @@ describe('SidebarNav — active route', () => {
     // disconnected pieces. The indicator must be a direct child of the link,
     // i.e. a sibling of both cells rather than a descendant of one.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const active = screen.getByRole('link', { name: en.appNav.items.trades });
     const indicator = active.querySelector('[data-active-indicator]');
@@ -208,7 +205,7 @@ describe('SidebarNav — active route', () => {
     // so the same row contracts to a compact pill around the icon when the
     // panel is closed.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const indicator = screen
       .getByRole('link', { name: en.appNav.items.trades })
@@ -222,7 +219,7 @@ describe('SidebarNav — active route', () => {
     // Lower intensity, identical shape — nothing resizes or shifts as a row
     // goes resting -> hovered -> current.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const inactive = screen.getByRole('link', { name: en.appNav.items.accounts });
     const surface = inactive.querySelector('span[aria-hidden="true"]');
@@ -239,9 +236,9 @@ describe('SidebarNav — active route', () => {
     // Blue is now spent on the ICON alone, the smallest mark in the row; the
     // label is a high-contrast neutral and the pill under both is neutral too.
     // Drift back to a single shared token is the regression.
-    for (const variant of ['sidebar', 'drawer'] as const) {
+    {
       pathname = '/app/trades';
-      const { unmount } = renderNav(variant);
+      const { unmount } = renderNav();
 
       const active = screen.getByRole('link', { name: en.appNav.items.trades });
       const icon = active.querySelector('svg');
@@ -267,7 +264,7 @@ describe('SidebarNav — active route', () => {
     // ever reclassified it, the active row would silently lose `text-[0.9375rem]`
     // and render at a different size from its neighbours.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     expect(screen.getByRole('link', { name: en.appNav.items.trades }).className).toContain(
       'text-[0.9375rem]',
@@ -279,7 +276,7 @@ describe('SidebarNav — active route', () => {
     // neutral, AA-safe shell rest token and rises only to plain foreground on
     // hover.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const inactive = screen.getByRole('link', { name: en.appNav.items.accounts });
     expect(inactive.className).not.toContain('shell-nav-active-foreground');
@@ -293,14 +290,14 @@ describe('SidebarNav — active route', () => {
     // Settings still has a route and is still reachable — from the account
     // menu — but nothing in this list should light up for it.
     pathname = '/app/settings';
-    renderNav('sidebar');
+    renderNav();
 
     expect(screen.queryByRole('link', { current: 'page' })).not.toBeInTheDocument();
   });
 
   it('gives every route the same hover row', () => {
     pathname = '/app';
-    renderNav('sidebar');
+    renderNav();
 
     const accounts = screen.getByRole('link', { name: en.appNav.items.accounts });
     const surface = accounts.querySelector('span[aria-hidden="true"]');
@@ -314,7 +311,7 @@ describe('SidebarNav — active route', () => {
     // at any alpha puts the accent on an AREA again, which is the thing that
     // made the shell read as a generic blue admin template.
     pathname = '/app/trades';
-    renderNav('sidebar');
+    renderNav();
 
     const pill = screen
       .getByRole('link', { name: en.appNav.items.trades })
@@ -327,7 +324,7 @@ describe('SidebarNav — active route', () => {
 
   it('renders one active indicator per rendered navigation, not one per item', () => {
     pathname = '/app';
-    renderNav('sidebar');
+    renderNav();
     expect(document.querySelectorAll('[data-active-indicator]')).toHaveLength(1);
   });
 });
@@ -338,39 +335,16 @@ describe('SidebarNav — labels', () => {
    * rather than narrowing to a rail, so every row always carries its label and
    * no variant needs a tooltip or a substitute `aria-label` to name itself.
    */
-  it('always shows a visible label beside every icon, in both variants', () => {
-    for (const variant of ['sidebar', 'drawer'] as const) {
-      const { unmount } = renderNav(variant);
+  it('always shows a visible label beside every icon', () => {
+    renderNav();
 
-      for (const item of NAV_ITEMS) {
-        const link = screen.getByRole('link', { name: en.appNav.items[item.key] });
-        expect(link).toHaveTextContent(en.appNav.items[item.key]);
-        expect(link).toHaveAttribute('href', item.href);
-        // The visible text IS the accessible name — nothing duplicates it.
-        expect(link).not.toHaveAttribute('aria-label');
-      }
-
-      unmount();
+    for (const item of NAV_ITEMS) {
+      const link = screen.getByRole('link', { name: en.appNav.items[item.key] });
+      expect(link).toHaveTextContent(en.appNav.items[item.key]);
+      expect(link).toHaveAttribute('href', item.href);
+      // The visible text IS the accessible name — nothing duplicates it.
+      expect(link).not.toHaveAttribute('aria-label');
     }
-  });
-});
-
-describe('SidebarNav — navigation callback', () => {
-  it('notifies the drawer after a route is chosen', async () => {
-    const onNavigate = vi.fn();
-    const user = userEvent.setup();
-    renderNav('drawer', onNavigate);
-
-    await user.click(screen.getByRole('link', { name: en.appNav.items.analytics }));
-    expect(onNavigate).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not require the callback outside the drawer', async () => {
-    const user = userEvent.setup();
-    renderNav('sidebar');
-    // No `onClick` is attached at all in this variant; clicking must not throw.
-    await user.click(screen.getByRole('link', { name: en.appNav.items.accounts }));
-    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
   });
 });
 
@@ -380,7 +354,7 @@ describe('SidebarNav — collapsed rail flyout', () => {
     // unstyled, on its own delay, outside the shell's visual language. The
     // flyout replaces it, and the attribute must not creep back.
     for (const collapsed of [true, false]) {
-      const { unmount } = collapsed ? renderCollapsed() : renderNav('sidebar');
+      const { unmount } = collapsed ? renderCollapsed() : renderNav();
       for (const item of NAV_ITEMS) {
         expect(screen.getByRole('link', { name: en.appNav.items[item.key] })).not.toHaveAttribute(
           'title',
@@ -506,17 +480,7 @@ describe('SidebarNav — collapsed rail flyout', () => {
   it('never reveals a flyout when the panel is open', async () => {
     // Expanded, the label is already on screen. A flyout would duplicate it.
     const user = userEvent.setup();
-    renderNav('sidebar');
-
-    for (const item of NAV_ITEMS) {
-      await user.hover(screen.getByRole('link', { name: en.appNav.items[item.key] }));
-    }
-    expect(document.querySelectorAll('[data-nav-flyout]')).toHaveLength(0);
-  });
-
-  it('never reveals a flyout in the mobile drawer', async () => {
-    const user = userEvent.setup();
-    renderNav('drawer');
+    renderNav();
 
     for (const item of NAV_ITEMS) {
       await user.hover(screen.getByRole('link', { name: en.appNav.items[item.key] }));

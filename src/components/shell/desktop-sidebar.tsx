@@ -39,9 +39,9 @@ import { SidebarNav } from './sidebar-nav';
  * floated it over the content. Opening navigation is now a deliberate act:
  * the header toggle, nothing else. Brushing past the rail does nothing.
  *
- * Hidden outright below `lg` — a phone navigates through the drawer
- * (`MobileNav`); `hidden` also removes this from the accessibility tree, so
- * there is exactly one navigation landmark at every width.
+ * Hidden outright below `lg` — a phone navigates through the bottom bar
+ * (`MobileTabBar`); `hidden` also removes this from the accessibility tree,
+ * so there is exactly one navigation landmark at every width.
  */
 export function DesktopSidebar({ expanded }: { expanded: boolean }) {
   return (
@@ -97,7 +97,7 @@ export function DesktopSidebar({ expanded }: { expanded: boolean }) {
           width is untouched — see `LogTradeAction`.
         */}
         <div className="mb-2">
-          <LogTradeAction variant="sidebar" collapsed={!expanded} />
+          <LogTradeAction collapsed={!expanded} />
         </div>
 
         {/*
@@ -106,7 +106,7 @@ export function DesktopSidebar({ expanded }: { expanded: boolean }) {
           rows need it in JS: the flyout is mounted on demand, so that nothing
           of it — visible or invisible — exists over the workspace at rest.
         */}
-        <SidebarNav variant="sidebar" collapsed={!expanded} />
+        <SidebarNav collapsed={!expanded} />
       </div>
     </aside>
   );

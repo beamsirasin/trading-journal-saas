@@ -71,10 +71,8 @@ export function ToolbarDisclosure({
             this one.
 
             The animation itself lives in `globals.css` against
-            `[data-slot='popover-content'][data-motion='toolbar']`, which is
-            the same opt-in shape `SheetContent`'s `data-motion="shell"` uses
-            and the same place every other portal animation in this product is
-            defined. Scoped rather than applied to `PopoverContent` itself
+            `[data-slot='popover-content'][data-motion='toolbar']`, the same
+            place every other portal animation in this product is defined. Scoped rather than applied to `PopoverContent` itself
             because that primitive also serves the KPI band's definition and
             indicator popovers, and giving every popover in the product motion
             is a design decision this pass was not asked to make.

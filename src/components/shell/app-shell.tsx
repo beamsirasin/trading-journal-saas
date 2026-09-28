@@ -25,8 +25,8 @@ import { SkipLink } from './skip-link';
  *
  * Landmarks are explicit — banner, navigation, main — so screen reader users
  * can jump between regions instead of traversing linearly. The navigation
- * landmark lives in exactly one place at any width: the desktop sidebar
- * above `lg`, the drawer below it.
+ * landmark lives in exactly one place at any width: the desktop sidebar at
+ * `lg` and above, the bottom bar below it.
  *
  * This stays a server component and delegates the interactive frame to
  * `ShellFrame`. The only thing it reads for itself is the sidebar-collapse
@@ -42,6 +42,7 @@ export async function AppShell({
   activeAccount,
   switchableAccounts,
   entitlement,
+  onboarded,
 }: {
   children: ReactNode;
   user: SessionUser;
@@ -53,6 +54,8 @@ export async function AppShell({
   switchableAccounts: readonly ActiveTradingAccountSummary[];
   /** `null` while onboarding is incomplete — no entitlement row exists yet (the trial starts on completion). */
   entitlement: EffectiveEntitlement | null;
+  /** Whether the active workspace has completed onboarding — the mobile bar waits for it. */
+  onboarded: boolean;
 }) {
   const cookieStore = await cookies();
   // Absent cookie means the RAIL ALONE: the compact spine is the resting
@@ -73,6 +76,7 @@ export async function AppShell({
         activeAccount={activeAccount}
         switchableAccounts={switchableAccounts}
         canCreateAccount={entitlement?.canCreateAccount ?? false}
+        onboarded={onboarded}
         banner={entitlement === null ? null : <TrialBanner entitlement={entitlement} />}
       >
         {children}

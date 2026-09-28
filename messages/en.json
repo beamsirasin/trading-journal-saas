@@ -39,8 +39,12 @@
       "analytics": "System versus trader",
       "settings": "Profile and preferences"
     },
-    "drawerTitle": "Navigation",
-    "drawerDescription": "Application sections.",
+    "mobile": {
+      "log": "Log",
+      "more": "More",
+      "moreTitle": "More",
+      "moreDescription": "Your accounts and strategies."
+    },
     "preferences": "Preferences",
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",

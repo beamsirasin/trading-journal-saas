@@ -12,34 +12,23 @@ import { Link, usePathname } from '@/i18n/navigation';
 import { NAV_ITEMS, type NavItem } from './nav-items';
 
 /**
- * How the same navigation is presented in each of the two places it appears.
- * The list itself never changes — only its density does.
+ * The DESKTOP sidebar's navigation. Each row is a fixed TWO-CELL GRID: an
+ * icon cell exactly one rail-width wide, then a label cell one
+ * secondary-panel-width wide. The row is one link spanning both cells, and
+ * its active/hover surface spans both too — one pill behind icon and label,
+ * never a fill that starts where the rail ends. When the panel is closed the
+ * aside clips the second cell away entirely, so no invisible hit area is left
+ * hanging over the workspace.
  *
- * `sidebar` — desktop. A fixed TWO-CELL GRID: an icon cell exactly one
- *             rail-width wide, then a label cell one secondary-panel-width
- *             wide. The row is one link spanning both cells, and its
- *             active/hover surface spans both too — one pill behind icon and
- *             label, never a fill that starts where the rail ends. When the
- *             panel is closed the aside clips the second cell away entirely,
- *             so no invisible hit area is left hanging over the workspace.
- * `drawer`  — mobile. Deliberately the LARGER of the two: a phone shows less
- *             at once, so the little it does show can afford to be bigger,
- *             and every row is a thumb target rather than a pointer target.
- *             Shrinking desktop type to fit a narrow screen is the mistake
- *             this variant exists to avoid. There is no rail on mobile, so
- *             this variant keeps its simpler icon-then-label row.
+ * Below `lg` this is not rendered visibly at all: the mobile bottom bar
+ * (`MobileTabBar`) is the navigation there, reading the same `NAV_ITEMS`.
  */
-export type SidebarNavVariant = 'sidebar' | 'drawer';
-
 interface SidebarNavProps {
-  variant?: SidebarNavVariant;
   /**
-   * Desktop only: the secondary panel is closed, so labels are clipped and
-   * each row reveals its own on hover/focus instead. The drawer ignores this.
+   * The secondary panel is closed, so labels are clipped and each row reveals
+   * its own on hover/focus instead.
    */
   collapsed?: boolean;
-  /** Called after navigation, so the mobile drawer can close itself. */
-  onNavigate?: () => void;
 }
 
 /**
@@ -69,24 +58,14 @@ interface SidebarNavProps {
  * the rule and the second list went with it. What is left is exactly the
  * product destinations, in one list, in one landmark.
  */
-export function SidebarNav({
-  variant = 'sidebar',
-  collapsed = false,
-  onNavigate,
-}: SidebarNavProps) {
+export function SidebarNav({ collapsed = false }: SidebarNavProps) {
   const tNav = useTranslations('nav');
 
   return (
     <nav aria-label={tNav('mainNav')} className="flex min-h-0 flex-1 flex-col">
       <ul className="flex flex-col gap-1">
         {NAV_ITEMS.map((item) => (
-          <NavRow
-            key={item.href}
-            item={item}
-            variant={variant}
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-          />
+          <NavRow key={item.href} item={item} collapsed={collapsed} />
         ))}
       </ul>
     </nav>
@@ -117,20 +96,7 @@ const ACTIVE_LABEL = 'text-[var(--shell-nav-active-foreground)]';
 const ACTIVE_ICON = 'text-[var(--shell-nav-active-icon)]';
 const REST_FOREGROUND = 'text-[var(--shell-nav-rest-foreground)]';
 
-function NavRow({
-  item,
-  variant,
-  collapsed,
-  onNavigate,
-}: {
-  item: NavItem;
-  variant: SidebarNavVariant;
-  collapsed: boolean;
-  // Explicitly `| undefined` rather than only `?`: under
-  // `exactOptionalPropertyTypes` this is forwarded from an optional prop, so
-  // the absent case really does arrive as the value `undefined`.
-  onNavigate?: (() => void) | undefined;
-}) {
+function NavRow({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const t = useTranslations('appNav');
   const pathname = usePathname();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -138,7 +104,6 @@ function NavRow({
   const { href, key, Icon } = item;
   const isActive = pathname === href;
   const label = t(`items.${key}`);
-  const isDrawer = variant === 'drawer';
 
   // Where the flyout should be painted, in VIEWPORT coordinates, or null when
   // it is not showing. Measured from the row on reveal rather than derived
@@ -147,7 +112,7 @@ function NavRow({
   // right, only the row's own box.
   const rowRef = useRef<HTMLAnchorElement>(null);
   const [flyoutAt, setFlyoutAt] = useState<{ top: number; left: number } | null>(null);
-  const revealsFlyout = !isDrawer && collapsed;
+  const revealsFlyout = collapsed;
 
   const reveal = useCallback(() => {
     const rect = rowRef.current?.getBoundingClientRect();
@@ -177,39 +142,6 @@ function NavRow({
     };
   }, [revealsFlyout, flyoutAt, hide]);
 
-  if (isDrawer) {
-    return (
-      <li>
-        <Link
-          href={href}
-          // Spread rather than `onClick={onNavigate}` — exactOptionalPropertyTypes
-          // distinguishes an absent prop from one explicitly set to undefined.
-          {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
-          aria-current={isActive ? 'page' : undefined}
-          className={cn(
-            // No `outline-none` here: the base layer's `:focus-visible` outline
-            // IS this link's focus indicator, and suppressing it would leave
-            // keyboard users with nothing.
-            'group/nav relative flex min-h-[3.25rem] items-center gap-3 rounded-lg px-3 text-base transition-colors',
-            isActive
-              ? `${ACTIVE_LABEL} font-semibold`
-              : `${REST_FOREGROUND} hover:text-foreground font-medium`,
-          )}
-        >
-          <Pill active={isActive} variant={variant} prefersReducedMotion={prefersReducedMotion} />
-          <Icon
-            className={cn(
-              'relative size-5 shrink-0 transition-colors',
-              isActive ? ACTIVE_ICON : `${REST_FOREGROUND} group-hover/nav:text-foreground`,
-            )}
-            aria-hidden="true"
-          />
-          <span className="relative shrink-0 whitespace-nowrap">{label}</span>
-        </Link>
-      </li>
-    );
-  }
-
   return (
     <li>
       {/*
@@ -227,7 +159,6 @@ function NavRow({
       <Link
         ref={rowRef}
         href={href}
-        {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
         aria-current={isActive ? 'page' : undefined}
         // NO `title`. It used to carry the label for the collapsed rail, and
         // the browser rendered it as a native tooltip — a plain white box, on
@@ -261,7 +192,7 @@ function NavRow({
           the route glyph sitting outside its own selection: the current item
           read as two disconnected pieces rather than one row.
         */}
-        <Pill active={isActive} variant={variant} prefersReducedMotion={prefersReducedMotion} />
+        <Pill active={isActive} prefersReducedMotion={prefersReducedMotion} />
 
         {/* Icon cell — sits over the rail's spine, above the pill. */}
         <span className="relative flex h-full items-center justify-center">
@@ -411,7 +342,7 @@ export function CollapsedFlyout({
  * is a luminance difference, not a hue difference — and the icon's colour and
  * the label's weight reinforce it.
  *
- * It spans the WHOLE row in both variants — icon cell and label cell alike.
+ * It spans the WHOLE row — icon cell and label cell alike.
  * An earlier pass scoped the desktop pill to the label cell so the fill would
  * stop at the rail's inner edge; that left the route icon stranded outside
  * its own selected surface, and the active item read as two broken pieces
@@ -423,11 +354,9 @@ export function CollapsedFlyout({
  */
 function Pill({
   active,
-  variant,
   prefersReducedMotion,
 }: {
   active: boolean;
-  variant: SidebarNavVariant;
   prefersReducedMotion: boolean | null;
 }) {
   // GEOMETRY. The row is 2.75rem tall, so `inset-y-1` leaves a 2.25rem (36px)
@@ -443,10 +372,7 @@ function Pill({
   // rather than being sliced off at the clip edge. Either way the icon is
   // INSIDE the surface, and the icon itself never moves — the grid columns
   // are fixed, so only the pill's right edge travels.
-  const shape =
-    variant === 'drawer'
-      ? 'absolute inset-0 rounded-lg'
-      : 'absolute inset-y-1 left-2 right-[var(--nav-pill-inset-right,0.5rem)] rounded-lg';
+  const shape = 'absolute inset-y-1 left-2 right-[var(--nav-pill-inset-right,0.5rem)] rounded-lg';
 
   if (!active) {
     // Hover/focus reuse `shape` VERBATIM — same inset, height and radius as
@@ -492,10 +418,7 @@ function Pill({
   return (
     <motion.span
       data-active-indicator="animated"
-      // Scoped per variant: the desktop sidebar stays mounted while the mobile
-      // drawer is open, so a single shared id would leave Motion with two live
-      // claimants on the same layout animation.
-      layoutId={`sidebar-active-indicator-${variant}`}
+      layoutId="sidebar-active-indicator"
       className={cn(shape, 'bg-[var(--shell-nav-active-surface)]')}
       transition={LAYOUT_SPRING}
       aria-hidden="true"

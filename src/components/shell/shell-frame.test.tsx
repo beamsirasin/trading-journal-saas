@@ -73,7 +73,7 @@ const ACCOUNT: ActiveTradingAccountSummary = {
 };
 
 /** `expanded` = rail + secondary panel. `false` = the resting rail alone. */
-function renderShell(expanded = true) {
+function renderShell(expanded = true, onboarded = true) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <ThemeProvider>
@@ -85,6 +85,7 @@ function renderShell(expanded = true) {
           switchableAccounts={[ACCOUNT]}
           canCreateAccount
           banner={null}
+          onboarded={onboarded}
         >
           <p>workspace content</p>
         </ShellFrame>
@@ -101,13 +102,27 @@ beforeEach(() => {
 });
 
 describe('ShellFrame — landmarks', () => {
-  it('renders banner, main and a single navigation landmark', () => {
+  it('renders banner, main and one navigation landmark per width', () => {
     renderShell();
 
     expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByRole('main')).toBeInTheDocument();
     expect(screen.getByRole('complementary')).toBeInTheDocument();
-    expect(screen.getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
+    /*
+      Two `Main` navigations exist in the markup — the desktop sidebar's and
+      the mobile bottom bar's — and CSS shows exactly one at any width. jsdom
+      applies no stylesheet, so what is assertable here is that each is
+      hidden at the other's width: `display: none` also removes it from the
+      accessibility tree. The rendered result is asserted in
+      `e2e/app-shell.spec.ts`.
+    */
+    const navs = screen.getAllByRole('navigation', { name: 'Main' });
+    expect(navs).toHaveLength(2);
+    const sidebar = screen.getByRole('complementary');
+    expect(sidebar).toHaveClass('hidden', 'lg:flex');
+    const bar = navs.find((nav) => !sidebar.contains(nav))!;
+    expect(bar).toHaveAttribute('data-mobile-tab-bar');
+    expect(bar).toHaveClass('lg:hidden');
   });
 
   it('renders page content inside main, not beside it', () => {
@@ -115,11 +130,17 @@ describe('ShellFrame — landmarks', () => {
     expect(within(screen.getByRole('main')).getByText('workspace content')).toBeInTheDocument();
   });
 
-  it('keeps navigation, account switching and the profile menu in the header at every width', () => {
+  it('keeps account switching and the profile menu in the header, and no navigation menu', () => {
     renderShell();
     const banner = screen.getByRole('banner');
 
-    expect(within(banner).getByRole('button', { name: /open navigation menu/i })).toBeVisible();
+    // The hamburger and its drawer are gone below `lg`: the bottom bar is the
+    // phone's navigation. The desktop toggle is the only nav control left in
+    // the header, and it is named for the sidebar it collapses.
+    expect(
+      within(banner).queryByRole('button', { name: /open navigation menu/i }),
+    ).not.toBeInTheDocument();
+    expect(within(banner).getByRole('button', { name: /(Collapse|Expand) sidebar/ })).toBeVisible();
     expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
     // Account switching is not a set-once preference — it scopes every figure
     // on screen — so it earns its place in the row on a phone too. This is the
@@ -151,7 +172,6 @@ describe('ShellFrame — landmarks', () => {
       ).not.toBeInTheDocument();
       // Nothing replaced it, and the profile control is untouched.
       expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
-      expect(within(banner).getByRole('button', { name: /open navigation menu/i })).toBeVisible();
       unmount();
     }
   });
@@ -322,6 +342,7 @@ describe('ShellFrame — landmarks', () => {
             switchableAccounts={[]}
             canCreateAccount={false}
             banner={null}
+            onboarded={false}
           >
             <p>workspace content</p>
           </ShellFrame>
@@ -414,10 +435,10 @@ describe('ShellFrame — sidebar collapse', () => {
     expect(sidebar).not.toHaveClass('invisible');
     expect(sidebar).not.toHaveClass('pointer-events-none');
 
-    // Still one navigation landmark, and the routes keep their labels — there
-    // is no icon-only presentation to fall back to.
-    expect(screen.getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
-    const trades = screen.getByRole('link', { name: en.appNav.items.trades });
+    // Still one navigation landmark in the sidebar, and the routes keep their
+    // labels — there is no icon-only presentation to fall back to.
+    expect(within(sidebar).getAllByRole('navigation', { name: 'Main' })).toHaveLength(1);
+    const trades = within(sidebar).getByRole('link', { name: en.appNav.items.trades });
     expect(trades).toHaveTextContent(en.appNav.items.trades);
     expect(trades).toHaveAttribute('href', '/app/trades');
   });
@@ -493,7 +514,9 @@ describe('ShellFrame — sidebar collapse', () => {
     // It moved to the account menu. The sidebar is product destinations now —
     // places you go to do the work — and nothing that configures the product.
     renderShell(true);
-    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const nav = within(screen.getByRole('complementary')).getByRole('navigation', {
+      name: 'Main',
+    });
 
     expect(
       within(nav).queryByRole('link', { name: en.appNav.items.settings }),
@@ -513,23 +536,9 @@ describe('ShellFrame — sidebar collapse', () => {
     expect(cell).toHaveClass('justify-center');
   });
 
-  it('never stacks a second wordmark under the header one', async () => {
-    // The drawer opens BELOW the global header, which keeps its own wordmark
-    // on screen the whole time — so the drawer must not add a second one a few
-    // pixels beneath it. (A count across the whole document would not show
-    // this: the drawer is a modal dialog, so Radix marks everything outside it
-    // `aria-hidden` and the header's copy leaves the accessibility tree while
-    // it is open. What is assertable, and what actually matters, is that the
-    // drawer contributes none of its own.)
-    const user = userEvent.setup();
+  it('shows the wordmark once, in the header', () => {
     renderShell(true);
-
     expect(screen.getAllByRole('link', { name: 'TradeChemist' })).toHaveLength(1);
-
-    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
-    const dialog = await screen.findByRole('dialog');
-
-    expect(within(dialog).queryAllByRole('link', { name: 'TradeChemist' })).toHaveLength(0);
   });
 
   it('keeps the header out of the workspace column, so it cannot move with the sidebar', () => {
@@ -543,5 +552,64 @@ describe('ShellFrame — sidebar collapse', () => {
     expect(offsetColumn).not.toBeNull();
     expect(offsetColumn).not.toContainElement(banner);
     expect(banner.className).not.toMatch(/pl-\[var\(--shell-workspace-offset\)\]/);
+  });
+});
+
+/*
+  THE MOBILE BOTTOM BAR, as the shell places it: on every product page, never
+  on a focused workflow, never before onboarding — and the workspace reserves
+  its height beneath the content exactly when it is there.
+*/
+describe('ShellFrame — mobile bottom bar', () => {
+  const bar = () => document.querySelector('[data-mobile-tab-bar]');
+  const clearance = () => screen.getByRole('main').className.split(/\s+/);
+
+  it.each([
+    '/app',
+    '/app/trades',
+    '/app/analytics',
+    '/app/accounts',
+    '/app/strategies',
+    '/app/settings',
+    '/app/plan',
+    '/app/billing',
+  ])('shows the bar and clears the content beneath it on %s', (route) => {
+    mockPathname = route;
+    renderShell();
+    expect(bar()).not.toBeNull();
+    expect(screen.getByRole('main')).toHaveAttribute('data-mobile-bar-clearance');
+    expect(clearance()).toEqual(
+      expect.arrayContaining([
+        'pb-[calc(var(--shell-bottom-bar-height)+env(safe-area-inset-bottom))]',
+        'lg:pb-0',
+      ]),
+    );
+  });
+
+  it.each([
+    '/app/trades/new',
+    '/app/trades/close',
+    '/app/trades/after-trade',
+    '/app/onboarding',
+    '/app/checkout',
+  ])('steps aside on the focused workflow %s, with no clearance left behind', (route) => {
+    mockPathname = route;
+    renderShell();
+    expect(bar()).toBeNull();
+    expect(screen.getByRole('main')).not.toHaveAttribute('data-mobile-bar-clearance');
+    expect(clearance().some((token) => token.includes('shell-bottom-bar-height'))).toBe(false);
+  });
+
+  it('waits for onboarding: no bar while every tab would only bounce back', () => {
+    mockPathname = '/app/settings';
+    renderShell(true, false);
+    expect(bar()).toBeNull();
+    expect(screen.getByRole('main')).not.toHaveAttribute('data-mobile-bar-clearance');
+  });
+
+  it('keeps the desktop sidebar on every route, focused workflows included', () => {
+    mockPathname = '/app/trades/new';
+    renderShell();
+    expect(screen.getByRole('complementary')).toBeInTheDocument();
   });
 });

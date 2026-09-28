@@ -58,3 +58,15 @@ export const SIDEBAR_COOKIE_NAME = 'shell_sidebar_collapsed';
  * header control.
  */
 export const ROUTES_WITH_OWN_ACCOUNT_CONTROL: readonly string[] = ['/app', '/app/trades'];
+
+/**
+ * THE SHELL'S DESKTOP BOUNDARY, for the few places JavaScript has to know it.
+ *
+ * It is Tailwind's `lg` (64rem, 1024px) and must stay equal to it: at `lg`
+ * and above the desktop sidebar is the navigation, below it the mobile bottom
+ * bar is, and the two are one decision expressed in CSS (`lg:flex`,
+ * `lg:hidden`) and here. The dialog-versus-sheet boundary of the Add Trade
+ * editors (`useIsDesktopViewport`, 48rem) is a different decision and is not
+ * this one.
+ */
+export const SHELL_DESKTOP_MEDIA_QUERY = '(min-width: 64rem)';
