@@ -900,14 +900,14 @@ test.describe('mobile bottom bar', () => {
     await page.goto('/en/app/trades');
     const box = (await page.locator('[data-mobile-tab-bar]').boundingBox())!;
     expect(Math.round(box.y + box.height)).toBe(844);
-    // 3.5rem, its top hairline included, plus a safe-area inset that is 0 in
+    // 4rem, its top hairline included, plus a safe-area inset that is 0 in
     // this browser — exactly the clearance the workspace reserves below.
-    expect(Math.round(box.height)).toBe(56);
+    expect(Math.round(box.height)).toBe(64);
 
     const padding = await page
       .getByRole('main')
       .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom));
-    expect(Math.round(padding)).toBeGreaterThanOrEqual(56);
+    expect(Math.round(padding)).toBeGreaterThanOrEqual(64);
 
     // Scrolled to the end, the last of the content ends above the bar.
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));

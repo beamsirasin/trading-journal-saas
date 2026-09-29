@@ -153,10 +153,9 @@ export function MobileTabBar() {
                 data-more-active={moreActive ? '' : undefined}
                 className={cn(TAB, moreActive ? ACTIVE : REST)}
               >
-                <Ellipsis
-                  aria-hidden="true"
-                  className={cn('size-5 transition-colors', moreActive && ACTIVE_ICON)}
-                />
+                <span aria-hidden="true" className={ICON_SLOT}>
+                  <Ellipsis className={cn('size-5 transition-colors', moreActive && ACTIVE_ICON)} />
+                </span>
                 <span className={cn(LABEL, moreActive ? 'font-semibold' : 'font-medium')}>
                   {t('mobile.more')}
                 </span>
@@ -195,11 +194,19 @@ export function MobileTabBar() {
 /*
   ONE TAB'S GEOMETRY, shared by links, the action and More so all five sit on
   one baseline: the full cell, at least 44x44, icon over a one-line label.
+  `pb-2.5` biases the group upward inside the full-height cell, so the labels
+  clear the bottom edge while the whole cell stays the tap target.
   No `outline-none` — the base layer's `:focus-visible` outline is the focus
   indicator, and it is independent of the active state.
 */
 const TAB =
-  'flex h-full min-h-11 w-full min-w-11 flex-col items-center justify-center gap-1 rounded-lg px-0.5 transition-colors motion-reduce:transition-none';
+  'flex h-full min-h-11 w-full min-w-11 flex-col items-center justify-center gap-1 rounded-lg px-0.5 pb-2.5 transition-colors motion-reduce:transition-none';
+/*
+  ONE ICON SLOT, the height of Log's capsule (`h-7`), shared by every tab: the
+  20px icons centre in it and the capsule fills it, so all five labels sit on
+  one baseline without a Log-specific offset.
+*/
+const ICON_SLOT = 'flex h-7 items-center justify-center';
 const LABEL = 'max-w-full truncate text-[0.6875rem] leading-none whitespace-nowrap';
 
 function TabLink({ item, active }: { item: NavItem; active: boolean }) {
@@ -212,7 +219,9 @@ function TabLink({ item, active }: { item: NavItem; active: boolean }) {
       data-tab={key}
       className={cn(TAB, active ? ACTIVE : REST)}
     >
-      <Icon aria-hidden="true" className={cn('size-5 transition-colors', active && ACTIVE_ICON)} />
+      <span aria-hidden="true" className={ICON_SLOT}>
+        <Icon className={cn('size-5 transition-colors', active && ACTIVE_ICON)} />
+      </span>
       <span className={cn(LABEL, active ? 'font-semibold' : 'font-medium')}>
         {t(`items.${key}`)}
       </span>

@@ -353,7 +353,7 @@
   --shell-header-height-mobile: 3.75rem;
   /* The mobile bottom bar's own height, below `lg` — the safe-area inset is
      added on top of it, by the bar and by the workspace clearance alike. */
-  --shell-bottom-bar-height: 3.5rem;
+  --shell-bottom-bar-height: 4rem;
   --shell-rail-width: 4rem;
   --shell-secondary-nav-width: 10rem;
 
