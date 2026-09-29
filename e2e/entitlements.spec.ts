@@ -64,21 +64,18 @@ test.describe('trial entitlements and account limits', () => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
   });
 
-  test('shows the trial banner with the full-feature 7-day/1-account summary and days remaining', async ({
+  test('an active trial renders no app-shell trial banner; the trial is shown on Plan & Billing', async ({
     page,
   }) => {
     const user = await provisionUser('e2e-entitlements-banner', { entitlement: {} });
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app');
-    const banner = page.getByRole('region', { name: 'Trial status' });
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('Free trial');
-    await expect(banner).toContainText(
-      'Your 7-day full-feature trial includes 1 active trading account.',
-    );
-    await expect(banner).toContainText('days remaining');
-    await expect(banner.getByRole('link', { name: 'View plans' })).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Trial status' })).toHaveCount(0);
+
+    await page.goto('/en/app/plan');
+    await expect(page.getByText('Free trial').first()).toBeVisible();
   });
 
   test('account usage starts at 1/1 during the trial and a second account is rejected', async ({
@@ -94,10 +91,8 @@ test.describe('trial entitlements and account limits', () => {
 
     // A direct submission to /app/accounts/new is rejected server-side
     // rather than merely hidden client-side — no form is rendered at all.
-    // Scoped to the page's own "Create unavailable" region: the persistent
-    // app-shell trial banner (still visible while trialing, even at the
-    // limit) renders its own separate "View plans" link, so an unscoped
-    // `getByRole('link', { name: 'View plans' })` here would match two.
+    // Scoped to the page's own "Create unavailable" region so the assertions
+    // cannot match an app-shell entitlement notice's own "View plans" link.
     await page.goto('/en/app/accounts/new');
     const blockedRegion = page.getByRole('region', { name: 'Create unavailable' });
     await expect(blockedRegion).toBeVisible();
@@ -300,24 +295,22 @@ test.describe('trial entitlements and account limits', () => {
     }
   });
 
-  test('trial banner and plan page render correctly in Thai', async ({ page }) => {
+  test('an active trial shows no shell banner and the plan page renders correctly in Thai', async ({
+    page,
+  }) => {
     const user = await provisionUser('e2e-entitlements-th', { entitlement: {} });
     await loginAs(page, 'th', user);
 
     await page.goto('/th/app');
-    const banner = page.getByRole('region', { name: 'สถานะการทดลองใช้' });
-    await expect(banner).toBeVisible();
-    await expect(banner).toContainText('ทดลองใช้ฟรี');
-    await expect(banner).toContainText(
-      'ทดลองใช้ทุกฟีเจอร์ 7 วัน พร้อมบัญชีเทรดที่ใช้งานอยู่ 1 บัญชี',
-    );
+    await expect(page.getByRole('main')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'สถานะการทดลองใช้' })).toHaveCount(0);
 
     await page.goto('/th/app/plan');
     await expect(page).toHaveURL(/\/th\/app\/plan$/);
     await expect(page.getByRole('heading', { name: 'แผนและการเรียกเก็บเงิน' })).toBeVisible();
   });
 
-  test('no horizontal overflow at a 320px viewport with the trial banner and usage summary visible', async ({
+  test('no horizontal overflow at a 320px viewport with the trial usage summary visible', async ({
     page,
   }) => {
     const user = await provisionUser('e2e-entitlements-mobile-320', { entitlement: {} });
@@ -325,7 +318,7 @@ test.describe('trial entitlements and account limits', () => {
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts');
-    await expect(page.getByRole('region', { name: 'Trial status' })).toBeVisible();
+    await expect(page.getByText('1 of 1 trading accounts used')).toBeVisible();
 
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);

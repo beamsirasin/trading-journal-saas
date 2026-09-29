@@ -521,12 +521,15 @@ The current information architecture stays. These rules govern how the shell loo
    large tinted block (`docs/design-system.md` §2).
 2. **Desktop:** fixed icon rail plus a labelled secondary panel. Labels are visible whenever the
    panel is open; the collapsed rail shows icons with accessible names and tooltips.
-3. **Mobile (below `lg`):** a bottom bar is the navigation — **Dashboard · Trades · Log ·
+3. **Mobile (below `lg`):** a bottom bar is the navigation — **Dashboard · Trades · Add Trade ·
    Analytics · More** — with no hamburger or drawer. The header keeps brand, account switcher and
-   account menu only. Destinations are links with an icon and a visible label, the current one
-   marked in the accent and by `aria-current`. **Log is the primary action, not a destination:** a
-   compact accent capsule on the tabs' baseline (never a raised floating button) that opens the
-   existing recording flow and never takes a selected state. **More** opens a sheet of the secondary
+   account menu only. The bar is a surface of its own — the card plane, rounded top corners and a
+   soft upward shadow — not a toolbar drawn on the page. Destinations are quiet links with an icon
+   and a visible label, the current one marked in the accent and by `aria-current`. **Add Trade is
+   the primary action, not a destination,** and the bar's focal point: a round accent button that
+   rises above the tabs' icon line (modestly — not a large floating action button) while its label
+   stays on the tabs' label line. It opens the existing recording flow and never takes a selected
+   state. **More** opens a sheet of the secondary
    product destinations (Accounts, Strategies) and is lit while one of them is open; account and app
    preferences stay in the account menu. **Focused workflows hide the bar** — recording, closing
    and after-trade flows, onboarding and checkout — and the workspace reserves the bar's height

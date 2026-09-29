@@ -655,7 +655,7 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
     // §28 — Recent Trades says what to do next; the Calendar says the month
     // holds nothing eligible. Neither is an error, and no Day Review is open.
     await expect(recent(page).locator('[data-recent-trades-state="empty"]')).toBeVisible();
-    await expect(recent(page).getByRole('link', { name: 'Log a Trade' })).toBeVisible();
+    await expect(recent(page).getByRole('link', { name: 'Add Trade' })).toBeVisible();
     await expect(calendar(page).locator('[data-calendar-state="empty"]')).toBeVisible();
     await expect(calendar(page).getByText('Nothing eligible this month')).toBeVisible();
     await expect(calendar(page).locator('[data-calendar-grid]')).toHaveCount(0);

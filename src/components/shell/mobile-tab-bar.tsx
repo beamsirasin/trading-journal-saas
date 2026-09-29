@@ -39,7 +39,7 @@ const REST = 'text-muted-foreground hover:text-foreground';
 /**
  * THE MOBILE BOTTOM BAR — the application's navigation below `lg`.
  *
- *   Dashboard | Trades | Log | Analytics | More
+ *   Dashboard | Trades | Add Trade | Analytics | More
  *
  * It replaces the drawer the header's hamburger used to open: the core loop —
  * record, review, understand — is one tap away from anywhere instead of two,
@@ -52,13 +52,12 @@ const REST = 'text-muted-foreground hover:text-foreground';
  *
  * - Dashboard, Trades, Analytics are DESTINATIONS: real links, icon and a
  *   visible label, and the current one carries `aria-current="page"`.
- * - Log is an ACTION. It opens the existing recording flow at
+ * - Add Trade is an ACTION. It opens the existing recording flow at
  *   `/app/trades/new`, whose first step already asks At Entry or After Trade,
  *   so there is no chooser here. It never takes `aria-current` or a selected
- *   state — the bar is hidden on that route anyway — and its accessible name
- *   is the full "Log a trade", which begins with the visible "Log". It is
- *   marked by a compact accent capsule on the SAME baseline as the tabs, not
- *   a raised floating button.
+ *   state — the bar is hidden on that route anyway. It is the bar's focal
+ *   point: a round accent button that rises above the tabs' icon line while
+ *   its label stays on the tabs' label line (see `ADD_TRADE_BUTTON`).
  * - More is a BUTTON that opens a sheet of the secondary destinations
  *   (Accounts, Strategies). While one of those is the page, More is lit so
  *   the reader can see where they are — but it takes no `aria-current`, since
@@ -66,9 +65,12 @@ const REST = 'text-muted-foreground hover:text-foreground';
  *
  * Positioned `fixed` at `z-40`: above the sticky page toolbars (`z-30`),
  * below every Radix overlay (`z-50`), so the More sheet, the Trade details
- * sheet and every dialog cover it. It carries the bottom safe-area inset
- * itself; the workspace reserves the same height plus inset beneath its
- * content (`ShellFrame`) so nothing ever sits under it.
+ * sheet and every dialog cover it. It is a surface of its own — the card
+ * plane, rounded top corners and an upward `shadow-bar` — rather than a
+ * toolbar drawn on the page. It carries the bottom safe-area inset itself;
+ * the workspace reserves `--shell-bottom-bar-clearance` (the surface plus the
+ * Add Trade button's rise) plus the inset beneath its content (`ShellFrame`)
+ * so nothing ever sits under it.
  */
 export function MobileTabBar() {
   const t = useTranslations('appNav');
@@ -104,12 +106,12 @@ export function MobileTabBar() {
 
   return (
     // The bar's top hairline sits INSIDE --shell-bottom-bar-height (the list
-    // is 1px shorter), so the bar is exactly the height the workspace reserves.
+    // is 1px shorter), so the surface is exactly that height.
     <nav
       aria-label={tNav('mainNav')}
       data-mobile-tab-bar=""
       className={cn(
-        'bg-background/95 border-border fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur lg:hidden',
+        'bg-card border-border/60 shadow-bar fixed inset-x-0 bottom-0 z-40 rounded-t-3xl border-t lg:hidden',
         'pb-[env(safe-area-inset-bottom)]',
       )}
     >
@@ -125,17 +127,10 @@ export function MobileTabBar() {
             href={LOG_TRADE_HREF}
             aria-label={t('logTrade')}
             data-log-trade-action="bar"
-            className={cn(TAB, 'text-foreground group/log')}
+            className={cn(TAB, 'text-foreground group/add')}
           >
-            <span
-              aria-hidden="true"
-              className={cn(
-                'bg-primary text-primary-foreground flex h-7 w-11 items-center justify-center rounded-full',
-                'group-hover/log:bg-primary-hover group-active/log:bg-primary-active',
-                'transition-colors duration-150 motion-reduce:transition-none',
-              )}
-            >
-              <PenLine className="size-4" />
+            <span aria-hidden="true" className={ADD_TRADE_BUTTON}>
+              <PenLine className="size-[1.375rem]" />
             </span>
             <span aria-hidden="true" className={cn(LABEL, 'font-semibold')}>
               {t('mobile.log')}
@@ -154,7 +149,7 @@ export function MobileTabBar() {
                 className={cn(TAB, moreActive ? ACTIVE : REST)}
               >
                 <span aria-hidden="true" className={ICON_SLOT}>
-                  <Ellipsis className={cn('size-5 transition-colors', moreActive && ACTIVE_ICON)} />
+                  <Ellipsis className={cn('size-6 transition-colors', moreActive && ACTIVE_ICON)} />
                 </span>
                 <span className={cn(LABEL, moreActive ? 'font-semibold' : 'font-medium')}>
                   {t('mobile.more')}
@@ -192,22 +187,34 @@ export function MobileTabBar() {
 }
 
 /*
-  ONE TAB'S GEOMETRY, shared by links, the action and More so all five sit on
-  one baseline: the full cell, at least 44x44, icon over a one-line label.
-  `pb-2.5` biases the group upward inside the full-height cell, so the labels
-  clear the bottom edge while the whole cell stays the tap target.
-  No `outline-none` — the base layer's `:focus-visible` outline is the focus
-  indicator, and it is independent of the active state.
+  ONE TAB'S GEOMETRY, shared by links, the action and More so all five labels
+  sit on one line: the full cell (at least 44x44) is the tap target, and the
+  icon over a one-line label hangs from `pt-3`, leaving the generous room
+  below the labels. No `outline-none` — the base layer's `:focus-visible`
+  outline is the focus indicator, and it is independent of the active state.
 */
 const TAB =
-  'flex h-full min-h-11 w-full min-w-11 flex-col items-center justify-center gap-1 rounded-lg px-0.5 pb-2.5 transition-colors motion-reduce:transition-none';
+  'flex h-full min-h-11 w-full min-w-11 flex-col items-center justify-start gap-1 rounded-2xl px-0.5 pt-3 transition-colors motion-reduce:transition-none';
+/* ONE ICON SLOT, shared by the four tabs: a 24px icon on the icon line. */
+const ICON_SLOT = 'flex size-6 items-center justify-center';
 /*
-  ONE ICON SLOT, the height of Log's capsule (`h-7`), shared by every tab: the
-  20px icons centre in it and the capsule fills it, so all five labels sit on
-  one baseline without a Log-specific offset.
+  THE ADD TRADE BUTTON grows UPWARD from the icon slot's bottom edge: 48px
+  tall with `-mt-6` (48 − 24), so its label lands on the tabs' label line and
+  the button rises 12px above the tabs' icon line — and 11px above the bar's
+  top edge, which `--shell-bottom-bar-action-rise` reserves beneath the page.
+  The `ring-card` collar joins it to the surface where it crosses the edge.
 */
-const ICON_SLOT = 'flex h-7 items-center justify-center';
-const LABEL = 'max-w-full truncate text-[0.6875rem] leading-none whitespace-nowrap';
+const ADD_TRADE_BUTTON = cn(
+  'bg-primary text-primary-foreground ring-card shadow-control -mt-6 flex size-12 shrink-0 items-center justify-center rounded-full ring-4',
+  'group-hover/add:bg-primary-hover group-active/add:bg-primary-active',
+  'transition-colors duration-150 motion-reduce:transition-none',
+);
+/*
+  12px labels; below 360px wide (a 320px phone's 62px cells) they step down to
+  11px so the active "Dashboard" — the widest, and semibold — still fits.
+*/
+const LABEL =
+  'max-w-full truncate text-xs leading-4 whitespace-nowrap max-[359px]:text-[0.6875rem]';
 
 function TabLink({ item, active }: { item: NavItem; active: boolean }) {
   const t = useTranslations('appNav');
@@ -220,7 +227,7 @@ function TabLink({ item, active }: { item: NavItem; active: boolean }) {
       className={cn(TAB, active ? ACTIVE : REST)}
     >
       <span aria-hidden="true" className={ICON_SLOT}>
-        <Icon className={cn('size-5 transition-colors', active && ACTIVE_ICON)} />
+        <Icon className={cn('size-6 transition-colors', active && ACTIVE_ICON)} />
       </span>
       <span className={cn(LABEL, active ? 'font-semibold' : 'font-medium')}>
         {t(`items.${key}`)}

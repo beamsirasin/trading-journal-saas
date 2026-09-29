@@ -193,7 +193,7 @@ describe('Recent Trades empty state', () => {
     const { container } = renderCard([]);
     expect(container.querySelector('[data-recent-trades-state="empty"]')).toBeInTheDocument();
     expect(container.querySelectorAll('[data-recent-trade-row]')).toHaveLength(0);
-    expect(screen.getByRole('link', { name: 'Log a Trade' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Add Trade' })).toHaveAttribute(
       'href',
       '/app/trades/new',
     );

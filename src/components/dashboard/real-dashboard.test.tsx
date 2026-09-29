@@ -788,7 +788,7 @@ describe('RealDashboard', () => {
   it('renders an instructional recent-Trades state without replacing populated metrics', () => {
     renderDashboard(overview(), []);
     expect(screen.getByText('No Trades in this account yet')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Log a Trade' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Add Trade' })).toHaveAttribute(
       'href',
       '/app/trades/new',
     );

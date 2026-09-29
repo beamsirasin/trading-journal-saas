@@ -266,11 +266,12 @@ export function ShellFrame({
           data-mobile-bar-clearance={showMobileBar ? '' : undefined}
           className={cn(
             'min-w-0 flex-1',
-            // Clearance for the fixed bar: its height plus the same safe-area
-            // inset it carries, so the last row of any page scrolls clear of
-            // it. Gone at `lg`, where there is no bar.
+            // Clearance for the fixed bar: its surface plus the Add Trade
+            // button's rise above it, plus the same safe-area inset it
+            // carries, so the last row of any page scrolls clear of it. Gone
+            // at `lg`, where there is no bar.
             showMobileBar &&
-              'pb-[calc(var(--shell-bottom-bar-height)+env(safe-area-inset-bottom))] lg:pb-0',
+              'pb-[calc(var(--shell-bottom-bar-clearance)+env(safe-area-inset-bottom))] lg:pb-0',
           )}
         >
           {banner}

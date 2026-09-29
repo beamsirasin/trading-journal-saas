@@ -128,7 +128,7 @@ describe('EmptyTradingDashboard', () => {
   it('shows the honest no-trades explanation', () => {
     renderDashboard();
     expect(screen.getByText('No trades recorded yet')).toBeInTheDocument();
-    expect(screen.getByText(/log a trade to begin/i)).toBeInTheDocument();
+    expect(screen.getByText(/add a trade to begin/i)).toBeInTheDocument();
   });
 
   it('renders no KPI/metric cards', () => {

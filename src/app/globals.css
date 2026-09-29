@@ -116,6 +116,7 @@
   --shadow-card: var(--elevation-card);
   --shadow-elevated: var(--elevation-elevated);
   --shadow-popover: var(--elevation-popover);
+  --shadow-bar: var(--elevation-bar);
 
   /*
    * Chart series. A VALIDATED categorical theme, not hand-picked colours —
@@ -351,9 +352,17 @@
    */
   --shell-header-height: 3.5rem;
   --shell-header-height-mobile: 3.75rem;
-  /* The mobile bottom bar's own height, below `lg` — the safe-area inset is
-     added on top of it, by the bar and by the workspace clearance alike. */
-  --shell-bottom-bar-height: 4rem;
+  /* THE MOBILE BOTTOM BAR, below `lg` — one geometry source for the bar and
+     the workspace clearance beneath it. The surface is `height`. The Add
+     Trade button crosses the surface's top edge by 11px, plus its 4px
+     collar; `action-rise` reserves that, rounded up to 1rem. The workspace
+     reserves both (`clearance`), and the bar and the clearance each add the
+     safe-area inset on top. */
+  --shell-bottom-bar-height: 5rem;
+  --shell-bottom-bar-action-rise: 1rem;
+  --shell-bottom-bar-clearance: calc(
+    var(--shell-bottom-bar-height) + var(--shell-bottom-bar-action-rise)
+  );
   --shell-rail-width: 4rem;
   --shell-secondary-nav-width: 10rem;
 
@@ -524,6 +533,8 @@ html[lang='th'] .text-label {
   --elevation-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 24px -12px rgb(0 0 0 / 0.4);
   --elevation-elevated: 0 2px 4px rgb(0 0 0 / 0.18), 0 24px 48px -24px rgb(0 0 0 / 0.55);
   --elevation-popover: 0 8px 24px -12px rgb(0 0 0 / 0.55);
+  /* The mobile bottom bar lifts UP off the page, so its shadow falls upward. */
+  --elevation-bar: 0 -10px 28px -14px rgb(0 0 0 / 0.7);
 
   --chart-1: #0f9e8e;
   --chart-2: #3b82f6;
@@ -636,6 +647,8 @@ html[lang='th'] .text-label {
   --elevation-card: 0 1px 2px rgb(11 18 32 / 0.05), 0 8px 24px -12px rgb(11 18 32 / 0.24);
   --elevation-elevated: 0 2px 4px rgb(11 18 32 / 0.06), 0 24px 48px -24px rgb(11 18 32 / 0.36);
   --elevation-popover: 0 8px 24px -12px rgb(11 18 32 / 0.3);
+  /* The mobile bottom bar lifts UP off the page, so its shadow falls upward. */
+  --elevation-bar: 0 -1px 2px rgb(11 18 32 / 0.04), 0 -10px 28px -14px rgb(11 18 32 / 0.18);
 
   --chart-1: #0891b2;
   --chart-2: #1d4ed8;
@@ -748,6 +761,8 @@ html[lang='th'] .text-label {
   --elevation-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 24px -12px rgb(0 0 0 / 0.4);
   --elevation-elevated: 0 2px 4px rgb(0 0 0 / 0.18), 0 24px 48px -24px rgb(0 0 0 / 0.55);
   --elevation-popover: 0 8px 24px -12px rgb(0 0 0 / 0.55);
+  /* The mobile bottom bar lifts UP off the page, so its shadow falls upward. */
+  --elevation-bar: 0 -10px 28px -14px rgb(0 0 0 / 0.7);
 
   --chart-1: #0f9e8e;
   --chart-2: #3b82f6;

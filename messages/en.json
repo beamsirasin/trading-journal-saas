@@ -40,7 +40,7 @@
       "settings": "Profile and preferences"
     },
     "mobile": {
-      "log": "Log",
+      "log": "Add Trade",
       "more": "More",
       "moreTitle": "More",
       "moreDescription": "Your accounts and strategies."
@@ -68,7 +68,7 @@
         "confirm": "Sign out and remove"
       }
     },
-    "logTrade": "Log a trade"
+    "logTrade": "Add Trade"
   },
   "footer": {
     "tagline": "A trading journal that separates strategy edge from execution.",
@@ -280,7 +280,7 @@
       },
       "mobile": {
         "question": "Can I use it on my phone?",
-        "answer": "Yes. Logging a trade is designed for a phone. Analytics are designed for a desktop screen and stay readable on a tablet."
+        "answer": "Yes. Adding a trade is designed for a phone. Analytics are designed for a desktop screen and stay readable on a tablet."
       },
       "aiAnalysis": {
         "question": "Does it use AI to analyse my trades?",
@@ -351,7 +351,7 @@
     "baseCurrencyLabel": "Base currency",
     "startingBalanceLabel": "Starting balance",
     "noTradesTitle": "No trades recorded yet",
-    "noTradesDescription": "Log a Trade to begin building your real System and Trader performance history.",
+    "noTradesDescription": "Add a trade to begin building your real System and Trader performance history.",
     "noActiveAccountTitle": "No active trading account",
     "noActiveAccountDescription": "Your workspace does not have a usable trading account right now. Set one up to continue.",
     "noActiveAccountCta": "Manage trading accounts",
@@ -418,8 +418,8 @@
         "listLabel": "Recent Trades in the active account",
         "viewAll": "View all Trades",
         "emptyTitle": "No Trades in this account yet",
-        "emptyDescription": "Log your first Trade. Analytics will appear as Trader and System results become eligible.",
-        "logTrade": "Log a Trade"
+        "emptyDescription": "Add your first trade. Analytics will appear as Trader and System results become eligible.",
+        "logTrade": "Add Trade"
       },
       "notAvailableShort": "—",
       "viewFullAnalytics": "View full analytics",
@@ -594,7 +594,7 @@
       "allAccountsDescription": "Across all demo accounts, newest first.",
       "footnote": "Headline figures cover all demo accounts for the selected range. Only this list responds to the account picker.",
       "emptyTitle": "No trades in this account yet",
-      "emptyDescription": "Log your first trade to see how much of your strategy's edge you are actually capturing.",
+      "emptyDescription": "Add your first trade to see how much of your strategy's edge you are actually capturing.",
       "emptyCta": "Sign up"
     },
     "mistakes": {
@@ -1063,7 +1063,7 @@
   "trades": {
     "title": "Trades",
     "description": "Every trade scored twice — once against the strategy's rules, once against what you actually did.",
-    "logTrade": "Log a trade",
+    "logTrade": "Add Trade",
     "logTradeNote": "Trade entry arrives with the journal release. This page is a layout preview.",
     "allTradesTitle": "{count} closed trades",
     "allTradesDescription": "Newest first. Both outcome columns are stored fields, never inferred from profit.",
@@ -1231,7 +1231,7 @@
     },
     "empty": {
       "title": "No Trades yet",
-      "description": "Log your first Trade to start a journal grounded in your execution."
+      "description": "Add your first trade to start a journal grounded in your execution."
     },
     "field": {
       "account": "Trading Account",
@@ -1645,7 +1645,7 @@
       "frustrated": "Frustrated"
     },
     "create": {
-      "pageTitle": "Log a trade",
+      "pageTitle": "Add Trade",
       "pageDescription": "Record your plan at entry or journal a completed trade.",
       "blockedTitle": "Trade creation is unavailable",
       "progress": "Trade creation progress",
@@ -2726,7 +2726,7 @@
         "continuing": "Opening…"
       },
       "wizard": {
-        "progressLabel": "Log a trade progress",
+        "progressLabel": "Add Trade progress",
         "stepStatus": "Step {current} of {total}",
         "close": "Close"
       },
@@ -2781,10 +2781,10 @@
     },
     "prerequisite": {
       "noAccountTitle": "No active Trading Account",
-      "noAccountDescription": "Create or restore an active Trading Account before logging a Trade.",
+      "noAccountDescription": "Create or restore an active Trading Account before adding a trade.",
       "manageAccounts": "Manage trading accounts",
       "noStrategyTitle": "No active Strategy",
-      "noStrategyDescription": "Create a Strategy and at least one Setup before logging a Trade.",
+      "noStrategyDescription": "Create a Strategy and at least one Setup before adding a trade.",
       "createStrategy": "Create Strategy",
       "noSetupTitle": "No usable Setup",
       "noSetupDescription": "Your active Strategies need an active Setup before they can be used for a Trade.",
@@ -4207,12 +4207,7 @@
   "entitlements": {
     "banner": {
       "regionLabel": "Trial status",
-      "trialActive": "Free trial",
-      "trialSummary": "Your 7-day full-feature trial includes 1 active trading account.",
-      "daysRemaining": "{days, plural, one {# day remaining} other {# days remaining}}",
-      "lessThanOneDay": "Less than one day remaining",
       "trialExpired": "Trial expired",
-      "accountUsage": "{used}/{limit} trading accounts",
       "viewPlans": "View plans"
     },
     "expiredNotice": {

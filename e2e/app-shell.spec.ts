@@ -211,7 +211,7 @@ test.describe('responsive navigation', () => {
     for (const control of [
       bar.getByRole('link', { name: 'Dashboard' }),
       bar.getByRole('link', { name: 'Trades' }),
-      bar.getByRole('link', { name: 'Log a trade' }),
+      bar.getByRole('link', { name: 'Add Trade' }),
       bar.getByRole('link', { name: 'Analytics' }),
       bar.getByRole('button', { name: 'More' }),
     ]) {
@@ -817,8 +817,8 @@ test.describe('sidebar motion', () => {
 /**
  * THE MOBILE BOTTOM BAR — the navigation below `lg`.
  *
- * Dashboard | Trades | Log | Analytics | More. Destinations carry
- * `aria-current`; Log is an action and never does; More is a button that
+ * Dashboard | Trades | Add Trade | Analytics | More. Destinations carry
+ * `aria-current`; Add Trade is an action and never does; More is a button that
  * lights (without `aria-current`) while one of its destinations is open.
  * Focused workflows hide the bar; the workspace reserves its height beneath
  * the content whenever it is shown.
@@ -840,7 +840,7 @@ test.describe('mobile bottom bar', () => {
       const current = bar(page).locator('[aria-current="page"]');
       await expect(current).toHaveCount(1);
       await expect(current).toHaveAccessibleName(name);
-      await expect(bar(page).getByRole('link', { name: 'Log a trade' })).not.toHaveAttribute(
+      await expect(bar(page).getByRole('link', { name: 'Add Trade' })).not.toHaveAttribute(
         'aria-current',
       );
     });
@@ -865,9 +865,11 @@ test.describe('mobile bottom bar', () => {
     }
   });
 
-  test('Log opens the existing recording choice, where the bar steps aside', async ({ page }) => {
+  test('Add Trade opens the existing recording choice, where the bar steps aside', async ({
+    page,
+  }) => {
     await page.goto('/en/app/trades');
-    await bar(page).getByRole('link', { name: 'Log a trade' }).click();
+    await bar(page).getByRole('link', { name: 'Add Trade' }).click();
     await expect(page).toHaveURL(/\/app\/trades\/new$/);
     // The first step of the existing flow — no second chooser in between.
     await expect(
@@ -900,22 +902,33 @@ test.describe('mobile bottom bar', () => {
     await page.goto('/en/app/trades');
     const box = (await page.locator('[data-mobile-tab-bar]').boundingBox())!;
     expect(Math.round(box.y + box.height)).toBe(844);
-    // 4rem, its top hairline included, plus a safe-area inset that is 0 in
-    // this browser — exactly the clearance the workspace reserves below.
-    expect(Math.round(box.height)).toBe(64);
+    // The 5rem surface, its top hairline included, plus a safe-area inset
+    // that is 0 in this browser.
+    expect(Math.round(box.height)).toBe(80);
 
+    // The Add Trade button rises above the surface; its 4px collar is part of
+    // the footprint the page must stay clear of.
+    const buttonTop = await bar(page)
+      .getByRole('link', { name: 'Add Trade' })
+      .locator('span[aria-hidden]')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().top - 4);
+    expect(buttonTop).toBeLessThan(box.y);
+
+    // The workspace reserves the surface plus the button's rise: 5rem + 1rem.
     const padding = await page
       .getByRole('main')
       .evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom));
-    expect(Math.round(padding)).toBeGreaterThanOrEqual(64);
+    expect(Math.round(padding)).toBe(96);
 
-    // Scrolled to the end, the last of the content ends above the bar.
+    // Scrolled to the end, the last of the content ends above the whole
+    // footprint — the raised button included.
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     const contentBottom = await page.getByRole('main').evaluate((el) => {
       const rect = el.getBoundingClientRect();
       return rect.bottom - Number.parseFloat(getComputedStyle(el).paddingBottom);
     });
-    expect(contentBottom).toBeLessThanOrEqual(box.y + 0.5);
+    expect(contentBottom).toBeLessThanOrEqual(buttonTop + 0.5);
   });
 
   test('layers its More sheet above itself', async ({ page }) => {
@@ -1583,17 +1596,14 @@ test.describe('shell polish — mobile bottom bar', () => {
         };
 
         const bar = document.querySelector<HTMLElement>('[data-mobile-tab-bar]')!;
-        // The PAGE colour, resolved from its token: `body` itself paints
-        // nothing, so its computed background is transparent.
+        // The bar is its own opaque surface: the card plane, one step above
+        // the page in both themes. Resolved from its token.
         const probe = document.createElement('div');
-        probe.style.background = 'var(--background)';
+        probe.style.background = 'var(--card)';
         document.body.append(probe);
-        const page = parts(getComputedStyle(probe).backgroundColor).slice(0, 3) as Rgb;
+        const card = getComputedStyle(probe).backgroundColor;
         probe.remove();
-        // The bar is the page colour at 95% over the page colour — the page
-        // colour itself. Read from the token, because a translucent computed
-        // colour serialises in oklab, which this RGB arithmetic cannot read.
-        const surface = page;
+        const surface = parts(card).slice(0, 3) as Rgb;
         const active = bar.querySelector<HTMLElement>('[aria-current="page"]')!;
         const inactive = bar.querySelector<HTMLElement>('a[data-tab]:not([aria-current])')!;
         const log = bar.querySelector<HTMLElement>('[data-log-trade-action]')!;
@@ -1602,6 +1612,7 @@ test.describe('shell polish — mobile bottom bar', () => {
 
         return {
           barBackground: getComputedStyle(bar).backgroundColor,
+          card,
           activeLabel: contrast(over(getComputedStyle(active).color, surface), surface),
           activeIcon: contrast(
             over(getComputedStyle(active.querySelector('svg')!).color, surface),
@@ -1613,8 +1624,7 @@ test.describe('shell polish — mobile bottom bar', () => {
         };
       });
 
-      // The page colour at 95%: see the note on `surface` above.
-      expect(measured.barBackground).toMatch(/\/ 0\.95\)$/);
+      expect(measured.barBackground).toBe(measured.card);
       expect(measured.activeLabel).toBeGreaterThanOrEqual(4.5);
       expect(measured.activeIcon).toBeGreaterThanOrEqual(3);
       expect(measured.inactiveLabel).toBeGreaterThanOrEqual(4.5);

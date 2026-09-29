@@ -37,19 +37,18 @@ function renderSidebar(expanded: boolean, locale: 'en' | 'th' = 'en') {
   );
 }
 
-describe('Log a trade — the shell action', () => {
-  it('is named Log a trade, in journaling language', () => {
+describe('Add Trade — the shell action', () => {
+  it('is named Add Trade', () => {
     renderAction();
-    const action = screen.getByRole('link', { name: 'Log a trade' });
+    const action = screen.getByRole('link', { name: 'Add Trade' });
     expect(action).toBeVisible();
-    // Not "Add Trade", and not an import of any kind.
-    expect(screen.queryByText(/add trade/i)).not.toBeInTheDocument();
+    // The action's name, not an import of any kind.
     expect(screen.queryByText(/import/i)).not.toBeInTheDocument();
   });
 
   it('links to the existing recording route', () => {
     renderAction();
-    expect(screen.getByRole('link', { name: 'Log a trade' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Add Trade' })).toHaveAttribute(
       'href',
       '/app/trades/new',
     );
@@ -57,7 +56,7 @@ describe('Log a trade — the shell action', () => {
 
   it('is a real link, so keyboard activation and focus come from the browser', () => {
     renderAction();
-    const action = screen.getByRole('link', { name: 'Log a trade' });
+    const action = screen.getByRole('link', { name: 'Add Trade' });
     expect(action.tagName).toBe('A');
     // No `outline-none` anywhere: the base layer's focus-visible outline is
     // this control's focus indicator, exactly as it is for the rows below it.
@@ -66,19 +65,19 @@ describe('Log a trade — the shell action', () => {
 
   it('takes no current-page state, because it is an action and not a destination', () => {
     renderAction();
-    expect(screen.getByRole('link', { name: 'Log a trade' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Add Trade' })).not.toHaveAttribute('aria-current');
   });
 
   it('translates', () => {
     renderAction({}, 'th');
-    expect(screen.getByRole('link', { name: 'บันทึกออเดอร์' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'เพิ่มเทรด' })).toBeVisible();
   });
 });
 
-describe('Log a trade — expanded rail', () => {
+describe('Add Trade — expanded rail', () => {
   it('renders above the navigation, outside the navigation landmark', () => {
     renderSidebar(true);
-    const action = screen.getByRole('link', { name: 'Log a trade' });
+    const action = screen.getByRole('link', { name: 'Add Trade' });
     const nav = screen.getByRole('navigation', { name: 'Main' });
 
     // An action, not a sixth section.
@@ -97,17 +96,17 @@ describe('Log a trade — expanded rail', () => {
 
   it('shows the visible label beside the icon', () => {
     renderSidebar(true);
-    const action = screen.getByRole('link', { name: 'Log a trade' });
-    expect(within(action).getByText('Log a trade')).toBeInTheDocument();
+    const action = screen.getByRole('link', { name: 'Add Trade' });
+    expect(within(action).getByText('Add Trade')).toBeInTheDocument();
   });
 });
 
-describe('Log a trade — collapsed rail', () => {
+describe('Add Trade — collapsed rail', () => {
   it('keeps an accessible name without a visible label', () => {
     // The label cell is clipped by the aside, not removed, so it remains the
     // link's accessible name — the collapsed control is never an unnamed icon.
     renderSidebar(false);
-    expect(screen.getByRole('link', { name: 'Log a trade' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add Trade' })).toBeInTheDocument();
   });
 
   it("borrows the navigation rows' own grid, so the icon cannot drift off the rail", () => {
@@ -145,7 +144,7 @@ describe('Log a trade — collapsed rail', () => {
   });
 });
 
-describe('Log a trade — motion', () => {
+describe('Add Trade — motion', () => {
   it('is restrained and drops out under prefers-reduced-motion', () => {
     const { container } = renderSidebar(true);
     const action = container.querySelector('[data-log-trade-action="sidebar"]');

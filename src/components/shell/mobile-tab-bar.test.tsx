@@ -134,13 +134,13 @@ describe('MobileTabBar — structure', () => {
     expect(bar().className).toContain('pb-[env(safe-area-inset-bottom)]');
   });
 
-  it('reads Dashboard | Trades | Log | Analytics | More, in that order', () => {
+  it('reads Dashboard | Trades | Add Trade | Analytics | More, in that order', () => {
     renderBar();
     const items = within(bar()).getAllByRole('listitem');
     expect(items.map((item) => item.textContent)).toEqual([
       'Dashboard',
       'Trades',
-      'Log',
+      'Add Trade',
       'Analytics',
       'More',
     ]);
@@ -165,7 +165,7 @@ describe('MobileTabBar — structure', () => {
     for (const control of [
       tab('Dashboard'),
       tab('Trades'),
-      tab('Log a trade'),
+      tab('Add Trade'),
       tab('Analytics'),
       more(),
     ]) {
@@ -215,15 +215,15 @@ describe('MobileTabBar — the current page', () => {
   );
 });
 
-describe('MobileTabBar — Log a trade', () => {
+describe('MobileTabBar — Add Trade', () => {
   it('is an action into the existing recording flow, named in full', () => {
     renderBar();
-    const log = tab('Log a trade');
+    const log = tab('Add Trade');
     // The first step of /app/trades/new already asks At Entry or After Trade.
     expect(log).toHaveAttribute('href', '/app/trades/new');
     expect(log).toHaveAttribute('data-log-trade-action', 'bar');
     // The visible word begins the accessible name (WCAG 2.5.3).
-    expect(log).toHaveTextContent('Log');
+    expect(log).toHaveTextContent('Add Trade');
   });
 
   it.each(['/app', '/app/trades', '/app/trades/new', '/app/analytics'])(
@@ -231,15 +231,17 @@ describe('MobileTabBar — Log a trade', () => {
     (route) => {
       pathname = route;
       renderBar();
-      expect(tab('Log a trade')).not.toHaveAttribute('aria-current');
+      expect(tab('Add Trade')).not.toHaveAttribute('aria-current');
     },
   );
 
-  it('is a compact accent capsule on the tabs’ baseline, not a raised button', () => {
+  it('is a round accent button that rises from the icon line, its label on the tabs’ label line', () => {
     renderBar();
-    const capsule = tab('Log a trade').querySelector('span[aria-hidden]')!;
-    expect(capsule).toHaveClass('bg-primary', 'h-7', 'w-11', 'rounded-full');
-    expect(tab('Log a trade').className).not.toMatch(/-translate-y|shadow|absolute/);
+    const button = tab('Add Trade').querySelector('span[aria-hidden]')!;
+    // 48px, grown upward by the 24px icon slot it replaces, so its label stays
+    // on the tabs' label line — in the flow, never lifted out of it.
+    expect(button).toHaveClass('bg-primary', 'size-12', '-mt-6', 'rounded-full');
+    expect(tab('Add Trade').className).not.toMatch(/translate-y|absolute/);
   });
 });
 
@@ -319,7 +321,7 @@ describe('MobileTabBar — More', () => {
 });
 
 describe('MobileTabBar — Thai', () => {
-  it('uses the Thai labels, and the full Thai name for Log', () => {
+  it('uses the Thai labels, and the Thai name for Add Trade', () => {
     renderBar('th');
     const nav = screen.getByRole('navigation', { name: th.nav.mainNav });
     expect(

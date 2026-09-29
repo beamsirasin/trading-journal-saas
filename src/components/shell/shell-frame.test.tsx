@@ -580,7 +580,7 @@ describe('ShellFrame — mobile bottom bar', () => {
     expect(screen.getByRole('main')).toHaveAttribute('data-mobile-bar-clearance');
     expect(clearance()).toEqual(
       expect.arrayContaining([
-        'pb-[calc(var(--shell-bottom-bar-height)+env(safe-area-inset-bottom))]',
+        'pb-[calc(var(--shell-bottom-bar-clearance)+env(safe-area-inset-bottom))]',
         'lg:pb-0',
       ]),
     );
@@ -597,7 +597,7 @@ describe('ShellFrame — mobile bottom bar', () => {
     renderShell();
     expect(bar()).toBeNull();
     expect(screen.getByRole('main')).not.toHaveAttribute('data-mobile-bar-clearance');
-    expect(clearance().some((token) => token.includes('shell-bottom-bar-height'))).toBe(false);
+    expect(clearance().some((token) => token.includes('shell-bottom-bar'))).toBe(false);
   });
 
   it('waits for onboarding: no bar while every tab would only bounce back', () => {
